@@ -32,74 +32,74 @@ export default function Header({
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-[#f8f7f4]/95 backdrop-blur-md border-b border-stone-200 shadow-sm" id="main-header">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-20">
+    <header className="sticky top-0 z-50 border-b border-stone-200/80 bg-[#fffaf1]/92 shadow-[0_16px_40px_rgba(18,38,32,0.08)] backdrop-blur-xl" id="main-header">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="flex h-20 items-center justify-between gap-6">
           {/* Logo */}
           <div 
             onClick={() => handleNavClick('home')} 
-            className="flex items-center gap-3 cursor-pointer group"
+            className="group flex cursor-pointer items-center gap-3"
             id="logo-container"
           >
-            <div className="w-10 h-10 bg-[#008080] rounded-full flex items-center justify-center text-white shadow-sm group-hover:scale-105 transition-all duration-300">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#0f766e] text-white shadow-[0_12px_28px_rgba(15,118,110,0.28)] ring-1 ring-white/70 transition-all duration-300 group-hover:-translate-y-0.5 group-hover:bg-[#0d5f59]">
               <Compass className="w-5 h-5 animate-spin-slow" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-[#008080] leading-none uppercase">
-                Pravaah <span className="font-light text-[#333333]">Travels</span>
+              <h1 className="text-[1.35rem] font-extrabold leading-none tracking-tight text-[#123c3c]">
+                Pravaah <span className="font-semibold text-[#0f766e]">Travels</span>
               </h1>
-              <p className="text-[9px] text-[#F4C430] font-bold tracking-[0.3em] uppercase mt-1">
+              <p className="mt-1 text-[9px] font-extrabold uppercase tracking-[0.3em] text-[#d97706]">
                 Flow into journeys
               </p>
             </div>
           </div>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-6" id="desktop-nav">
+          <nav className="hidden items-center gap-1 rounded-full border border-stone-200/80 bg-white/80 p-1.5 shadow-sm md:flex" id="desktop-nav">
             {navItems.map((item) => (
               <button
                 key={item.view}
                 onClick={() => handleNavClick(item.view)}
-                className={`text-[11px] font-bold uppercase tracking-[0.2em] transition-all duration-200 relative py-1 hover:text-[#008080] cursor-pointer ${
+                className={`relative cursor-pointer rounded-full px-4 py-2.5 text-[11px] font-extrabold uppercase tracking-[0.14em] transition-all duration-200 hover:bg-[#f8f0df] hover:text-[#0f766e] ${
                   currentView === item.view
-                    ? 'text-[#008080]'
-                    : 'text-[#333333]'
+                    ? 'bg-[#123c3c] text-white shadow-[0_8px_18px_rgba(18,60,60,0.18)]'
+                    : 'text-stone-600'
                 }`}
               >
                 {item.label}
                 {currentView === item.view && (
-                  <span className="absolute bottom-0 left-0 w-full h-0.5 bg-[#F4C430]" />
+                  <span className="absolute inset-x-5 -bottom-1 h-1 rounded-full bg-[#f59e0b]" />
                 )}
               </button>
             ))}
 
             {/* Admin/Customer Dashboard Quick Link or Login */}
             {isAdminLoggedIn ? (
-              <div className="flex items-center gap-3 pl-4 border-l border-stone-200">
+              <div className="ml-2 flex items-center gap-2 border-l border-stone-200 pl-3">
                 <button
                   onClick={() => handleNavClick('admin-dashboard')}
-                  className="px-4 py-2 bg-[#008080] text-white hover:bg-[#006666] text-[10px] font-bold uppercase tracking-wider rounded transition-all duration-200 shadow-sm cursor-pointer"
+                  className="cursor-pointer rounded-full bg-[#0f766e] px-4 py-2.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-[0_10px_22px_rgba(15,118,110,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#0d5f59]"
                 >
                   Admin Panel
                 </button>
                 <button
                   onClick={onAdminLogout}
-                  className="px-4 py-2 bg-[#333333] text-white hover:bg-stone-800 text-[10px] font-bold uppercase tracking-wider rounded transition-all duration-200 cursor-pointer"
+                  className="cursor-pointer rounded-full bg-stone-900 px-4 py-2.5 text-[10px] font-extrabold uppercase tracking-wider text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-stone-800"
                 >
                   Logout
                 </button>
               </div>
             ) : currentUser ? (
-              <div className="flex items-center gap-3 pl-4 border-l border-stone-200">
+              <div className="ml-2 flex items-center gap-2 border-l border-stone-200 pl-3">
                 <button
                   onClick={() => handleNavClick('portal')}
-                  className="px-4 py-2 bg-[#008080] text-white hover:bg-[#006666] text-[10px] font-bold uppercase tracking-wider rounded transition-all duration-200 shadow-sm cursor-pointer"
+                  className="cursor-pointer rounded-full bg-[#0f766e] px-4 py-2.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-[0_10px_22px_rgba(15,118,110,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#0d5f59]"
                 >
                   My Dashboard
                 </button>
                 <button
                   onClick={onAdminLogout}
-                  className="px-4 py-2 bg-[#333333] text-white hover:bg-stone-800 text-[10px] font-bold uppercase tracking-wider rounded transition-all duration-200 cursor-pointer"
+                  className="cursor-pointer rounded-full bg-stone-900 px-4 py-2.5 text-[10px] font-extrabold uppercase tracking-wider text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-stone-800"
                 >
                   Logout
                 </button>
@@ -107,7 +107,7 @@ export default function Header({
             ) : (
               <button
                 onClick={() => handleNavClick('admin-login')}
-                className="px-4 py-2 border border-[#008080] text-[#008080] hover:bg-[#008080] hover:text-white text-[10px] font-bold uppercase tracking-wider rounded transition-all duration-200 cursor-pointer"
+                className="ml-2 cursor-pointer rounded-full border border-[#0f766e]/30 bg-[#0f766e] px-5 py-2.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-[0_10px_22px_rgba(15,118,110,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#0d5f59]"
               >
                 Login / Signup
               </button>
@@ -115,11 +115,11 @@ export default function Header({
           </nav>
 
           {/* Mobile Menu Button */}
-          <div className="md:hidden flex items-center gap-2">
+          <div className="flex items-center gap-2 md:hidden">
             {isAdminLoggedIn && (
               <button
                 onClick={() => handleNavClick('admin-dashboard')}
-                className="p-2 text-[#008080] bg-teal-50 rounded-lg hover:bg-teal-100"
+                className="rounded-full bg-teal-50 p-2 text-[#0f766e] ring-1 ring-teal-100 transition hover:bg-teal-100"
                 title="Admin Dashboard"
               >
                 <ShieldAlert className="w-5 h-5" />
@@ -128,7 +128,7 @@ export default function Header({
             {currentUser && !isAdminLoggedIn && (
               <button
                 onClick={() => handleNavClick('portal')}
-                className="p-2 text-[#008080] bg-teal-50 rounded-lg hover:bg-teal-100"
+                className="rounded-full bg-teal-50 p-2 text-[#0f766e] ring-1 ring-teal-100 transition hover:bg-teal-100"
                 title="My Dashboard"
               >
                 <ShieldAlert className="w-5 h-5" />
@@ -136,7 +136,7 @@ export default function Header({
             )}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="p-2 text-stone-600 hover:text-stone-900 focus:outline-none"
+              className="rounded-full border border-stone-200 bg-white p-2 text-stone-700 shadow-sm transition hover:text-[#0f766e] focus:outline-none"
               id="mobile-menu-btn"
             >
               {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -147,26 +147,26 @@ export default function Header({
 
       {/* Mobile Navigation Drawer */}
       {isMenuOpen && (
-        <div className="md:hidden bg-[#f8f7f4] border-b border-stone-200 shadow-inner px-4 pt-2 pb-6 space-y-2" id="mobile-nav-drawer">
+        <div className="space-y-2 border-b border-stone-200 bg-[#fffaf1] px-4 pb-6 pt-2 shadow-[0_18px_36px_rgba(18,38,32,0.08)] md:hidden" id="mobile-nav-drawer">
           {navItems.map((item) => (
             <button
               key={item.view}
               onClick={() => handleNavClick(item.view)}
-              className={`block w-full text-left px-4 py-3 rounded text-xs font-bold uppercase tracking-wider transition-colors ${
+              className={`block w-full rounded-2xl px-4 py-3 text-left text-xs font-extrabold uppercase tracking-wider transition-colors ${
                 currentView === item.view
-                  ? 'bg-[#008080]/10 text-[#008080]'
-                  : 'text-[#333333] hover:bg-stone-100'
+                  ? 'bg-[#123c3c] text-white'
+                  : 'text-stone-700 hover:bg-white hover:text-[#0f766e]'
               }`}
             >
               {item.label}
             </button>
           ))}
-          <div className="pt-4 border-t border-stone-200 px-4 flex flex-col gap-2">
+          <div className="flex flex-col gap-2 border-t border-stone-200 px-4 pt-4">
             {isAdminLoggedIn ? (
               <>
                 <button
                   onClick={() => handleNavClick('admin-dashboard')}
-                  className="w-full text-center py-2.5 bg-[#008080] hover:bg-[#006666] text-white font-bold uppercase tracking-wider text-xs rounded transition-all"
+                  className="w-full rounded-full bg-[#0f766e] py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition-all hover:bg-[#0d5f59]"
                 >
                   Go to Admin Dashboard
                 </button>
@@ -175,7 +175,7 @@ export default function Header({
                     onAdminLogout();
                     setIsMenuOpen(false);
                   }}
-                  className="w-full text-center py-2.5 bg-[#333333] hover:bg-stone-800 text-white font-bold uppercase tracking-wider text-xs rounded transition-all"
+                  className="w-full rounded-full bg-stone-900 py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition-all hover:bg-stone-800"
                 >
                   Logout
                 </button>
@@ -184,7 +184,7 @@ export default function Header({
               <>
                 <button
                   onClick={() => handleNavClick('portal')}
-                  className="w-full text-center py-2.5 bg-[#008080] hover:bg-[#006666] text-white font-bold uppercase tracking-wider text-xs rounded transition-all"
+                  className="w-full rounded-full bg-[#0f766e] py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition-all hover:bg-[#0d5f59]"
                 >
                   Go to My Dashboard
                 </button>
@@ -193,7 +193,7 @@ export default function Header({
                     onAdminLogout();
                     setIsMenuOpen(false);
                   }}
-                  className="w-full text-center py-2.5 bg-[#333333] hover:bg-stone-800 text-white font-bold uppercase tracking-wider text-xs rounded transition-all"
+                  className="w-full rounded-full bg-stone-900 py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition-all hover:bg-stone-800"
                 >
                   Logout
                 </button>
@@ -201,7 +201,7 @@ export default function Header({
             ) : (
               <button
                 onClick={() => handleNavClick('admin-login')}
-                className="w-full text-center py-2.5 border border-[#008080] text-[#008080] hover:bg-[#008080] hover:text-white font-bold uppercase tracking-wider text-xs rounded transition-all"
+                className="w-full rounded-full bg-[#0f766e] py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition-all hover:bg-[#0d5f59]"
               >
                 Login / Signup
               </button>
