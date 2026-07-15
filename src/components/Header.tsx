@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Compass, Menu, X, ShieldAlert } from 'lucide-react';
+import { CalendarDays, Compass, Mail, Menu, Phone, Search, ShieldAlert, UserCircle, X } from 'lucide-react';
 
 interface HeaderProps {
   currentView: string;
@@ -31,142 +31,165 @@ export default function Header({
     setIsMenuOpen(false);
   };
 
+  const dashboardButton = isAdminLoggedIn ? (
+    <>
+      <button
+        onClick={() => handleNavClick('admin-dashboard')}
+        className="cursor-pointer bg-[#4DA528] px-5 py-3 text-[12px] font-bold uppercase tracking-[0.08em] text-white transition hover:bg-[#FF970D]"
+      >
+        Admin Panel
+      </button>
+      <button
+        onClick={onAdminLogout}
+        className="cursor-pointer border border-stone-200 px-5 py-3 text-[12px] font-bold uppercase tracking-[0.08em] text-stone-900 transition hover:border-[#4DA528] hover:text-[#4DA528]"
+      >
+        Logout
+      </button>
+    </>
+  ) : currentUser ? (
+    <>
+      <button
+        onClick={() => handleNavClick('portal')}
+        className="cursor-pointer bg-[#4DA528] px-5 py-3 text-[12px] font-bold uppercase tracking-[0.08em] text-white transition hover:bg-[#FF970D]"
+      >
+        My Dashboard
+      </button>
+      <button
+        onClick={onAdminLogout}
+        className="cursor-pointer border border-stone-200 px-5 py-3 text-[12px] font-bold uppercase tracking-[0.08em] text-stone-900 transition hover:border-[#4DA528] hover:text-[#4DA528]"
+      >
+        Logout
+      </button>
+    </>
+  ) : (
+    <button
+      onClick={() => handleNavClick('admin-login')}
+      className="cursor-pointer bg-[#4DA528] px-5 py-3 text-[12px] font-bold uppercase tracking-[0.08em] text-white transition hover:bg-[#FF970D]"
+    >
+      Login / Signup
+    </button>
+  );
+
   return (
-    <header className="sticky top-0 z-50 border-b border-stone-200/80 bg-[#fffaf1]/92 shadow-[0_16px_40px_rgba(18,38,32,0.08)] backdrop-blur-xl" id="main-header">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-20 items-center justify-between gap-6">
-          {/* Logo */}
-          <div 
-            onClick={() => handleNavClick('home')} 
+    <header className="relative z-50 w-full bg-white font-sans shadow-[0_8px_30px_rgba(0,0,0,0.05)]" id="main-header">
+      <div className="hidden border-b border-stone-100 bg-white lg:block">
+        <div className="mx-auto flex max-w-[1530px] items-center justify-between px-8 py-3 text-[13px] font-medium text-stone-700">
+          <ul className="flex items-center gap-8">
+            <li className="flex items-center gap-2">
+              <CalendarDays className="h-4 w-4 text-[#4DA528]" />
+              <span>Thursday, June 10, 2026</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <Mail className="h-4 w-4 text-[#4DA528]" />
+              <span>pravaahtravels@gmail.com</span>
+            </li>
+            <li className="flex items-center gap-2">
+              <Phone className="h-4 w-4 text-[#4DA528]" />
+              <span>+91 91231 36692</span>
+            </li>
+          </ul>
+          <div className="flex items-center gap-7">
+            <button onClick={() => handleNavClick('contact')} className="flex cursor-pointer items-center gap-2 font-bold text-[#4DA528] transition hover:text-[#FF970D]">
+              <Compass className="h-4 w-4" />
+              <span>Booking Now</span>
+            </button>
+            <div className="flex items-center gap-3 text-stone-500">
+              <span>Follow Us :</span>
+              <span className="h-2 w-2 rounded-full bg-[#4DA528]" />
+              <span className="h-2 w-2 rounded-full bg-[#FF970D]" />
+              <span className="h-2 w-2 rounded-full bg-stone-900" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="relative overflow-hidden">
+        <div className="pointer-events-none absolute left-0 top-0 hidden h-full w-48 rounded-r-full bg-[#4DA528]/10 lg:block" />
+        <div className="mx-auto flex h-[92px] max-w-[1530px] items-center justify-between gap-8 px-4 sm:px-6 lg:px-8 xl:pl-[120px]">
+          <button
+            type="button"
+            onClick={() => handleNavClick('home')}
             className="group flex cursor-pointer items-center gap-3"
             id="logo-container"
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#0f766e] text-white shadow-[0_12px_28px_rgba(15,118,110,0.28)] ring-1 ring-white/70 transition-all duration-300 group-hover:-translate-y-0.5 group-hover:bg-[#0d5f59]">
-              <Compass className="w-5 h-5 animate-spin-slow" />
-            </div>
-            <div>
-              <h1 className="text-[1.35rem] font-extrabold leading-none tracking-tight text-[#123c3c]">
-                Pravaah <span className="font-semibold text-[#0f766e]">Travels</span>
-              </h1>
-              <p className="mt-1 text-[9px] font-extrabold uppercase tracking-[0.3em] text-[#d97706]">
-                Flow into journeys
-              </p>
-            </div>
-          </div>
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#4DA528] text-white shadow-[0_12px_28px_rgba(77,165,40,0.28)] transition group-hover:bg-[#FF970D]">
+              <Compass className="h-7 w-7" />
+            </span>
+            <span className="text-left">
+              <span className="block text-2xl font-extrabold leading-none text-stone-950">Pravaah</span>
+              <span className="mt-1 block text-[11px] font-bold uppercase tracking-[0.24em] text-[#4DA528]">Travels</span>
+            </span>
+          </button>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden items-center gap-1 rounded-full border border-stone-200/80 bg-white/80 p-1.5 shadow-sm md:flex" id="desktop-nav">
+          <nav className="hidden items-center gap-8 lg:flex" id="desktop-nav">
             {navItems.map((item) => (
               <button
                 key={item.view}
                 onClick={() => handleNavClick(item.view)}
-                className={`relative cursor-pointer rounded-full px-4 py-2.5 text-[11px] font-extrabold uppercase tracking-[0.14em] transition-all duration-200 hover:bg-[#f8f0df] hover:text-[#0f766e] ${
-                  currentView === item.view
-                    ? 'bg-[#123c3c] text-white shadow-[0_8px_18px_rgba(18,60,60,0.18)]'
-                    : 'text-stone-600'
+                className={`relative cursor-pointer py-9 text-[15px] font-semibold transition ${
+                  currentView === item.view ? 'text-[#4DA528]' : 'text-stone-900 hover:text-[#4DA528]'
                 }`}
               >
                 {item.label}
                 {currentView === item.view && (
-                  <span className="absolute inset-x-5 -bottom-1 h-1 rounded-full bg-[#f59e0b]" />
+                  <span className="absolute inset-x-0 bottom-6 h-[3px] rounded-full bg-[#4DA528]" />
                 )}
               </button>
             ))}
-
-            {/* Admin/Customer Dashboard Quick Link or Login */}
-            {isAdminLoggedIn ? (
-              <div className="ml-2 flex items-center gap-2 border-l border-stone-200 pl-3">
-                <button
-                  onClick={() => handleNavClick('admin-dashboard')}
-                  className="cursor-pointer rounded-full bg-[#0f766e] px-4 py-2.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-[0_10px_22px_rgba(15,118,110,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#0d5f59]"
-                >
-                  Admin Panel
-                </button>
-                <button
-                  onClick={onAdminLogout}
-                  className="cursor-pointer rounded-full bg-stone-900 px-4 py-2.5 text-[10px] font-extrabold uppercase tracking-wider text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-stone-800"
-                >
-                  Logout
-                </button>
-              </div>
-            ) : currentUser ? (
-              <div className="ml-2 flex items-center gap-2 border-l border-stone-200 pl-3">
-                <button
-                  onClick={() => handleNavClick('portal')}
-                  className="cursor-pointer rounded-full bg-[#0f766e] px-4 py-2.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-[0_10px_22px_rgba(15,118,110,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#0d5f59]"
-                >
-                  My Dashboard
-                </button>
-                <button
-                  onClick={onAdminLogout}
-                  className="cursor-pointer rounded-full bg-stone-900 px-4 py-2.5 text-[10px] font-extrabold uppercase tracking-wider text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-stone-800"
-                >
-                  Logout
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => handleNavClick('admin-login')}
-                className="ml-2 cursor-pointer rounded-full border border-[#0f766e]/30 bg-[#0f766e] px-5 py-2.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-[0_10px_22px_rgba(15,118,110,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#0d5f59]"
-              >
-                Login / Signup
-              </button>
-            )}
+            <button onClick={() => handleNavClick('contact')} className="cursor-pointer py-9 text-[15px] font-semibold text-stone-900 transition hover:text-[#4DA528]">
+              Contact
+            </button>
           </nav>
 
-          {/* Mobile Menu Button */}
-          <div className="flex items-center gap-2 md:hidden">
-            {isAdminLoggedIn && (
+          <div className="hidden items-center gap-5 lg:flex">
+            <button className="flex h-11 w-11 items-center justify-center rounded-full border border-stone-200 text-stone-900 transition hover:border-[#4DA528] hover:text-[#4DA528]" type="button">
+              <Search className="h-4 w-4" />
+            </button>
+            <div className="flex items-center gap-3">{dashboardButton}</div>
+          </div>
+
+          <div className="flex items-center gap-2 lg:hidden">
+            {(isAdminLoggedIn || currentUser) && (
               <button
-                onClick={() => handleNavClick('admin-dashboard')}
-                className="rounded-full bg-teal-50 p-2 text-[#0f766e] ring-1 ring-teal-100 transition hover:bg-teal-100"
-                title="Admin Dashboard"
+                onClick={() => handleNavClick(isAdminLoggedIn ? 'admin-dashboard' : 'portal')}
+                className="rounded-full bg-[#4DA528]/10 p-2 text-[#4DA528] ring-1 ring-[#4DA528]/15"
+                title={isAdminLoggedIn ? 'Admin Dashboard' : 'My Dashboard'}
               >
-                <ShieldAlert className="w-5 h-5" />
-              </button>
-            )}
-            {currentUser && !isAdminLoggedIn && (
-              <button
-                onClick={() => handleNavClick('portal')}
-                className="rounded-full bg-teal-50 p-2 text-[#0f766e] ring-1 ring-teal-100 transition hover:bg-teal-100"
-                title="My Dashboard"
-              >
-                <ShieldAlert className="w-5 h-5" />
+                {isAdminLoggedIn ? <ShieldAlert className="h-5 w-5" /> : <UserCircle className="h-5 w-5" />}
               </button>
             )}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="rounded-full border border-stone-200 bg-white p-2 text-stone-700 shadow-sm transition hover:text-[#0f766e] focus:outline-none"
+              className="rounded-full border border-stone-200 bg-white p-2 text-stone-800 shadow-sm"
               id="mobile-menu-btn"
             >
-              {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Mobile Navigation Drawer */}
       {isMenuOpen && (
-        <div className="space-y-2 border-b border-stone-200 bg-[#fffaf1] px-4 pb-6 pt-2 shadow-[0_18px_36px_rgba(18,38,32,0.08)] md:hidden" id="mobile-nav-drawer">
+        <div className="space-y-2 border-t border-stone-100 bg-white px-4 pb-6 pt-4 shadow-[0_18px_36px_rgba(18,38,32,0.08)] lg:hidden" id="mobile-nav-drawer">
           {navItems.map((item) => (
             <button
               key={item.view}
               onClick={() => handleNavClick(item.view)}
-              className={`block w-full rounded-2xl px-4 py-3 text-left text-xs font-extrabold uppercase tracking-wider transition-colors ${
+              className={`block w-full px-4 py-3 text-left text-sm font-bold transition-colors ${
                 currentView === item.view
-                  ? 'bg-[#123c3c] text-white'
-                  : 'text-stone-700 hover:bg-white hover:text-[#0f766e]'
+                  ? 'bg-[#4DA528] text-white'
+                  : 'text-stone-800 hover:bg-stone-50 hover:text-[#4DA528]'
               }`}
             >
               {item.label}
             </button>
           ))}
-          <div className="flex flex-col gap-2 border-t border-stone-200 px-4 pt-4">
+          <div className="flex flex-col gap-2 border-t border-stone-100 px-4 pt-4">
             {isAdminLoggedIn ? (
               <>
                 <button
                   onClick={() => handleNavClick('admin-dashboard')}
-                  className="w-full rounded-full bg-[#0f766e] py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition-all hover:bg-[#0d5f59]"
+                  className="w-full bg-[#4DA528] py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
                 >
                   Go to Admin Dashboard
                 </button>
@@ -175,7 +198,7 @@ export default function Header({
                     onAdminLogout();
                     setIsMenuOpen(false);
                   }}
-                  className="w-full rounded-full bg-stone-900 py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition-all hover:bg-stone-800"
+                  className="w-full bg-stone-900 py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-stone-800"
                 >
                   Logout
                 </button>
@@ -184,7 +207,7 @@ export default function Header({
               <>
                 <button
                   onClick={() => handleNavClick('portal')}
-                  className="w-full rounded-full bg-[#0f766e] py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition-all hover:bg-[#0d5f59]"
+                  className="w-full bg-[#4DA528] py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
                 >
                   Go to My Dashboard
                 </button>
@@ -193,7 +216,7 @@ export default function Header({
                     onAdminLogout();
                     setIsMenuOpen(false);
                   }}
-                  className="w-full rounded-full bg-stone-900 py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition-all hover:bg-stone-800"
+                  className="w-full bg-stone-900 py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-stone-800"
                 >
                   Logout
                 </button>
@@ -201,7 +224,7 @@ export default function Header({
             ) : (
               <button
                 onClick={() => handleNavClick('admin-login')}
-                className="w-full rounded-full bg-[#0f766e] py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition-all hover:bg-[#0d5f59]"
+                className="w-full bg-[#4DA528] py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
               >
                 Login / Signup
               </button>

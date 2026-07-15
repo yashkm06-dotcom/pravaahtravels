@@ -353,86 +353,317 @@ export default function HomeView({
     : '0.0';
 
   return (
-    <div id="home-view" className="animate-fade-in overflow-hidden bg-[#fffaf1]">
-      
-      {/* 1. Premium Hero */}
-      <section className="relative flex min-h-[calc(100vh-5rem)] items-center overflow-hidden bg-stone-950 text-white" id="home-hero">
-        <img
-          src="https://images.unsplash.com/photo-1626830503244-3d2ac0493ae0?auto=format&fit=crop&q=80&w=1800"
-          alt="Kedarnath Temple Valley"
-          className="absolute inset-0 h-full w-full object-cover"
-          referrerPolicy="no-referrer"
-          id="hero-main-img"
-        />
-        <div className="absolute inset-0 bg-linear-to-r from-stone-950/90 via-stone-950/58 to-stone-950/12" />
-        <div className="absolute inset-0 bg-linear-to-t from-stone-950/70 via-transparent to-stone-950/20" />
+    <div id="home-view" className="animate-fade-in overflow-hidden bg-white font-sans">
+      <section className="relative min-h-[760px] overflow-hidden bg-[#081E2A] text-white lg:min-h-[820px]" id="home-hero">
+        <div className="absolute inset-0 bg-[#081E2A]" />
+        <div className="absolute inset-0 bg-linear-to-r from-[#081E2A] via-[#081E2A]/92 to-[#081E2A]/10" />
+        <div className="absolute inset-y-0 right-0 hidden w-[57%] overflow-hidden lg:block">
+          <img
+            src="https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&q=80&w=1700"
+            alt="Himalayan mountain backdrop"
+            className="absolute inset-0 h-full w-full object-cover object-center opacity-88"
+            referrerPolicy="no-referrer"
+          />
+          <div className="absolute inset-0 bg-linear-to-r from-[#081E2A]/74 via-[#081E2A]/16 to-[#081E2A]/4" />
+          <div className="absolute inset-0 bg-linear-to-t from-[#081E2A]/48 via-transparent to-white/8" />
+          <div className="absolute -left-[18%] top-0 h-full w-[50%] bg-[#081E2A] [clip-path:ellipse(72%_68%_at_0%_50%)]" />
+          <div className="absolute -left-[8%] top-[6%] h-[88%] w-[32%] border-l border-white/12 bg-white/8 backdrop-blur-[1px] [clip-path:ellipse(62%_54%_at_0%_50%)]" />
 
-        <div className="relative z-10 mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-12 px-4 py-20 sm:px-6 lg:grid-cols-12 lg:px-8">
-          <div className="max-w-3xl space-y-8 lg:col-span-7">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.24em] text-[#fbbf24] backdrop-blur-md">
-              <Compass className="h-4 w-4 text-[#5eead4]" />
-              <span>Premium Himalayan Odysseys</span>
-            </div>
+          <div className="absolute right-[12%] top-[94px] h-[640px] w-[430px] overflow-hidden rounded-t-full rounded-b-[220px] border border-white/24 bg-white/10 shadow-[0_36px_90px_rgba(0,0,0,0.38)] backdrop-blur-[2px]">
+            <img
+              src="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&q=80&w=1050"
+              alt="Traveler enjoying mountain route"
+              className="h-full w-full object-cover object-center"
+              referrerPolicy="no-referrer"
+            />
+            <div className="absolute inset-0 bg-linear-to-t from-[#081E2A]/28 via-transparent to-white/10" />
+          </div>
 
-            <div className="space-y-5">
-              <h2 className="max-w-4xl text-5xl font-semibold leading-[0.98] tracking-tight text-white sm:text-6xl lg:text-[82px]">
-                Discover journeys that feel deeply
-                <span className="block font-serif italic font-normal text-[#5eead4]">personal.</span>
-              </h2>
-              <p className="max-w-2xl text-sm leading-7 text-stone-100 sm:text-base">
-                Flow through sacred valleys, high passes, river camps, and slow mountain stays with hand-built itineraries guided by Pravaah's expert travel curators.
-              </p>
-            </div>
+          <div className="absolute right-[8%] top-[82px] h-[172px] w-[172px] rounded-full border border-white/35" />
+          <div className="absolute right-[10.7%] top-[122px] h-[92px] w-[92px] rounded-full border border-white/22" />
+          <div className="absolute right-[39%] top-[134px] h-24 w-24 rotate-12 rounded-[28px] border border-white/16 bg-white/10 backdrop-blur-[2px]" />
+          <div className="absolute right-[48%] top-[242px] h-4 w-4 rounded-full bg-[#4DA528] shadow-[0_0_0_16px_rgba(77,165,40,0.18)]" />
+          <PlaneTakeoff className="absolute right-[43%] top-[96px] h-16 w-16 -rotate-12 text-white/78" />
 
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <button
-                onClick={() => onNavigate('packages')}
-                className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full bg-[#f97350] px-7 py-4 text-xs font-extrabold uppercase tracking-[0.15em] text-white shadow-[0_20px_45px_rgba(249,115,80,0.35)] transition hover:-translate-y-1 hover:bg-[#ea5f3c]"
-              >
-                <span>Explore Packages</span>
-                <ArrowRight className="h-4 w-4" />
-              </button>
-              <button
-                onClick={handleLaunchPlanner}
-                className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-white/30 bg-white/10 px-7 py-4 text-xs font-extrabold uppercase tracking-[0.15em] text-white backdrop-blur-md transition hover:-translate-y-1 hover:bg-white/18"
-              >
-                <Sparkles className="h-4 w-4 text-[#fbbf24]" />
-                <span>AI Trip Planner</span>
-              </button>
-            </div>
-
-            <div className="grid max-w-xl grid-cols-2 gap-3 sm:grid-cols-3">
-              <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-md">
-                <span className="block text-2xl font-extrabold text-white">{featuredPackages.length}</span>
-                <span className="mt-1 block text-[10px] font-bold uppercase tracking-widest text-stone-300">Featured Trips</span>
-              </div>
-              <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-md">
-                <span className="block text-2xl font-extrabold text-white">{averageRating}</span>
-                <span className="mt-1 block text-[10px] font-bold uppercase tracking-widest text-stone-300">Avg. Rating</span>
-              </div>
-              <div className="col-span-2 rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-md sm:col-span-1">
-                <span className="block text-2xl font-extrabold text-white">{popularDestinations.length}</span>
-                <span className="mt-1 block text-[10px] font-bold uppercase tracking-widest text-stone-300">Travel Styles</span>
+          <div className="absolute bottom-[86px] right-[32%] h-[138px] w-[138px] rounded-full bg-[#4DA528] p-[11px] text-white shadow-[0_28px_60px_rgba(0,0,0,0.34)]">
+            <div className="flex h-full w-full items-center justify-center rounded-full border border-white/38 text-center">
+              <div>
+                <p className="text-[13px] font-bold uppercase tracking-[0.18em]">Booking</p>
+                <span className="mx-auto mt-3 block h-px w-12 bg-white/72" />
               </div>
             </div>
           </div>
 
-          <div className="hidden lg:col-span-5 lg:block">
-            <div className="relative ml-auto max-w-md rounded-[2rem] border border-white/20 bg-white/12 p-4 shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-              <div className="overflow-hidden rounded-[1.5rem]">
-                <img
-                  src="https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&q=80&w=900"
-                  alt="High mountain route"
-                  className="h-[500px] w-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
+          <div className="absolute bottom-[118px] right-[6%] h-[230px] w-[230px] rounded-full border border-white/15 bg-white/8 blur-[1px]" />
+          <div className="absolute bottom-0 right-0 h-48 w-full bg-linear-to-t from-[#081E2A]/55 to-transparent" />
+        </div>
+
+        <img
+          src="https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&q=80&w=1400"
+          alt="Himalayan mobile tour"
+          className="absolute inset-0 h-full w-full object-cover opacity-45 lg:hidden"
+          referrerPolicy="no-referrer"
+        />
+        <div className="absolute inset-0 bg-linear-to-r from-[#081E2A] via-[#081E2A]/88 to-[#081E2A]/32 lg:hidden" />
+        <div className="absolute inset-x-0 bottom-0 h-56 bg-linear-to-t from-white via-white/50 to-transparent" />
+
+        <div className="relative z-10 mx-auto grid min-h-[760px] max-w-[1320px] grid-cols-1 items-center px-4 pb-40 pt-20 sm:px-6 lg:min-h-[820px] lg:grid-cols-[58%_42%] lg:px-8">
+          <div className="max-w-[790px] pt-4 lg:pt-0">
+            <span className="mb-5 block font-serif text-[34px] italic leading-none text-[#4DA528] sm:text-[46px]">
+              Explore the world
+            </span>
+            <h1 className="text-[58px] font-extrabold leading-[0.98] tracking-[-0.03em] text-white sm:text-[82px] lg:text-[104px] xl:text-[118px]">
+              Tour Travel & adventure
+              <span className="block text-[#4DA528]">Camping</span>
+            </h1>
+            <p className="mt-8 max-w-[610px] text-[17px] leading-[1.85] text-white/82 sm:text-[18px]">
+              Explore Uttarakhand with guides who respect the mountains.
+            </p>
+            <div className="mt-11 flex flex-col items-start gap-5 sm:flex-row sm:items-center">
+              <button
+                onClick={() => onNavigate('packages')}
+                className="group inline-flex cursor-pointer items-center justify-center gap-3 rounded-[5px] bg-[#4DA528] px-8 py-[18px] text-[15px] font-semibold uppercase tracking-[0.05em] text-white transition hover:bg-[#FF970D]"
+              >
+                <span className="translate-x-[15px] transition group-hover:translate-x-0">Let,s get started</span>
+                <ArrowRight className="h-4 w-4 -translate-x-[15px] opacity-0 transition group-hover:translate-x-0 group-hover:opacity-100" />
+              </button>
+              <button
+                onClick={() => onNavigate('about')}
+                className="inline-flex cursor-pointer items-center justify-center gap-3 rounded-[5px] px-1 py-[18px] text-[15px] font-semibold text-white transition hover:text-[#4DA528]"
+              >
+                <span>Who we are</span>
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <div className="hidden lg:block" />
+        </div>
+      </section>
+
+      <section className="relative z-20 -mt-28 px-4 sm:px-6 lg:px-8" id="home-search">
+        <div className="search-form-widget-slider relative mx-auto max-w-[1180px] rounded-[10px] bg-white p-4 shadow-[0_20px_60px_rgba(0,0,0,0.14)] sm:p-5">
+          <form
+            id="search-form-slider"
+            onSubmit={(e) => {
+              e.preventDefault();
+              onSelectCategory(plannerCategory);
+            }}
+          >
+            <div className="wd-search flex flex-col overflow-hidden rounded-[7px] border border-stone-200 bg-white lg:flex-row">
+              <label className="form-group flex min-h-[104px] flex-1 items-center gap-4 border-b border-stone-200 px-5 py-5 lg:border-b-0 lg:border-r lg:px-7">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#4DA528]/10 text-[#4DA528]">
+                  <Search className="h-5 w-5" />
+                </span>
+                <span className="search-bar-group block min-w-0 flex-1">
+                  <span className="mb-2 block text-[13px] font-bold text-stone-500">Destination</span>
+                  <select
+                    value={plannerCategory}
+                    onChange={(e) => setPlannerCategory(e.target.value as DestinationCategory)}
+                    className="nice-select current w-full appearance-none bg-transparent text-[17px] font-extrabold text-stone-950 outline-none"
+                  >
+                    <option value="Pilgrimage">Pilgrimage</option>
+                    <option value="Treks">Treks</option>
+                    <option value="Adventure">Adventure</option>
+                    <option value="Himachal">Himachal</option>
+                    <option value="Ladakh">Ladakh</option>
+                    <option value="Uttarakhand">Uttarakhand</option>
+                  </select>
+                </span>
+              </label>
+
+              <label className="form-group flex min-h-[104px] flex-1 items-center gap-4 border-b border-stone-200 px-5 py-5 lg:border-b-0 lg:border-r lg:px-7">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#4DA528]/10 text-[#4DA528]">
+                  <Heart className="h-5 w-5" />
+                </span>
+                <span className="search-bar-group block min-w-0 flex-1">
+                  <span className="mb-2 block text-[13px] font-bold text-stone-500">Booking Type</span>
+                  <select
+                    value={plannerStyle}
+                    onChange={(e) => setPlannerStyle(e.target.value)}
+                    className="nice-select current w-full appearance-none bg-transparent text-[17px] font-extrabold text-stone-950 outline-none"
+                  >
+                    <option value="Bespoke Luxury">Bespoke Luxury</option>
+                    <option value="Family Comfort">Family Comfort</option>
+                    <option value="Sacred Slow Travel">Sacred Slow Travel</option>
+                    <option value="Adventure Led">Adventure Led</option>
+                  </select>
+                </span>
+              </label>
+
+              <label className="form-group flex min-h-[104px] flex-1 items-center gap-4 border-b border-stone-200 px-5 py-5 lg:border-b-0 lg:border-r lg:px-7">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#4DA528]/10 text-[#4DA528]">
+                  <Clock className="h-5 w-5" />
+                </span>
+                <span className="search-bar-group block min-w-0 flex-1">
+                  <span className="mb-2 block text-[13px] font-bold text-stone-500">Tour Duration</span>
+                  <select
+                    value={plannerDuration}
+                    onChange={(e) => setPlannerDuration(e.target.value)}
+                    className="nice-select current w-full appearance-none bg-transparent text-[17px] font-extrabold text-stone-950 outline-none"
+                  >
+                    <option value="Short (1-4 Days)">2-4 days tour</option>
+                    <option value="Medium (5-7 Days)">3-6 days tour</option>
+                    <option value="Long (8+ Days)">5-10 days tour</option>
+                  </select>
+                </span>
+              </label>
+
+              <div className="form-group flex-two flex min-h-[104px] flex-1 items-center gap-4 border-b border-stone-200 px-5 py-5 lg:max-w-[190px] lg:border-b-0 lg:border-r lg:px-7">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#4DA528]/10 text-[#4DA528]">
+                  <Users className="h-5 w-5" />
+                </span>
+                <div className="search-bar-group min-w-0 flex-1">
+                  <label className="mb-2 block text-[13px] font-bold text-stone-500" htmlFor="home-search-guests">Guests</label>
+                  <input
+                    id="home-search-guests"
+                    type="text"
+                    value="0"
+                    readOnly
+                    className="w-full bg-transparent text-[17px] font-extrabold text-stone-950 outline-none"
+                  />
+                </div>
               </div>
-              <div className="absolute -bottom-7 left-8 right-8 rounded-3xl bg-white p-5 text-stone-900 shadow-[0_20px_45px_rgba(18,38,32,0.22)]">
-                <span className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#0f766e]">Curated this week</span>
-                <h3 className="mt-1 font-serif text-2xl italic">Sacred valleys and high-pass escapes</h3>
-                <div className="mt-4 flex items-center justify-between border-t border-stone-100 pt-4 text-xs">
-                  <span className="font-bold text-stone-500">Private planning</span>
-                  <span className="font-extrabold text-[#f97350]">24 hr draft</span>
+
+              <button
+                type="submit"
+                className="btn-search flex min-h-[104px] cursor-pointer items-center justify-center gap-3 bg-[#4DA528] px-8 text-[15px] font-extrabold uppercase tracking-[0.04em] text-white transition hover:bg-[#FF970D] lg:min-w-[170px]"
+              >
+                <Search className="h-5 w-5" />
+                <span>Search</span>
+              </button>
+            </div>
+
+            <div className="wd-search-form grid gap-5 border-x border-b border-stone-200 bg-[#F7F8F4] px-5 py-5 md:grid-cols-[1.4fr_1fr_1fr] lg:px-7">
+              <div className="group-price">
+                <div className="mb-3 flex items-center gap-2 text-[13px] font-bold text-stone-500">
+                  <Sliders className="h-4 w-4 text-[#4DA528]" />
+                  Price Range
+                </div>
+                <div className="widget-price">
+                  <div className="relative h-1.5 rounded-full bg-stone-200" id="slider-range">
+                    <span className="absolute left-[15%] right-[20%] top-0 h-full rounded-full bg-[#4DA528]" />
+                    <span className="absolute left-[15%] top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-white bg-[#4DA528] shadow" />
+                    <span className="absolute right-[20%] top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-white bg-[#4DA528] shadow" />
+                  </div>
+                  <div className="slider-labels mt-3 flex justify-between text-[13px] font-semibold text-stone-500">
+                    <div>
+                      <input type="hidden" name="min-value" value="" readOnly />
+                      <span id="slider-range-value1">Flexible</span>
+                    </div>
+                    <div>
+                      <input type="hidden" name="max-value" value="" readOnly />
+                      <span id="slider-range-value2">Premium</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <label className="search-bar-group">
+                <span className="mb-3 block text-[13px] font-bold text-stone-500">Activities</span>
+                <select
+                  value={plannerStyle}
+                  onChange={(e) => setPlannerStyle(e.target.value)}
+                  className="nice-select current w-full rounded-[5px] border border-stone-200 bg-white px-4 py-3 text-[15px] font-bold text-stone-950 outline-none"
+                >
+                  <option value="Bespoke Luxury">Bespoke Luxury</option>
+                  <option value="Family Comfort">Family Comfort</option>
+                  <option value="Sacred Slow Travel">Sacred Slow Travel</option>
+                  <option value="Adventure Led">Adventure Led</option>
+                </select>
+              </label>
+
+              <label className="search-bar-group">
+                <span className="mb-3 block text-[13px] font-bold text-stone-500">Destination</span>
+                <select
+                  value={plannerCategory}
+                  onChange={(e) => setPlannerCategory(e.target.value as DestinationCategory)}
+                  className="nice-select current w-full rounded-[5px] border border-stone-200 bg-white px-4 py-3 text-[15px] font-bold text-stone-950 outline-none"
+                >
+                  <option value="Pilgrimage">Pilgrimage</option>
+                  <option value="Treks">Treks</option>
+                  <option value="Adventure">Adventure</option>
+                  <option value="Himachal">Himachal</option>
+                  <option value="Ladakh">Ladakh</option>
+                  <option value="Uttarakhand">Uttarakhand</option>
+                </select>
+              </label>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section className="about-us pb-150 pb-24 pt-20" id="vitour-about">
+        <div className="tf-container mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
+          <div className="row pt-35">
+            <div className="col-lg-12 flex flex-col gap-5 md:flex-row md:items-center">
+              <div className="image-list flex-three flex -space-x-4">
+                {ugcPosts.map((post) => (
+                  <button key={post.id} type="button" onClick={() => setSelectedUgcPost(post)} className="item h-14 w-14 overflow-hidden rounded-full border-4 border-white shadow-md">
+                    <img src={post.avatar} alt={post.handle} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                  </button>
+                ))}
+                <div className="icon item flex-five flex h-14 w-14 items-center justify-center rounded-full border-4 border-white bg-[#4DA528] text-white shadow-md">
+                  <Users className="h-6 w-6" />
+                </div>
+              </div>
+              <p className="client fadeInUp wow text-[18px] font-semibold text-stone-800">Explore the Unseen Parts Of uttrakhand</p>
+            </div>
+          </div>
+
+          <div className="row pt-115 mt-20 grid gap-12 lg:grid-cols-2 lg:items-center">
+            <div className="col-lg-6">
+              <div className="travel-video relative">
+                <img src={popularDestinations[0].image} alt={popularDestinations[0].name} className="image-video min-h-[520px] w-full rounded-[24px] object-cover" referrerPolicy="no-referrer" />
+                <div className="video-wrap">
+                  <button type="button" onClick={handleLaunchPlanner} className="widget-icon-video widget-videos flex-five z-index3 absolute left-1/2 top-1/2 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#4DA528] text-white shadow-[0_20px_45px_rgba(0,0,0,0.25)] transition hover:bg-[#FF970D]">
+                    <Sparkles className="h-8 w-8" />
+                  </button>
+                </div>
+                <div className="mask-video tf-anime-rorate absolute -right-6 top-10 hidden h-24 w-24 rounded-full border-[18px] border-[#4DA528]/20 sm:block" />
+                <div className="mask-enjoy absolute -bottom-8 right-8 hidden rounded-[18px] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.14)] sm:block">
+                  <span className="font-serif text-3xl italic text-[#4DA528]">enjoy</span>
+                  <p className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-stone-500">Natural Flow</p>
+                </div>
+              </div>
+            </div>
+            <div className="col-lg-6">
+              <div className="inner-content-about">
+                <span className="sub-title-heading text-main mb-15 fadeInUp wow block font-serif text-[32px] italic text-[#4DA528]">Explore the Unseen Part Of uttrakhand With us</span>
+                <h2 className="title-heading mb-18 fadeInUp wow mt-5 text-[42px] font-extrabold leading-[1.12] text-stone-950 sm:text-[56px]">
+                  Great opportunity for <span className="text-gray font-yes font-serif italic font-medium text-stone-400">adventure</span> & travels
+                </h2>
+                <p className="des-heading fadeInUp wow mt-6 max-w-xl text-[16px] leading-8 text-stone-600">
+                  Welcome to Pravaah Travels. We build reliable, premium, human-paced journeys across sacred valleys, riverside camps, mountain roads, and high-altitude retreats.
+                </p>
+                <div className="row mt-27 fadeInUp wow mt-9 grid gap-5 sm:grid-cols-2">
+                  {whyChooseUs.slice(0, 2).map((item) => (
+                    <div key={item.title} className="col-sm-6">
+                      <div className="icon-box-style3 border border-stone-200 bg-white p-6 shadow-[0_12px_30px_rgba(0,0,0,0.05)]">
+                        <div className="icon flex-three mb-5 text-[#4DA528]">{item.icon}</div>
+                        <h6 className="title mb-10 text-[18px] font-bold text-stone-950">{item.title}</h6>
+                        <p className="des text-[14px] leading-7 text-stone-600">{item.description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex-three btn-wrap-about mb-30 fadeInUp wow mt-9 flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <button onClick={() => onNavigate('about')} className="btn-main inline-flex cursor-pointer items-center justify-center gap-3 rounded-[5px] bg-[#4DA528] px-8 py-[18px] text-[15px] font-bold uppercase tracking-[0.05em] text-white transition hover:bg-[#FF970D]">
+                    <span className="btn-main-text">More about us</span>
+                    <span className="iconer"><ArrowRight className="h-4 w-4" /></span>
+                  </button>
+                  <div className="profile flex-three flex items-center gap-3">
+                    <div className="image h-12 w-12 overflow-hidden rounded-full">
+                      <img src={ugcPosts[0].avatar} alt={ugcPosts[0].handle} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                    </div>
+                    <div className="content">
+                      <p className="font-serif text-[20px] italic text-stone-950">Pravaah Curator</p>
+                      <span className="text-main text-[12px] font-bold uppercase tracking-wider text-[#4DA528]">Ceo & Founder</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="map-check flex-three fadeInUp wow flex items-center gap-3 text-[#4DA528]">
+                  <Map className="h-7 w-7" />
+                  <span className="text-main font-semibold">Checkout Beautiful Places Arround the World.</span>
                 </div>
               </div>
             </div>
@@ -440,405 +671,484 @@ export default function HomeView({
         </div>
       </section>
 
-      {/* 2. Search / Trip Finder */}
-      <section className="relative z-20 -mt-10 px-4 sm:px-6 lg:px-8" id="home-search">
-        <div className="mx-auto max-w-6xl rounded-[2rem] border border-stone-200 bg-white p-4 shadow-[0_24px_70px_rgba(18,38,32,0.16)]">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-            <label className="group rounded-3xl border border-stone-200 bg-[#fffaf1] p-4 transition focus-within:border-[#0f766e]">
-              <span className="mb-2 flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-500">
-                <Search className="h-3.5 w-3.5 text-[#0f766e]" />
-                Destination mood
-              </span>
-              <select
-                value={plannerCategory}
-                onChange={(e) => setPlannerCategory(e.target.value as DestinationCategory)}
-                className="w-full bg-transparent text-sm font-bold text-stone-900 outline-none"
-              >
-                <option value="Pilgrimage">Pilgrimage</option>
-                <option value="Treks">Treks</option>
-                <option value="Adventure">Adventure</option>
-                <option value="Himachal">Himachal</option>
-                <option value="Ladakh">Ladakh</option>
-                <option value="Uttarakhand">Uttarakhand</option>
-              </select>
-            </label>
-
-            <label className="group rounded-3xl border border-stone-200 bg-[#fffaf1] p-4 transition focus-within:border-[#0f766e]">
-              <span className="mb-2 flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-500">
-                <Heart className="h-3.5 w-3.5 text-[#f97350]" />
-                Travel style
-              </span>
-              <select
-                value={plannerStyle}
-                onChange={(e) => setPlannerStyle(e.target.value)}
-                className="w-full bg-transparent text-sm font-bold text-stone-900 outline-none"
-              >
-                <option value="Bespoke Luxury">Bespoke Luxury</option>
-                <option value="Family Comfort">Family Comfort</option>
-                <option value="Sacred Slow Travel">Sacred Slow Travel</option>
-                <option value="Adventure Led">Adventure Led</option>
-              </select>
-            </label>
-
-            <label className="group rounded-3xl border border-stone-200 bg-[#fffaf1] p-4 transition focus-within:border-[#0f766e]">
-              <span className="mb-2 flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-500">
-                <Clock className="h-3.5 w-3.5 text-[#0f766e]" />
-                Duration
-              </span>
-              <select
-                value={plannerDuration}
-                onChange={(e) => setPlannerDuration(e.target.value)}
-                className="w-full bg-transparent text-sm font-bold text-stone-900 outline-none"
-              >
-                <option value="Short (1-4 Days)">Short (1-4 Days)</option>
-                <option value="Medium (5-7 Days)">Medium (5-7 Days)</option>
-                <option value="Long (8+ Days)">Long (8+ Days)</option>
-              </select>
-            </label>
-
-            <button
-              onClick={() => onSelectCategory(plannerCategory)}
-              className="flex cursor-pointer items-center justify-center gap-2 rounded-3xl bg-[#0f766e] px-6 py-5 text-xs font-extrabold uppercase tracking-[0.16em] text-white shadow-[0_18px_36px_rgba(15,118,110,0.22)] transition hover:-translate-y-1 hover:bg-[#0d5f59]"
-            >
-              <Search className="h-4 w-4" />
-              <span>Find Trips</span>
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* 3. Featured Packages */}
-      <section className="px-4 py-24 sm:px-6 lg:px-8" id="featured-packages">
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-12 flex flex-col justify-between gap-5 md:flex-row md:items-end">
-            <div className="max-w-2xl space-y-4">
-              <span className="text-[11px] font-extrabold uppercase tracking-[0.24em] text-[#0f766e]">Premium Selection</span>
-              <h3 className="text-4xl font-semibold tracking-tight text-stone-950 sm:text-5xl">
-                Featured holiday packages
-              </h3>
-              <p className="text-sm leading-7 text-stone-600">
-                Handpicked journeys from existing live package data, designed for travelers who want comfort, safety, and a strong sense of place.
-              </p>
-            </div>
-            <button
-              onClick={() => onNavigate('packages')}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#0f766e]/20 bg-white px-5 py-3 text-xs font-extrabold uppercase tracking-[0.15em] text-[#0f766e] shadow-sm transition hover:-translate-y-1 hover:bg-[#0f766e] hover:text-white"
-            >
-              <span>View All Tours</span>
-              <ArrowRight className="h-4 w-4" />
-            </button>
-          </div>
-
-          {loading ? (
-            <div className="flex justify-center py-20">
-              <div className="h-10 w-10 rounded-full border-2 border-[#0f766e] border-t-transparent animate-spin" />
-            </div>
-          ) : featuredPackages.length === 0 ? (
-            <div className="rounded-[2rem] border border-dashed border-stone-300 bg-white/80 p-12 text-center shadow-sm">
-              <p className="text-sm text-stone-500">No active travel packages have been marked as featured yet.</p>
-              <button
-                onClick={() => onNavigate('packages')}
-                className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-full bg-[#0f766e] px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white"
-              >
-                Browse all packages
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-7 md:grid-cols-2 xl:grid-cols-3">
-              {featuredPackages.slice(0, 3).map((pkg) => (
-                <article
-                  key={pkg.id}
-                  className="group overflow-hidden rounded-[2rem] border border-stone-200 bg-white shadow-[0_18px_50px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_28px_70px_rgba(18,38,32,0.16)]"
-                >
-                  <div className="relative h-72 overflow-hidden bg-stone-100">
-                    <img
-                      src={pkg.imageUrl}
-                      alt={pkg.title}
-                      className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="absolute inset-0 bg-linear-to-t from-stone-950/72 via-transparent to-transparent" />
-                    <div className="absolute left-5 top-5 rounded-full bg-white/92 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider text-[#0f766e] shadow-sm">
-                      {pkg.category}
-                    </div>
-                    {isAdminLoggedIn && onDeletePackage && (
+      <section className="tour-package pd-main bg-white py-24" id="featured-packages">
+        <div className="tf-container w-1456 mx-auto max-w-[1456px] px-4 sm:px-6 lg:px-8">
+          <div className="row">
+            <div className="col-lg-12">
+              <div className="center m0-auto w-text-heading mx-auto mb-10 max-w-3xl text-center">
+                <span className="sub-title-heading text-main mb-15 fadeInUp wow font-serif text-[32px] italic text-[#4DA528]">Explore the world</span>
+                <h2 className="title-heading mb-40 fadeInUp wow mt-4 text-[42px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">
+                  Amazing Featured Tour <span className="text-gray font-yes font-serif italic font-medium text-stone-400">Package</span> the world
+                </h2>
+              </div>
+              <div className="tab-tour-list">
+                <ul className="nav justify-content-center tab-list mb-37 mb-10 flex flex-wrap justify-center gap-3" id="myTab" role="tablist">
+                  {(['Pilgrimage', 'Treks', 'Adventure', 'Himachal', 'Ladakh'] as DestinationCategory[]).map((category) => (
+                    <li key={category} className="nav-item" role="presentation">
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeletePackage(pkg.id);
-                        }}
-                        className="absolute right-5 top-5 z-30 cursor-pointer rounded-full bg-red-600 p-2 text-white shadow-md transition hover:scale-105 hover:bg-red-700"
-                        title="Delete Package"
+                        className={`nav-link cursor-pointer rounded-full border px-6 py-3 text-[14px] font-bold transition ${
+                          plannerCategory === category
+                            ? 'active border-[#4DA528] bg-[#4DA528] text-white'
+                            : 'border-stone-200 bg-white text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'
+                        }`}
+                        type="button"
+                        role="tab"
+                        aria-selected={plannerCategory === category}
+                        onClick={() => onSelectCategory(category)}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        {category}
                       </button>
-                    )}
-                    {pkg.price && (
-                      <div className="absolute bottom-5 right-5 rounded-2xl bg-white px-4 py-2 text-xs font-semibold text-stone-600 shadow-lg">
-                        From <span className="text-base font-extrabold text-[#0f766e]">{formatPrice(pkg.price)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="tab-content" id="myTabContent">
+                  <div className="tab-pane fade show active" role="tabpanel" tabIndex={0}>
+                    {loading ? (
+                      <div className="flex justify-center py-20">
+                        <div className="h-10 w-10 animate-spin rounded-full border-2 border-[#4DA528] border-t-transparent" />
+                      </div>
+                    ) : featuredPackages.length === 0 ? (
+                      <div className="mx-auto max-w-2xl border border-dashed border-stone-300 bg-white p-12 text-center">
+                        <AlertCircle className="mx-auto mb-4 h-8 w-8 text-stone-300" />
+                        <p className="text-sm text-stone-500">No active travel packages have been marked as featured yet.</p>
+                      </div>
+                    ) : (
+                      <div className="row grid grid-cols-1 gap-7 sm:grid-cols-2 xl:grid-cols-4">
+                        {featuredPackages.slice(0, 4).map((pkg, idx) => (
+                          <div key={pkg.id} className="col-sm-6 col-lg-3">
+                            <article className="tour-listing wow fadeInUp animated group overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-2" data-wow-delay={`${(idx + 1) / 10}s`}>
+                              <button type="button" onClick={() => onNavigate('package-detail', pkg.id)} className="tour-listing-image relative block h-[270px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
+                                <div className="badge-top flex-two absolute left-4 right-4 top-4 z-10 flex items-center justify-between">
+                                  <span className="feature rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">Featured</span>
+                                  <div className="badge-media flex-five flex gap-2">
+                                    <span className="media rounded bg-white/90 px-3 py-1 text-[12px] font-bold text-stone-800">{idx + 2}</span>
+                                    <span className="media rounded bg-white/90 px-3 py-1 text-[12px] font-bold text-stone-800">{liveReviews.length || 1}</span>
+                                  </div>
+                                </div>
+                                {pkg.imageUrl ? (
+                                  <img src={pkg.imageUrl} alt={pkg.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center bg-stone-100 text-stone-400">No image</div>
+                                )}
+                                {isAdminLoggedIn && onDeletePackage && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onDeletePackage(pkg.id);
+                                    }}
+                                    className="absolute bottom-4 right-4 z-20 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-red-600 text-white shadow-md transition hover:bg-red-700"
+                                    title="Delete Package"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                )}
+                              </button>
+                              <div className="tour-listing-content p-6">
+                                <span className="tag-listing inline-block rounded bg-[#FF970D]/12 px-3 py-1 text-[12px] font-bold text-[#D57400]">{pkg.category}</span>
+                                <span className="map mt-4 flex items-center gap-2 text-[14px] font-medium text-stone-500">
+                                  <Map className="h-4 w-4 text-[#4DA528]" />
+                                  {pkg.destination}
+                                </span>
+                                <h3 className="title-tour-list mt-3">
+                                  <button onClick={() => onNavigate('package-detail', pkg.id)} className="line-clamp-2 cursor-pointer text-left text-[22px] font-bold leading-tight text-stone-950 transition hover:text-[#4DA528]">
+                                    {pkg.title}
+                                  </button>
+                                </h3>
+                                <div className="review mt-4 flex items-center gap-1 text-[#FF970D]">
+                                  {[...Array(5)].map((_, i) => <Star key={i} className="h-4 w-4 fill-current" />)}
+                                  <span className="ml-2 text-[13px] font-medium text-stone-500">({liveReviews.length || 1} Review)</span>
+                                </div>
+                                <div className="icon-box flex-three mt-5 flex items-center justify-between border-y border-stone-100 py-4 text-[14px] text-stone-600">
+                                  <div className="icons flex-three flex items-center gap-2">
+                                    <Clock className="h-4 w-4 text-[#4DA528]" />
+                                    <span>{pkg.duration}</span>
+                                  </div>
+                                  <div className="icons flex-three flex items-center gap-2">
+                                    <Users className="h-4 w-4 text-[#4DA528]" />
+                                    <span>12 Person</span>
+                                  </div>
+                                </div>
+                                <div className="flex-two mt-5 flex items-center justify-between">
+                                  <div className="price-box flex-three">
+                                    <p className="text-[14px] text-stone-500">From <span className="price-sale text-[20px] font-extrabold text-[#4DA528]">{formatPrice(pkg.price)}</span></p>
+                                  </div>
+                                  <button onClick={() => onNavigate('package-detail', pkg.id)} className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-[#4DA528] hover:text-white">
+                                    <Heart className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            </article>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
+                </div>
+                <div className="mt-12 text-center">
+                  <button onClick={() => onNavigate('packages')} className="btn-main inline-flex cursor-pointer items-center justify-center gap-3 rounded-[5px] bg-[#4DA528] px-8 py-[18px] text-[15px] font-bold uppercase tracking-[0.05em] text-white transition hover:bg-[#FF970D]">
+                    <span className="btn-main-text">View all tour</span>
+                    <span className="iconer"><ArrowRight className="h-4 w-4" /></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-                  <div className="space-y-5 p-6">
-                    <div className="flex flex-wrap items-center gap-3 text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-500">
-                      <span className="inline-flex items-center gap-1.5">
-                        <Calendar className="h-3.5 w-3.5 text-[#f97350]" />
-                        {pkg.duration}
-                      </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <Map className="h-3.5 w-3.5 text-[#0f766e]" />
-                        {pkg.destination}
-                      </span>
-                    </div>
-                    <div className="space-y-3">
-                      <h4 className="line-clamp-2 text-2xl font-semibold leading-tight text-stone-950 transition group-hover:text-[#0f766e]">
-                        {pkg.title}
-                      </h4>
-                      <p className="line-clamp-3 text-sm leading-7 text-stone-600">
-                        {pkg.shortDescription}
-                      </p>
-                    </div>
+      <section className="relative tf-widget-activities pd-main overflow-hidden bg-[#F4F6F8] py-24">
+        <div className="mask-top absolute left-0 top-0 h-24 w-24 rounded-br-full bg-[#4DA528]/10" />
+        <div className="mask-bottom absolute bottom-0 right-0 h-28 w-28 rounded-tl-full bg-[#FF970D]/10" />
+        <div className="tf-container relative z-index3 mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
+          <div className="row">
+            <div className="col-lg-12 mb-60 mb-12">
+              <div className="clip-text text-center text-[54px] font-extrabold uppercase leading-none text-stone-200 sm:text-[90px]">Activities</div>
+            </div>
+            <div className="col-lg-12">
+              <ul className="nav nav-tabs-activities justify-content-center flex flex-wrap justify-center gap-4" id="myTablist" role="tablist">
+                {popularDestinations.concat(popularDestinations.slice(0, 1)).map((dest, idx) => (
+                  <li key={`${dest.name}-activity-${idx}`} className="nav-item" role="presentation">
                     <button
-                      onClick={() => onNavigate('package-detail', pkg.id)}
-                      className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-[#102b2a] px-5 py-3 text-xs font-extrabold uppercase tracking-[0.14em] text-white transition hover:-translate-y-1 hover:bg-[#0f766e]"
+                      type="button"
+                      role="tab"
+                      aria-selected={idx === 0}
+                      onClick={() => onSelectCategory(dest.category)}
+                      className={`nav-link flex min-h-[92px] cursor-pointer flex-col items-center justify-center gap-3 rounded-[10px] border px-5 text-center text-[14px] font-bold transition sm:min-w-[180px] ${
+                        idx === 0 ? 'active border-[#4DA528] bg-[#4DA528] text-white' : 'border-stone-200 bg-white text-stone-800 hover:border-[#4DA528] hover:text-[#4DA528]'
+                      }`}
                     >
-                      <span>View Itinerary</span>
-                      <ArrowRight className="h-4 w-4" />
+                      <span className="icon flex-five flex h-10 w-10 items-center justify-center rounded-full bg-current/10">
+                        <Compass className="h-5 w-5" />
+                      </span>
+                      <span>{dest.type}</span>
                     </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="tab-content mt-44 mt-12" id="myTabContents">
+                <div className="tab-pane fade show active" role="tabpanel" tabIndex={0}>
+                  <div className="tabs-activities-content flex flex-col overflow-hidden rounded-[18px] bg-[#081E2A] lg:flex-row">
+                    <div className="activities-image lg:w-1/2">
+                      <img src={popularDestinations[1].image} alt={popularDestinations[1].name} className="h-[360px] w-full object-cover lg:h-full" referrerPolicy="no-referrer" />
+                    </div>
+                    <div className="activities-content relative flex-1 p-8 sm:p-12">
+                      <span className="sub-title text-white/70">Welcome to Pravaah</span>
+                      <h3 className="title-activitis mb-60 mt-4 max-w-xl text-[34px] font-extrabold leading-tight text-white sm:text-[48px]">Real adventure & enjoy your dream tours</h3>
+                      <div className="flex-three mb-30 flex flex-col gap-4 text-white sm:flex-row">
+                        <div className="icon-list-wrap flex-three flex items-center gap-3">
+                          <Check className="h-5 w-5 text-[#4DA528]" />
+                          <span className="icon-lists">Real adventure Feel</span>
+                        </div>
+                        <div className="icon-list-wrap flex-three flex items-center gap-3">
+                          <ShieldCheck className="h-5 w-5 text-[#4DA528]" />
+                          <span className="icon-lists">Comfort & Secure trip</span>
+                        </div>
+                      </div>
+                      <div className="btn-wrap-activitis flex-three mt-10 flex items-center gap-4">
+                        <button type="button" onClick={handleLaunchPlanner} className="icon-activitis flex-five flex h-12 w-12 items-center justify-center rounded-full bg-[#4DA528] text-white">
+                          <ArrowRight className="h-5 w-5" />
+                        </button>
+                        <button type="button" onClick={() => onNavigate('packages')} className="get-start text-white">Get Started Today</button>
+                      </div>
+                      <div className="mask-tab absolute bottom-8 right-8 h-20 w-20 rounded-full border border-white/10" />
+                    </div>
                   </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* 4. Popular Destinations */}
-      <section className="bg-white px-4 py-24 sm:px-6 lg:px-8" id="popular-destinations">
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-12 grid gap-6 lg:grid-cols-[0.8fr_1.2fr] lg:items-end">
-            <div className="space-y-4">
-              <span className="text-[11px] font-extrabold uppercase tracking-[0.24em] text-[#0f766e]">Popular Destinations</span>
-              <h3 className="text-4xl font-semibold tracking-tight text-stone-950 sm:text-5xl">
-                Signature travel moods
-              </h3>
-            </div>
-            <p className="max-w-2xl text-sm leading-7 text-stone-600 lg:ml-auto">
-              Explore live package categories through the most requested Himalayan sectors, from sacred Uttarakhand routes to high-pass adventures.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {popularDestinations.map((dest, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => onSelectCategory(dest.category)}
-                className="group relative min-h-[410px] overflow-hidden rounded-[2rem] border border-stone-200 text-left shadow-[0_18px_50px_rgba(18,38,32,0.1)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_28px_70px_rgba(18,38,32,0.18)]"
-              >
-                <img
-                  src={dest.image}
-                  alt={dest.name}
-                  className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 bg-linear-to-t from-stone-950 via-stone-950/38 to-transparent" />
-                <div className="absolute inset-x-0 bottom-0 space-y-3 p-6 text-white">
-                  <span className="inline-flex rounded-full bg-[#f59e0b] px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-stone-950">
-                    {dest.type}
-                  </span>
-                  <h4 className="text-2xl font-semibold leading-tight">{dest.name}</h4>
-                  <span className="inline-flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#5eead4]">
-                    Explore packages
-                    <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
-                  </span>
                 </div>
-              </button>
-            ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* 5. Why Choose Pravaah Travels */}
-      <section className="px-4 py-24 sm:px-6 lg:px-8" id="brand-ethos">
-        <div className="mx-auto max-w-7xl">
-          <div className="mx-auto mb-12 max-w-3xl text-center">
-            <span className="text-[11px] font-extrabold uppercase tracking-[0.24em] text-[#0f766e]">Why Choose Pravaah Travels</span>
-            <h3 className="mt-4 text-4xl font-semibold tracking-tight text-stone-950 sm:text-5xl">
-              Designed with safety, soul, and flow
-            </h3>
-            <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-stone-600">
-              Every route is curated around pacing, comfort, terrain reality, and the little human details that make a journey feel effortless.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            {whyChooseUs.map((item, idx) => (
-              <div
-                key={idx}
-                className="group rounded-[2rem] border border-stone-200 bg-white p-8 shadow-[0_18px_50px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_28px_70px_rgba(18,38,32,0.16)]"
-              >
-                <div className="mb-7 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#0f766e]/10 text-[#0f766e] transition group-hover:scale-105">
-                  {item.icon}
+      <section className="offer-package pd-main bg-1 relative overflow-hidden bg-white py-24">
+        <img src={popularDestinations[3].image} alt={popularDestinations[3].name} className="feature-ofer absolute inset-y-0 right-0 hidden h-full w-[34%] object-cover opacity-20 lg:block" referrerPolicy="no-referrer" />
+        <div className="tf-container relative z-index3 mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
+          <div className="row align-center grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
+            <div className="col-lg-5">
+              <div className="content">
+                <div className="mb-50 mb-10">
+                  <span className="sub-title-heading text-main mb-15 fadeInUp wow font-serif text-[32px] italic text-[#4DA528]">Explore the world</span>
+                  <h2 className="title-heading mb-32 fadeInUp wow mt-4 text-[42px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">Amazing Featured Tour<span className="text-gray font-yes font-serif italic font-medium text-stone-400"> Package</span> the world</h2>
+                  <p className="des-heading fadeInUp wow text-[16px] leading-8 text-stone-600">Featured Pravaah journeys are pulled from the same live package collection and shown in the Vitour offer package layout.</p>
                 </div>
-                <h4 className="text-2xl font-semibold text-stone-950">{item.title}</h4>
-                <p className="mt-4 text-sm leading-7 text-stone-600">{item.description}</p>
+                <div className="inner-content flex-three flex items-center gap-5">
+                  <div className="offer fadeInUp wow flex h-24 w-24 items-center justify-center rounded-full bg-[#4DA528] text-center text-white">
+                    <span className="number text-[28px] font-extrabold leading-none">25 <span className="block text-[13px]">% off</span></span>
+                  </div>
+                  <p className="font-italic font-serif text-[26px] italic text-stone-950">Discover Great <span className="text-main text-[#4DA528]">Discount</span> Deals Around the World</p>
+                </div>
+                <div className="count-dow-wrap flex-three mb-50 mt-10 flex items-center gap-5">
+                  <div className="title-counters fadeInUp wow">
+                    <span className="font-bold text-stone-950">Hurry Up!</span>
+                    <p className="text-stone-500">Offer Ends in:</p>
+                  </div>
+                  <div className="count-down relative fadeInUp wow grid grid-cols-4 gap-2 text-center">
+                    {['days', 'hours', 'minutes', 'seconds'].map((label) => (
+                      <div key={label} className="rounded bg-[#F4F6F8] px-3 py-2">
+                        <span className="block text-[18px] font-extrabold text-stone-950">00</span>
+                        <span className="text-[10px] uppercase text-stone-500">{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="btn-wap fadeInUp wow">
+                  <button onClick={() => onNavigate('packages')} className="btn-main inline-flex cursor-pointer items-center justify-center gap-3 rounded-[5px] bg-[#4DA528] px-8 py-[18px] text-[15px] font-bold uppercase tracking-[0.05em] text-white transition hover:bg-[#FF970D]">
+                    <span className="btn-main-text">Explore More</span>
+                    <span className="iconer"><ArrowRight className="h-4 w-4" /></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="col-lg-7">
+              <div className="on-week-swipper-wrap relative">
+                <div className="swiper offer-package-swipper overflow-hidden relative">
+                  <div className="swiper-wrapper grid gap-7 md:grid-cols-2">
+                    {featuredPackages.slice(0, 2).map((pkg) => (
+                      <div key={`offer-${pkg.id}`} className="swiper-slide">
+                        <article className="tour-listing overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)]">
+                          <button type="button" onClick={() => onNavigate('package-detail', pkg.id)} className="tour-listing-image relative block h-[260px] w-full cursor-pointer overflow-hidden text-left">
+                            {pkg.imageUrl ? (
+                              <img src={pkg.imageUrl} alt={pkg.title} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-stone-100 text-stone-400">No image</div>
+                            )}
+                            <span className="feature absolute left-4 top-4 rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">Featured</span>
+                          </button>
+                          <div className="tour-listing-content p-6">
+                            <span className="tag-listing inline-block rounded bg-[#FF970D]/12 px-3 py-1 text-[12px] font-bold text-[#D57400]">{pkg.category}</span>
+                            <h3 className="title-tour-list mt-4 text-[22px] font-bold leading-tight text-stone-950">{pkg.title}</h3>
+                            <div className="flex-two mt-5 flex items-center justify-between">
+                              <p className="text-[14px] text-stone-500">From <span className="price-sale text-[20px] font-extrabold text-[#4DA528]">{formatPrice(pkg.price)}</span></p>
+                              <button onClick={() => onNavigate('package-detail', pkg.id)} className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-[#4DA528] hover:text-white">
+                                <Heart className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </article>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="widget-counter relative bg-[#4DA528] py-20 text-white" id="home-statistics">
+        <div className="counter-top absolute left-0 top-0 h-20 w-20 rounded-br-full bg-white/10" />
+        <div className="counter-bottom absolute bottom-0 right-0 h-20 w-20 rounded-tl-full bg-white/10" />
+        <div className="tf-container relative mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
+          <div className="row mb-50 mb-12 grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div className="col-lg-9 cta-wrap flex-three flex flex-col gap-5 sm:flex-row sm:items-center">
+              <div className="image fadeInLeft wow h-20 w-20 overflow-hidden rounded-full border-4 border-white/20">
+                <img src={popularDestinations[2].image} alt={popularDestinations[2].name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+              </div>
+              <div className="content">
+                <h2 className="title-call mb-18 fadeInUp wow text-[34px] font-extrabold leading-tight text-white">Ready to adventure and enjoy natural</h2>
+                <p className="des fadeInUp wow text-white/80">Explore Uttarakhand with guides who respect the mountains.</p>
+              </div>
+            </div>
+            <div className="col-lg-3">
+              <div className="callt-to-action-button text-end fadeInRight wow">
+                <button onClick={() => onNavigate('packages')} className="get-call inline-flex cursor-pointer rounded-[5px] bg-white px-7 py-4 text-[14px] font-bold uppercase text-[#4DA528] transition hover:bg-[#FF970D] hover:text-white">Let,s get started</button>
+              </div>
+            </div>
+          </div>
+          <div className="row mb--20em relative z-index3 grid grid-cols-2 gap-8 lg:grid-cols-4">
+            {[
+              [featuredPackages.length, 'Happy Traveller'],
+              [`${averageRating}`, 'Total Postive Reviews'],
+              [popularDestinations.length, 'Tour Completed'],
+              [liveReviews.length || 0, 'Awwards Winning'],
+            ].map(([value, label]) => (
+              <div key={label} className="col-6 col-lg-3 wow fadeInUp animated">
+                <div className="tf-counter center tf-countto text-center">
+                  <div className="icon mb-32 mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-white/15">
+                    <PlaneTakeoff className="h-8 w-8" />
+                  </div>
+                  <div className="number-counter block text-[44px] font-extrabold leading-none">{value}</div>
+                  <span className="line mx-auto my-4 block h-px w-16 bg-white/45" />
+                  <p className="title-counter text-[16px] font-bold leading-6">{label}</p>
+                </div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* 6. Statistics */}
-      <section className="bg-[#102b2a] px-4 py-20 text-white sm:px-6 lg:px-8" id="home-statistics">
-        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-4 md:grid-cols-4">
-          <div className="rounded-[2rem] border border-white/10 bg-white/8 p-6 backdrop-blur-md">
-            <span className="block text-4xl font-extrabold">{featuredPackages.length}</span>
-            <span className="mt-2 block text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-300">Featured Packages</span>
+      <section className="widget-destination py-24" id="popular-destinations">
+        <div className="tf-container mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
+          <div className="row">
+            <div className="col-lg-12">
+              <div className="center m0-auto w-text-heading mb-40 mx-auto mb-10 max-w-3xl text-center">
+                <span className="sub-title-heading text-main mb-15 fadeInUp wow font-serif text-[32px] italic text-[#4DA528]">Explore the world</span>
+                <h2 className="title-heading fadeInUp wow mt-4 text-[42px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">We provide top tourist destinations</h2>
+              </div>
+            </div>
           </div>
-          <div className="rounded-[2rem] border border-white/10 bg-white/8 p-6 backdrop-blur-md">
-            <span className="block text-4xl font-extrabold">{popularDestinations.length}</span>
-            <span className="mt-2 block text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-300">Destination Styles</span>
-          </div>
-          <div className="rounded-[2rem] border border-white/10 bg-white/8 p-6 backdrop-blur-md">
-            <span className="block text-4xl font-extrabold">{liveReviews.length}</span>
-            <span className="mt-2 block text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-300">Visible Reviews</span>
-          </div>
-          <div className="rounded-[2rem] border border-white/10 bg-white/8 p-6 backdrop-blur-md">
-            <span className="block text-4xl font-extrabold">{averageRating}</span>
-            <span className="mt-2 block text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-300">Average Rating</span>
+          <div className="grid-three-destination grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {popularDestinations.concat(popularDestinations.slice(0, 2)).map((dest, idx) => (
+              <div key={`${dest.name}-${idx}`} className="tf-widget-destination wow fadeInUp animated">
+                <button type="button" onClick={() => onSelectCategory(dest.category)} className="destination-imgae group relative block min-h-[360px] w-full cursor-pointer overflow-hidden rounded-[12px] text-left shadow-[0_14px_38px_rgba(0,0,0,0.12)]">
+                  <span className="tour absolute left-5 top-5 z-10 rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">{idx + 3} tours</span>
+                  <img src={dest.image} alt={dest.name} className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" />
+                  <span className="absolute inset-0 bg-linear-to-t from-black/74 via-black/18 to-transparent" />
+                  <span className="destination-content absolute inset-x-0 bottom-0 p-6 text-white">
+                    <span className="nation text-[15px] font-medium uppercase text-white/76">{dest.name}</span>
+                    <span className="btn-destination flex-two mt-3 flex items-center justify-between">
+                      <span className="title text-[22px] font-bold">View all tours</span>
+                      <span className="btn-view flex-five flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#4DA528] transition group-hover:bg-[#4DA528] group-hover:text-white">
+                        <ArrowRight className="h-4 w-4" />
+                      </span>
+                    </span>
+                  </span>
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* 7. Testimonials */}
-      <section className="bg-white px-4 py-24 sm:px-6 lg:px-8" id="testimonials">
-        <div className="mx-auto max-w-7xl">
-          <div className="mx-auto mb-12 max-w-3xl text-center">
-            <span className="text-[11px] font-extrabold uppercase tracking-[0.24em] text-[#0f766e]">Traveler Reviews</span>
-            <h3 className="mt-4 text-4xl font-semibold tracking-tight text-stone-950 sm:text-5xl">
-              Verified traveler stories
-            </h3>
-            <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-stone-600">
-              Real-time reviews and experiences published directly by travelers from their Customer Dashboard.
-            </p>
+      <section className="widget-adventure pb-24">
+        <div className="tf-container mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
+          <div className="row">
+            <div className="col-lg-12">
+              <div className="mb-40">
+                <span className="sub-title-heading text-main mb-15 fadeInUp wow font-serif text-[32px] italic text-[#4DA528]">Explore the world</span>
+                <h2 className="title-heading fadeInUp wow mt-4 text-[42px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">Adventures for everyone</h2>
+              </div>
+            </div>
           </div>
-
-          {loadingReviews ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-16 text-center" id="home-reviews-loader">
-              <div className="h-10 w-10 rounded-full border-2 border-[#0f766e] border-t-transparent animate-spin" />
-              <p className="text-sm text-stone-500">Loading traveler journals...</p>
-            </div>
-          ) : liveReviews.length === 0 ? (
-            <div className="mx-auto max-w-xl rounded-[2rem] border border-dashed border-stone-300 bg-[#fffaf1] p-10 text-center" id="home-reviews-empty">
-              <MessageSquare className="mx-auto h-10 w-10 text-stone-300" />
-              <p className="mt-4 text-sm text-stone-600">No traveler reviews found. Be the first to share your experience.</p>
-              <button
-                type="button"
-                onClick={() => onNavigate('portal')}
-                className="mt-6 rounded-full bg-[#0f766e] px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white"
-              >
-                Write a Review
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2" id="home-reviews-grid">
-              {liveReviews.map((review) => (
-                <article
-                  key={review.id}
-                  className="relative overflow-hidden rounded-[2rem] border border-stone-200 bg-[#fffaf1] p-7 shadow-[0_18px_50px_rgba(18,38,32,0.08)]"
-                >
-                  <Quote className="absolute right-7 top-7 h-10 w-10 text-[#0f766e]/12" />
-                  <div className="mb-5 flex gap-1 text-[#f59e0b]">
-                    {[...Array(5)].map((_, i) => (
-                      <Star
-                        key={i}
-                        className={`h-4 w-4 ${i < review.rating ? 'fill-[#f59e0b] text-[#f59e0b]' : 'text-stone-200'}`}
-                      />
+          <div className="row">
+            <div className="col-lg-12">
+              <div className="adventure-content">
+                <nav className="mb-40 adventure-scroll overflow-x-auto">
+                  <div className="nav nav-justified nav-tabs-adventure flex min-w-max gap-3" id="nav-tab" role="tablist">
+                    {popularDestinations.map((dest, idx) => (
+                      <button
+                        key={`${dest.name}-adventure-tab`}
+                        type="button"
+                        role="tab"
+                        aria-selected={idx === 0}
+                        onClick={() => onSelectCategory(dest.category)}
+                        className={`nav-link flex-three flex cursor-pointer items-center gap-3 rounded-full border px-6 py-3 text-[14px] font-bold ${
+                          idx === 0 ? 'active border-[#4DA528] bg-[#4DA528] text-white' : 'border-stone-200 bg-white text-stone-700'
+                        }`}
+                      >
+                        <Compass className="h-4 w-4" />
+                        <span>{dest.type}</span>
+                      </button>
                     ))}
                   </div>
-
-                  <p className="relative z-10 text-sm leading-7 text-stone-700">
-                    "{review.comment}"
-                  </p>
-
-                  {review.reply && (
-                    <div className="mt-5 rounded-2xl border-l-4 border-[#0f766e] bg-white p-4 text-xs leading-6 text-stone-600">
-                      <span className="mb-1 block text-[9px] font-extrabold uppercase tracking-wider text-[#0f766e]">Pravaah Travels</span>
-                      "{review.reply}"
+                </nav>
+                <div className="tab-content" id="nav-tabContent">
+                  <div className="tab-pane fade show active" role="tabpanel" tabIndex={0}>
+                    <div className="row grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                      {popularDestinations.map((dest) => (
+                        <div key={`${dest.name}-adventure`} className="col-sm-6 col-lg-3">
+                          <button type="button" onClick={() => onSelectCategory(dest.category)} className="group adventure-image relative block min-h-[300px] w-full cursor-pointer overflow-hidden rounded-[12px] text-left">
+                            <img src={dest.image} alt={dest.name} className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" />
+                            <span className="absolute inset-0 bg-linear-to-t from-black/70 to-transparent" />
+                            <span className="tour-ad absolute left-5 top-5 rounded bg-white px-3 py-1 text-[12px] font-bold text-[#4DA528]">(3 Tour)</span>
+                            <span className="absolute bottom-5 left-5 right-5">
+                              <span className="block text-[22px] font-bold text-white">{dest.name}</span>
+                              <span className="mt-2 block text-[14px] text-white/75">{dest.type}</span>
+                            </span>
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  )}
-
-                  <div className="mt-7 flex items-center justify-between border-t border-stone-200 pt-5">
-                    <div>
-                      <h5 className="flex items-center gap-2 text-sm font-extrabold text-stone-950">
-                        <span>{review.name}</span>
-                        {review.verified && (
-                          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[8px] font-bold text-white" title="Verified Customer">✓</span>
-                        )}
-                      </h5>
-                      <span className="mt-1 block text-[10px] font-extrabold uppercase tracking-widest text-[#0f766e]">{review.destination}</span>
-                    </div>
-
-                    {review.imageUrl && (
-                      <img
-                        src={review.imageUrl}
-                        alt="Trip photograph"
-                        className="h-14 w-14 rounded-2xl border border-stone-200 object-cover shadow-sm"
-                        referrerPolicy="no-referrer"
-                      />
-                    )}
                   </div>
-                </article>
-              ))}
+                </div>
+              </div>
             </div>
-          )}
-
-          <div className="mt-12 text-center">
-            <button
-              type="button"
-              onClick={() => onNavigate('reviews')}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#0f766e]/25 bg-white px-6 py-3 text-xs font-extrabold uppercase tracking-[0.15em] text-[#0f766e] shadow-sm transition hover:-translate-y-1 hover:bg-[#0f766e] hover:text-white"
-            >
-              <span>View All Traveler Logs</span>
-              <ArrowRight className="h-4 w-4" />
-            </button>
           </div>
         </div>
       </section>
 
-      {/* 8. CTA Banner */}
-      <section className="relative overflow-hidden px-4 py-24 text-white sm:px-6 lg:px-8" id="home-cta">
-        <img
-          src="https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=1800&q=80"
-          alt="Mountain pass"
-          className="absolute inset-0 h-full w-full object-cover"
-          referrerPolicy="no-referrer"
-        />
-        <div className="absolute inset-0 bg-[#102b2a]/86" />
-        <div className="relative mx-auto max-w-4xl rounded-[2.25rem] border border-white/14 bg-white/10 p-8 text-center shadow-[0_30px_80px_rgba(0,0,0,0.28)] backdrop-blur-md sm:p-12">
-          <span className="text-[11px] font-extrabold uppercase tracking-[0.28em] text-[#fbbf24]">Tailor-made luxury</span>
-          <h3 className="mt-4 text-4xl font-semibold tracking-tight text-white sm:text-6xl">
-            Ready to co-design your custom escape?
-          </h3>
-          <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-stone-200">
-            Share your dates, group size, comfort preferences, or desired peaks. Our custom designers will shape the route around your rhythm.
-          </p>
-          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-            <button
-              onClick={() => onNavigate('contact')}
-              className="cursor-pointer rounded-full bg-[#f97350] px-8 py-4 text-xs font-extrabold uppercase tracking-[0.15em] text-white shadow-[0_18px_40px_rgba(249,115,80,0.28)] transition hover:-translate-y-1 hover:bg-[#ea5f3c]"
-            >
-              Get My Custom Itinerary
-            </button>
-            <button
-              onClick={handleLaunchPlanner}
-              className="cursor-pointer rounded-full border border-white/30 bg-white/10 px-8 py-4 text-xs font-extrabold uppercase tracking-[0.15em] text-white transition hover:-translate-y-1 hover:bg-white/18"
-            >
-              Curate with Pravaah AI
-            </button>
+      <section className="bg-[#F4F6F8] py-24" id="testimonials">
+        <div className="mx-auto grid max-w-[1320px] gap-12 px-4 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:px-8">
+          <div className="relative hidden min-h-[520px] md:block">
+            <img src="https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=700&q=80" alt="Traveler testimonial" className="absolute left-0 top-0 h-[350px] w-[72%] rounded-[20px] object-cover shadow-xl" referrerPolicy="no-referrer" />
+            <img src="https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=700&q=80" alt="Traveler testimonial" className="absolute bottom-0 right-0 h-[320px] w-[70%] rounded-[20px] object-cover shadow-xl" referrerPolicy="no-referrer" />
           </div>
+          <div>
+            <span className="font-serif text-[32px] italic text-[#4DA528]">Travelers say</span>
+            <h2 className="mt-4 text-[42px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">What our clients say about us</h2>
+            {loadingReviews ? (
+              <div className="mt-12 flex items-center gap-3">
+                <div className="h-8 w-8 rounded-full border-2 border-[#4DA528] border-t-transparent animate-spin" />
+                <span className="text-stone-500">Loading traveler journals...</span>
+              </div>
+            ) : liveReviews.length === 0 ? (
+              <div className="mt-12 bg-white p-8 shadow-[0_12px_35px_rgba(0,0,0,0.08)]">
+                <MessageSquare className="mb-4 h-8 w-8 text-stone-300" />
+                <p className="text-stone-600">No traveler reviews found. Be the first to share your experience.</p>
+              </div>
+            ) : (
+              <div className="mt-10 grid gap-6">
+                {liveReviews.slice(0, 3).map((review) => (
+                  <article key={review.id} className="relative bg-white p-8 shadow-[0_12px_35px_rgba(0,0,0,0.08)]">
+                    <Quote className="absolute right-8 top-8 h-12 w-12 text-[#4DA528]/15" />
+                    <div className="profile mb-4">
+                      <h3 className="text-[24px] font-bold text-stone-950">{review.name}</h3>
+                      <span className="text-[13px] font-bold uppercase tracking-widest text-[#4DA528]">{review.destination}</span>
+                    </div>
+                    <p className="max-w-2xl text-[16px] leading-8 text-stone-600">"{review.comment}"</p>
+                    <span className="my-6 block h-px w-full bg-stone-100" />
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex gap-1 text-[#FF970D]">
+                        {[...Array(5)].map((_, i) => (
+                          <Star key={i} className={`h-4 w-4 ${i < review.rating ? 'fill-current' : 'text-stone-200'}`} />
+                        ))}
+                      </div>
+                      {review.imageUrl && <img src={review.imageUrl} alt="Trip photograph" className="h-14 w-14 rounded-full object-cover" referrerPolicy="no-referrer" />}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="relative overflow-hidden bg-[#081E2A] py-24 text-white" id="home-banner-contact">
+        <img src="https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=1800&q=80" alt="Adventure route" className="absolute inset-0 h-full w-full object-cover opacity-30" referrerPolicy="no-referrer" />
+        <div className="relative mx-auto grid max-w-[1320px] gap-10 px-4 sm:px-6 lg:grid-cols-[1.2fr_0.8fr] lg:px-8">
+          <div>
+            <span className="font-serif text-[32px] italic text-[#4DA528]">Explore the world</span>
+            <h2 className="mt-4 max-w-3xl text-[42px] font-extrabold leading-tight text-white sm:text-[56px]">Ready to travel with real adventure & enjoy natural</h2>
+            <div className="mt-8 flex flex-col gap-5 sm:flex-row sm:items-center">
+              <button onClick={handleLaunchPlanner} className="flex h-16 w-16 items-center justify-center rounded-full bg-[#4DA528] text-white transition hover:bg-[#FF970D]">
+                <Sparkles className="h-7 w-7" />
+              </button>
+              <address className="not-italic text-[17px] leading-8 text-white/78">
+                Contact us at <a href="mailto:pravaahtravels@gmail.com" className="text-[#4DA528]">pravaahtravels@gmail.com</a>
+              </address>
+            </div>
+          </div>
+          <div className="hidden items-end justify-end lg:flex">
+            <img src="https://images.unsplash.com/photo-1593693397690-362cb9666fc2?auto=format&fit=crop&w=650&q=80" alt="Adventure" className="h-[360px] w-[360px] rounded-full object-cover ring-[18px] ring-white/10" referrerPolicy="no-referrer" />
+          </div>
+        </div>
+      </section>
+
+      <section className="relative z-10 -mb-24 px-4 sm:px-6 lg:px-8" id="home-cta">
+        <div className="mx-auto flex max-w-[1180px] flex-col items-center justify-between gap-6 rounded-[14px] bg-[#4DA528] p-8 text-white shadow-[0_20px_55px_rgba(0,0,0,0.16)] md:flex-row">
+          <div className="flex flex-col gap-5 md:flex-row md:items-center">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/16">
+              <PlaneTakeoff className="h-10 w-10" />
+            </div>
+            <div>
+              <h2 className="text-[28px] font-extrabold leading-tight sm:text-[34px]">Ready to adventure and enjoy natural</h2>
+              <p className="mt-2 text-[15px] text-white/82">Plan your custom Himalayan flow with Pravaah's travel curators.</p>
+            </div>
+          </div>
+          <button onClick={() => onNavigate('contact')} className="shrink-0 cursor-pointer rounded-[5px] bg-white px-8 py-4 text-[15px] font-bold text-[#4DA528] transition hover:bg-[#FF970D] hover:text-white">
+            Let,s get started
+          </button>
         </div>
       </section>
 

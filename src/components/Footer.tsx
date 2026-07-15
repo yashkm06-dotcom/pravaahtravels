@@ -1,4 +1,4 @@
-import { Compass, Mail, Phone, MapPin, Shield } from 'lucide-react';
+import { ArrowRight, Check, Compass, Mail, MapPin, Phone, Send, Shield } from 'lucide-react';
 
 interface FooterProps {
   onNavigate: (view: string, packageId?: string | null) => void;
@@ -6,175 +6,139 @@ interface FooterProps {
 
 export default function Footer({ onNavigate }: FooterProps) {
   const currentYear = new Date().getFullYear();
+  const footerGallery = [
+    'https://images.unsplash.com/photo-1626830503244-3d2ac0493ae0?auto=format&fit=crop&w=240&q=80',
+    'https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=240&q=80',
+    'https://images.unsplash.com/photo-1593693397690-362cb9666fc2?auto=format&fit=crop&w=240&q=80',
+    'https://images.unsplash.com/photo-1544085311-11a028465b03?auto=format&fit=crop&w=240&q=80',
+    'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=240&q=80',
+    'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=240&q=80',
+  ];
 
   return (
-    <footer className="relative overflow-hidden border-t border-[#24413b] bg-[#102b2a] pt-16 text-white" id="main-footer">
-      <div className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-[#f59e0b]/70 to-transparent" />
-      <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-[#0f766e]/18 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-0 left-0 h-56 w-56 rounded-full bg-[#f59e0b]/10 blur-3xl" />
+    <footer className="relative bg-[#081E2A] pt-28 text-white" id="main-footer">
+      <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 gap-12 border-b border-white/10 pb-16 lg:grid-cols-[1.1fr_0.7fr_0.9fr_1fr]">
+          <div className="space-y-7">
+            <button
+              type="button"
+              onClick={() => onNavigate('home')}
+              className="group flex cursor-pointer items-center gap-3"
+              id="footer-logo"
+            >
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#4DA528] text-white transition group-hover:bg-[#FF970D]">
+                <Compass className="h-7 w-7" />
+              </span>
+              <span className="text-left">
+                <span className="block text-2xl font-extrabold leading-none">Pravaah</span>
+                <span className="mt-1 block text-[11px] font-bold uppercase tracking-[0.24em] text-[#4DA528]">Travels</span>
+              </span>
+            </button>
+            <p className="max-w-sm text-[15px] font-light leading-8 text-white/70">
+              Premium Himalayan journeys, slow travel, sacred valleys, adventure routes, and tailor-made comfort handled by local curators.
+            </p>
+            <ul className="space-y-4 text-[15px] text-white/78">
+              <li className="flex items-center gap-3">
+                <Mail className="h-5 w-5 text-[#4DA528]" />
+                <a href="mailto:pravaahtravels@gmail.com" className="transition hover:text-[#FF970D]">pravaahtravels@gmail.com</a>
+              </li>
+              <li className="flex items-center gap-3">
+                <Phone className="h-5 w-5 text-[#4DA528]" />
+                <a href="tel:+919123136692" className="transition hover:text-[#FF970D]">+91 91231 36692</a>
+              </li>
+              <li className="flex items-start gap-3">
+                <MapPin className="mt-1 h-5 w-5 shrink-0 text-[#4DA528]" />
+                <span>402, Signature Towers, Sector 30, Gurugram, HR - 122001, India</span>
+              </li>
+            </ul>
+          </div>
 
-      <div className="relative mx-auto grid max-w-7xl grid-cols-1 gap-10 px-4 sm:px-6 md:grid-cols-4 lg:px-8">
-        
-        {/* Brand Column */}
-        <div className="space-y-5">
-          <div 
-            onClick={() => onNavigate('home')} 
-            className="group flex w-fit cursor-pointer items-center gap-3"
-            id="footer-logo"
-          >
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#0f766e] font-bold text-white shadow-[0_12px_30px_rgba(15,118,110,0.28)] ring-1 ring-white/10 transition-transform group-hover:-translate-y-0.5">
-              <Compass className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h2 className="text-xl font-extrabold tracking-tight text-white">
-                Pravaah <span className="text-[#7dd3fc]">Travels</span>
-              </h2>
-              <p className="text-[9px] font-extrabold uppercase tracking-[0.24em] text-[#f59e0b]">
-                Flow into journeys
-              </p>
+          <div>
+            <h5 className="mb-8 text-[20px] font-bold">Services Req</h5>
+            <ul className="space-y-4 text-[15px] text-white/70">
+              {[
+                ['About Us', 'about'],
+                ['Gallery', 'gallery'],
+                ['Packages', 'packages'],
+                ['Contact', 'contact'],
+                ['Customer Portal', 'portal'],
+              ].map(([label, view]) => (
+                <li key={view}>
+                  <button onClick={() => onNavigate(view)} className="group flex cursor-pointer items-center gap-2 transition hover:text-[#4DA528]">
+                    <ArrowRight className="h-3.5 w-3.5 opacity-0 transition group-hover:opacity-100" />
+                    <span>{label}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <h5 className="mb-8 text-[20px] font-bold">Gallery</h5>
+            <div className="grid grid-cols-3 gap-3">
+              {footerGallery.map((src, idx) => (
+                <button
+                  key={src}
+                  type="button"
+                  onClick={() => onNavigate('gallery')}
+                  className="group aspect-square cursor-pointer overflow-hidden rounded-md bg-white/10"
+                >
+                  <img
+                    src={src}
+                    alt={`Travel gallery ${idx + 1}`}
+                    className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
+                    referrerPolicy="no-referrer"
+                  />
+                </button>
+              ))}
             </div>
           </div>
-          <p className="max-w-xs text-sm font-light leading-7 text-stone-300">
-            Crafting hand-picked, premium holidays for families, friends, and solo travelers. Flow with us into journeys that rejuvenate the soul.
-          </p>
+
+          <div>
+            <h5 className="mb-8 text-[20px] font-bold">Newsletter</h5>
+            <form
+              onSubmit={(e) => e.preventDefault()}
+              className="space-y-5"
+            >
+              <div className="flex overflow-hidden rounded-md bg-white">
+                <input
+                  type="email"
+                  placeholder="Enter Email Address"
+                  className="min-w-0 flex-1 px-5 py-4 text-sm font-medium text-stone-900 outline-none"
+                />
+                <button type="submit" className="flex w-14 items-center justify-center bg-[#4DA528] text-white transition hover:bg-[#FF970D]">
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="flex items-center gap-3 text-[13px] text-white/70">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#4DA528] text-white">
+                  <Check className="h-3 w-3" />
+                </span>
+                <p>I agree to all your terms and policies</p>
+              </div>
+            </form>
+            <ul className="mt-8 flex gap-3">
+              {['f', 'x', 'in', 'ig'].map((item) => (
+                <li key={item}>
+                  <a href="#" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 text-[12px] font-bold uppercase text-white/70 transition hover:border-[#4DA528] hover:bg-[#4DA528] hover:text-white">
+                    {item}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
 
-        {/* Quick Links Column */}
-        <div>
-          <h3 className="mb-6 text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#f59e0b]">
-            Quick Navigation
-          </h3>
-          <ul className="space-y-3 text-sm font-light text-stone-300">
-            <li>
-              <button 
-                onClick={() => onNavigate('home')} 
-                className="cursor-pointer text-left transition hover:translate-x-1 hover:text-white"
-              >
-                Home
-              </button>
-            </li>
-            <li>
-              <button 
-                onClick={() => onNavigate('destinations')} 
-                className="cursor-pointer text-left transition hover:translate-x-1 hover:text-white"
-              >
-                Destinations
-              </button>
-            </li>
-            <li>
-              <button 
-                onClick={() => onNavigate('packages')} 
-                className="cursor-pointer text-left transition hover:translate-x-1 hover:text-white"
-              >
-                Curated Packages
-              </button>
-            </li>
-            <li>
-              <button 
-                onClick={() => onNavigate('gallery')} 
-                className="cursor-pointer text-left transition hover:translate-x-1 hover:text-white"
-              >
-                Media Gallery
-              </button>
-            </li>
-            <li>
-              <button 
-                onClick={() => onNavigate('about')} 
-                className="cursor-pointer text-left transition hover:translate-x-1 hover:text-white"
-              >
-                About Our Vision
-              </button>
-            </li>
-          </ul>
-        </div>
-
-        {/* Categories Column */}
-        <div>
-          <h3 className="mb-6 text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#f59e0b]">
-            Travel Styles
-          </h3>
-          <ul className="space-y-3 text-sm font-light text-stone-300">
-            <li>
-              <button 
-                onClick={() => onNavigate('packages')} 
-                className="cursor-pointer text-left transition hover:translate-x-1 hover:text-white"
-              >
-                Mountain Treks & Peaks
-              </button>
-            </li>
-            <li>
-              <button 
-                onClick={() => onNavigate('packages')} 
-                className="cursor-pointer text-left transition hover:translate-x-1 hover:text-white"
-              >
-                Coastal Sun & Sand Retreats
-              </button>
-            </li>
-            <li>
-              <button 
-                onClick={() => onNavigate('packages')} 
-                className="cursor-pointer text-left transition hover:translate-x-1 hover:text-white"
-              >
-                UNESCO Heritage Expeditions
-              </button>
-            </li>
-            <li>
-              <button 
-                onClick={() => onNavigate('packages')} 
-                className="cursor-pointer text-left transition hover:translate-x-1 hover:text-white"
-              >
-                Scenic Honeymoon Getaways
-              </button>
-            </li>
-            <li>
-              <button 
-                onClick={() => onNavigate('packages')} 
-                className="cursor-pointer text-left transition hover:translate-x-1 hover:text-white"
-              >
-                Weekend Refresh Trips
-              </button>
-            </li>
-          </ul>
-        </div>
-
-        {/* Contact Info Column */}
-        <div className="space-y-4">
-          <h3 className="mb-2 text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#f59e0b]">
-            Connect With Us
-          </h3>
-          <ul className="space-y-4 text-sm font-light text-stone-300">
-            <li className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
-              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#5eead4]" />
-              <span>402, Signature Towers, Sector 30, Gurugram, HR - 122001, India</span>
-            </li>
-            <li className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
-              <Phone className="h-4 w-4 shrink-0 text-[#5eead4]" />
-              <a href="tel:+919876543210" className="transition hover:text-white">+91 98765 43210</a>
-            </li>
-            <li className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
-              <Mail className="h-4 w-4 shrink-0 text-[#5eead4]" />
-              <a href="mailto:info@pravaahtravels.com" className="transition hover:text-white">info@pravaahtravels.com</a>
-            </li>
-          </ul>
-        </div>
-
-      </div>
-
-      {/* Bottom bar */}
-      <div className="relative mx-auto mt-14 flex max-w-7xl flex-col items-center justify-between gap-4 border-t border-white/10 px-4 py-7 text-[11px] font-light text-stone-400 sm:px-6 md:flex-row lg:px-8">
-        <p>© {currentYear} Pravaah Travels Private Limited. All rights reserved.</p>
-        <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
-          <button 
-            onClick={() => onNavigate('admin-login')} 
-            className="flex cursor-pointer items-center gap-1.5 font-semibold text-stone-400 transition hover:text-[#f59e0b]"
-          >
-            <Shield className="h-3.5 w-3.5" />
-            <span>Admin Gateway</span>
-          </button>
-          <span className="text-white/15">|</span>
-          <span>Terms of Service</span>
-          <span className="text-white/15">|</span>
-          <span>Privacy Policy</span>
+        <div className="flex flex-col items-center justify-between gap-5 py-8 text-[14px] text-white/62 md:flex-row">
+          <p>Copyright © {currentYear} by <span className="text-[#4DA528]">Pravaah Travels.</span> All Rights Reserved</p>
+          <div className="flex flex-wrap items-center justify-center gap-5">
+            <button onClick={() => onNavigate('admin-login')} className="flex cursor-pointer items-center gap-2 transition hover:text-[#4DA528]">
+              <Shield className="h-4 w-4" />
+              <span>Admin Gateway</span>
+            </button>
+            <span>Terms</span>
+            <span>Privacy</span>
+          </div>
         </div>
       </div>
     </footer>

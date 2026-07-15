@@ -800,324 +800,395 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
   // ----------------------------------------------------
   if (isVerifyingLink) {
     return (
-      <div className="max-w-md mx-auto my-24 p-8 bg-white border border-stone-150 rounded-xl shadow-xl font-sans text-center" id="verifying-link-box">
-        <RefreshCw className="w-12 h-12 text-[#008080] animate-spin mx-auto mb-4" />
-        <h2 className="text-xl font-bold text-stone-850">Securing Your Connection</h2>
-        <p className="text-xs text-stone-500 mt-2">Checking secure sign-in link... Please wait while we authenticate your session.</p>
+      <div className="relative flex min-h-[86vh] items-center justify-center overflow-hidden bg-stone-950 px-4 py-16 font-sans" id="verifying-link-box">
+        <img
+          src="https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=1800&q=80"
+          alt="Himalayan pass"
+          className="absolute inset-0 h-full w-full object-cover opacity-55"
+          referrerPolicy="no-referrer"
+        />
+        <div className="absolute inset-0 bg-linear-to-r from-stone-950/92 via-stone-950/70 to-stone-950/35" />
+        <div className="relative w-full max-w-md rounded-[2rem] border border-white/15 bg-white/12 p-8 text-center text-white shadow-[0_30px_80px_rgba(0,0,0,0.32)] backdrop-blur-xl">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-white/12 ring-1 ring-white/15">
+            <RefreshCw className="h-9 w-9 animate-spin text-[#5eead4]" />
+          </div>
+          <span className="text-[10px] font-extrabold uppercase tracking-[0.24em] text-[#fbbf24]">Secure portal</span>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">Securing Your Connection</h2>
+          <p className="mt-3 text-sm leading-7 text-stone-200">Checking secure sign-in link... Please wait while we authenticate your session.</p>
+        </div>
       </div>
     );
   }
 
   if (needEmailConfirmation) {
     return (
-      <div className="max-w-md mx-auto my-12 p-8 bg-white border border-stone-150 rounded-xl shadow-xl font-sans" id="email-confirm-box">
-        <div className="text-center mb-6">
-          <div className="inline-flex p-3 bg-amber-50 text-amber-600 rounded-full mb-3">
-            <Lock className="w-6 h-6 stroke-[2]" />
+      <div className="relative flex min-h-[86vh] items-center justify-center overflow-hidden bg-stone-950 px-4 py-16 font-sans" id="email-confirm-box">
+        <img
+          src="https://images.unsplash.com/photo-1626830503244-3d2ac0493ae0?auto=format&fit=crop&w=1800&q=80"
+          alt="Sacred Himalayan valley"
+          className="absolute inset-0 h-full w-full object-cover opacity-55"
+          referrerPolicy="no-referrer"
+        />
+        <div className="absolute inset-0 bg-linear-to-r from-stone-950/92 via-stone-950/72 to-stone-950/35" />
+
+        <div className="relative w-full max-w-md rounded-[2rem] border border-white/15 bg-white/14 p-6 text-white shadow-[0_30px_80px_rgba(0,0,0,0.32)] backdrop-blur-xl sm:p-8">
+          <div className="mb-7 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-white/12 text-[#fbbf24] ring-1 ring-white/15">
+              <Lock className="h-7 w-7 stroke-[2]" />
+            </div>
+            <span className="text-[10px] font-extrabold uppercase tracking-[0.24em] text-[#fbbf24]">Passwordless access</span>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">Confirm Your Email</h2>
+            <p className="mt-2 text-sm leading-7 text-stone-200">Please enter your email address to complete signing in with your email link.</p>
           </div>
-          <h2 className="text-2xl font-bold text-stone-850 tracking-tight">Confirm Your Email</h2>
-          <p className="text-xs text-stone-500 mt-1">Please enter your email address to complete signing in with your email link.</p>
+
+          {authError && (
+            <div className="mb-5 flex items-start gap-2 rounded-2xl border border-rose-200/60 bg-rose-50/95 p-4 text-xs font-semibold text-rose-700">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{authError}</span>
+            </div>
+          )}
+
+          <form onSubmit={(e) => { e.preventDefault(); handleCompleteSignInWithEmailLink(confirmEmail); }} className="space-y-5">
+            <div>
+              <label className="mb-2 block text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-200">Email Address</label>
+              <input
+                type="email"
+                required
+                placeholder="you@example.com"
+                value={confirmEmail}
+                onChange={(e) => setConfirmEmail(e.target.value)}
+                className="w-full rounded-2xl border border-white/15 bg-white/92 px-4 py-3.5 text-sm font-semibold text-stone-900 shadow-inner focus:border-[#5eead4] focus:bg-white focus:outline-none"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isVerifyingLink}
+              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-[#0f766e] py-3.5 text-xs font-extrabold uppercase tracking-[0.16em] text-white shadow-[0_18px_38px_rgba(15,118,110,0.32)] transition hover:-translate-y-1 hover:bg-[#0d5f59] disabled:opacity-60"
+            >
+              {isVerifyingLink ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <span>Verify & Sign In</span>
+              )}
+            </button>
+          </form>
         </div>
-        
-        {authError && (
-          <div className="bg-rose-50 border border-rose-100 text-rose-700 p-3 rounded-lg text-xs font-semibold mb-4 flex items-start space-x-2">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{authError}</span>
-          </div>
-        )}
-
-        <form onSubmit={(e) => { e.preventDefault(); handleCompleteSignInWithEmailLink(confirmEmail); }} className="space-y-4">
-          <div>
-            <label className="block text-[11px] font-bold text-stone-500 uppercase tracking-wider mb-1.5">Email Address</label>
-            <input
-              type="email"
-              required
-              placeholder="you@example.com"
-              value={confirmEmail}
-              onChange={(e) => setConfirmEmail(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] font-medium"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={isVerifyingLink}
-            className="w-full py-3 bg-[#008080] hover:bg-[#006666] text-white text-xs font-bold rounded-lg shadow-md transition-all flex items-center justify-center space-x-1 cursor-pointer"
-          >
-            {isVerifyingLink ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : (
-              <span>Verify & Sign In</span>
-            )}
-          </button>
-        </form>
       </div>
     );
   }
 
   if (!user) {
     return (
-      <div className="max-w-xl mx-auto my-12 p-8 bg-white border border-stone-150 rounded-xl shadow-xl font-sans" id="customer-login-box">
-        {/* Upper Brand */}
-        <div className="text-center mb-6">
-          <div className="inline-flex p-3 bg-teal-50 text-[#008080] rounded-full mb-3">
-            <User className="w-6 h-6 stroke-[2]" />
-          </div>
-          <h2 className="text-2xl font-bold text-stone-850 tracking-tight">Customer Portal</h2>
-          <p className="text-xs text-stone-500 mt-1">Access secure bookings, travel documents & personalized AI packages</p>
-        </div>
+      <div className="relative flex min-h-[86vh] items-center overflow-hidden bg-stone-950 px-4 py-10 font-sans sm:px-6 lg:px-8" id="customer-login-box">
+        <img
+          src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1800&q=80"
+          alt="Luxury Himalayan landscape"
+          className="absolute inset-0 h-full w-full object-cover opacity-60"
+          referrerPolicy="no-referrer"
+        />
+        <div className="absolute inset-0 bg-linear-to-r from-stone-950/95 via-stone-950/75 to-stone-950/35" />
+        <div className="absolute inset-0 bg-linear-to-t from-stone-950 via-transparent to-stone-950/20" />
 
-        {/* Tab switchers */}
-        <div className="flex bg-stone-100 p-1 rounded-lg mb-6">
-          <button
-            type="button"
-            onClick={() => { setAuthTab('login'); setAuthError(''); setAuthSuccess(''); }}
-            className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${
-              authTab === 'login' ? 'bg-white text-stone-800 shadow-sm' : 'text-stone-500 hover:text-stone-800'
-            }`}
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
-            onClick={() => { setAuthTab('emailLink'); setAuthError(''); setAuthSuccess(''); }}
-            className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${
-              authTab === 'emailLink' ? 'bg-white text-stone-800 shadow-sm' : 'text-stone-500 hover:text-stone-800'
-            }`}
-          >
-            Passwordless Link
-          </button>
-          <button
-            type="button"
-            onClick={() => { setAuthTab('register'); setAuthError(''); setAuthSuccess(''); }}
-            className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${
-              authTab === 'register' ? 'bg-white text-stone-800 shadow-sm' : 'text-stone-500 hover:text-stone-800'
-            }`}
-          >
-            Create Account
-          </button>
-        </div>
-
-        {/* Status Box */}
-        {authError && (
-          <div className="bg-rose-50 border border-rose-100 text-rose-700 p-3 rounded-lg text-xs font-semibold mb-4 flex items-start space-x-2">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{authError}</span>
-          </div>
-        )}
-        {authSuccess && (
-          <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 p-3 rounded-lg text-xs font-semibold mb-4 flex items-start space-x-2">
-            <CheckCircle className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
-            <span>{authSuccess}</span>
-          </div>
-        )}
-
-        {/* Passwordless Email Link Form */}
-        {authTab === 'emailLink' ? (
-          <form onSubmit={handleSendEmailLink} className="space-y-4">
-            <div>
-              <label className="block text-[11px] font-bold text-stone-500 uppercase tracking-wider mb-1.5">Email Address</label>
-              <input
-                type="email"
-                required
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] font-medium"
-              />
-              <p className="text-[10px] text-stone-400 mt-1">We'll email you a secure link to log in instantly without passwords.</p>
-            </div>
-
-            {/* Custom Platform Configurations */}
-            <div className="border border-stone-150 rounded-lg p-4 bg-stone-50 mt-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-stone-700 flex items-center">
-                  <Shield className="w-4 h-4 mr-1 text-[#008080]" />
-                  Redirect Platform Settings
-                </span>
-                <span className="text-[9px] bg-stone-200 text-stone-600 px-2 py-0.5 rounded-full font-bold">Android & Apple</span>
-              </div>
-              <p className="text-[10px] text-stone-500 leading-normal">
-                These package details will be packaged into the Firebase Dynamic/App Link settings to open your native apps natively.
+        <div className="relative mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-10 lg:grid-cols-[1fr_520px]">
+          <div className="hidden max-w-2xl space-y-7 text-white lg:block">
+            <span className="inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.24em] text-[#fbbf24] backdrop-blur-md">
+              Pravaah Private Portal
+            </span>
+            <div className="space-y-5">
+              <h1 className="text-6xl font-semibold leading-[1.02] tracking-tight">
+                Your journeys, documents, and memories in one secure place.
+              </h1>
+              <p className="max-w-xl text-base leading-8 text-stone-200">
+                Sign in to manage bookings, open your private travel vault, save AI-designed itineraries, and publish verified trip stories.
               </p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[9px] font-bold text-stone-500 uppercase tracking-wider mb-1">Android Package Name</label>
-                  <input
-                    type="text"
-                    value={androidPackageName}
-                    onChange={(e) => setAndroidPackageName(e.target.value)}
-                    placeholder="com.example.android"
-                    className="w-full px-2.5 py-2 bg-white border border-stone-200 rounded text-[11px] focus:outline-none focus:border-[#008080] font-medium font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[9px] font-bold text-stone-500 uppercase tracking-wider mb-1">Apple iOS Bundle ID</label>
-                  <input
-                    type="text"
-                    value={iosBundleId}
-                    onChange={(e) => setIosBundleId(e.target.value)}
-                    placeholder="com.example.ios"
-                    className="w-full px-2.5 py-2 bg-white border border-stone-200 rounded text-[11px] focus:outline-none focus:border-[#008080] font-medium font-mono"
-                  />
-                </div>
+            </div>
+            <div className="grid max-w-xl grid-cols-3 gap-3">
+              <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-md">
+                <Calendar className="mb-2 h-5 w-5 text-[#5eead4]" />
+                <span className="block text-[10px] font-extrabold uppercase tracking-widest text-stone-300">Bookings</span>
+              </div>
+              <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-md">
+                <Lock className="mb-2 h-5 w-5 text-[#fbbf24]" />
+                <span className="block text-[10px] font-extrabold uppercase tracking-widest text-stone-300">Vault</span>
+              </div>
+              <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-md">
+                <Sparkles className="mb-2 h-5 w-5 text-[#f97350]" />
+                <span className="block text-[10px] font-extrabold uppercase tracking-widest text-stone-300">AI Trips</span>
               </div>
             </div>
-
-            <button
-              type="submit"
-              disabled={authLoading}
-              className="w-full py-3 bg-[#008080] hover:bg-[#006666] text-white text-xs font-bold rounded-lg shadow-md transition-all flex items-center justify-center space-x-1 cursor-pointer"
-            >
-              {authLoading ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <span>Send Secure Passwordless Link</span>
-              )}
-            </button>
-
-            {/* Instruction Guides toggle */}
-            <div className="pt-2 text-center">
-              <button
-                type="button"
-                onClick={() => setShowPlatformConfigGuide(!showPlatformConfigGuide)}
-                className="text-xs text-[#008080] hover:text-[#006666] font-bold underline cursor-pointer"
-              >
-                {showPlatformConfigGuide ? 'Hide Setup Guide for Web, Android & Apple iOS' : 'Show Setup Guide for Web, Android & Apple iOS'}
-              </button>
-            </div>
-
-            {showPlatformConfigGuide && (
-              <div className="border border-stone-200 rounded-lg p-5 bg-stone-50 text-stone-800 text-xs space-y-4 mt-4 transition-all animate-fadeIn">
-                <h4 className="font-bold text-[#008080] border-b border-stone-200 pb-1.5 flex items-center">
-                  <Info className="w-4 h-4 mr-1" /> Multi-Platform Passwordless Authentication Configuration Guide
-                </h4>
-                
-                <div className="space-y-3">
-                  <div className="p-3 bg-white rounded-md border border-stone-200">
-                    <span className="font-bold text-stone-700 block mb-1">1. Firebase Console Enablement</span>
-                    <p className="text-stone-500 text-[11px] leading-relaxed">
-                      Go to <strong className="text-stone-700 font-semibold">Authentication &gt; Sign-in method</strong>. Enable <strong className="text-stone-700 font-semibold">Email/Password</strong>, check <strong className="text-stone-700 font-semibold">Email link (passwordless sign-in)</strong>, and click Save.
-                    </p>
-                  </div>
-
-                  <div className="p-3 bg-white rounded-md border border-stone-200">
-                    <span className="font-bold text-stone-700 block mb-1">2. 🌐 Web Configuration</span>
-                    <p className="text-stone-500 text-[11px] leading-relaxed mb-2">
-                      Authorized Domains: In Firebase, go to <strong className="text-stone-700 font-semibold">Authentication &gt; Settings &gt; Authorized Domains</strong> and ensure your web URL (e.g., <code className="font-mono bg-stone-100 px-1 py-0.5 rounded text-[10px]">{window.location.host}</code>) is allowed.
-                    </p>
-                  </div>
-
-                  <div className="p-3 bg-white rounded-md border border-stone-200">
-                    <span className="font-bold text-stone-700 block mb-1">3. 🤖 Android Setup (App Links)</span>
-                    <p className="text-stone-500 text-[11px] leading-relaxed space-y-1">
-                      <span className="block">• <strong className="text-stone-700 font-semibold">Fingerprints:</strong> In Firebase Project Settings, add your Android App with Package Name <code className="font-mono bg-stone-100 px-1 py-0.5 rounded text-[10px]">{androidPackageName}</code> and add SHA-1 / SHA-256 signatures.</span>
-                      <span className="block">• <strong className="text-stone-700 font-semibold">Assets Link:</strong> Place your <code className="font-mono text-[10px]">assetlinks.json</code> in your domain's <code className="font-mono text-[10px]">.well-known/assetlinks.json</code> location to match your fingerprints.</span>
-                    </p>
-                  </div>
-
-                  <div className="p-3 bg-white rounded-md border border-stone-200">
-                    <span className="font-bold text-stone-700 block mb-1">4. 🍎 Apple iOS Setup (Universal Links)</span>
-                    <p className="text-stone-500 text-[11px] leading-relaxed space-y-1">
-                      <span className="block">• <strong className="text-stone-700 font-semibold">Bundle ID & Team ID:</strong> Add an iOS App inside Firebase console with Bundle ID <code className="font-mono bg-stone-100 px-1 py-0.5 rounded text-[10px]">{iosBundleId}</code> and add your App Store ID and Apple Team ID.</span>
-                      <span className="block">• <strong className="text-stone-700 font-semibold">AASA:</strong> Deploy your <code className="font-mono text-[10px]">apple-app-site-association</code> file to <code className="font-mono text-[10px]">.well-known/apple-app-site-association</code> domain file.</span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </form>
-        ) : (
-          <form onSubmit={handleEmailAuth} className="space-y-4">
-            {authTab === 'register' && (
-              <div>
-                <label className="block text-[11px] font-bold text-stone-500 uppercase tracking-wider mb-1.5">Your Full Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="E.g. Yash Sharma"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] font-medium"
-                />
-              </div>
-            )}
-
-            <div>
-              <label className="block text-[11px] font-bold text-stone-500 uppercase tracking-wider mb-1.5">Email Address</label>
-              <input
-                type="email"
-                required
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] font-medium"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-stone-500 uppercase tracking-wider mb-1.5">Password</label>
-              <input
-                type="password"
-                required
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] font-medium"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={authLoading}
-              className="w-full py-3 bg-[#008080] hover:bg-[#006666] text-white text-xs font-bold rounded-lg shadow-md transition-all flex items-center justify-center space-x-1 cursor-pointer"
-            >
-              {authLoading ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <span>{authTab === 'login' ? 'Sign In Securely' : 'Register Account'}</span>
-              )}
-            </button>
-          </form>
-        )}
-
-        {/* Social Authentication Row */}
-        <div className="relative my-6 text-center">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t border-stone-200"></span>
           </div>
-          <span className="relative bg-white px-3 text-[10px] uppercase font-bold tracking-wider text-stone-400">Or Continue With</span>
-        </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={() => handleSocialLogin('google')}
-            className="flex items-center justify-center space-x-2 py-2.5 border border-stone-200 rounded hover:bg-stone-50 text-xs font-semibold text-stone-700 transition-colors cursor-pointer"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-            </svg>
-            <span>Google</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSocialLogin('github')}
-            className="flex items-center justify-center space-x-2 py-2.5 border border-stone-200 rounded hover:bg-stone-50 text-xs font-semibold text-stone-700 transition-colors cursor-pointer"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-              <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.577.688.479C19.138 20.161 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
-            </svg>
-            <span>GitHub</span>
-          </button>
-        </div>
+          <div className="w-full rounded-[2rem] border border-white/15 bg-white/14 p-4 text-white shadow-[0_30px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl sm:p-6">
+            <div className="rounded-[1.5rem] bg-white/94 p-5 text-stone-950 shadow-2xl sm:p-7">
+              {/* Upper Brand */}
+              <div className="mb-7 text-center">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-[#0f766e]/10 text-[#0f766e] ring-1 ring-[#0f766e]/15">
+                  <User className="h-7 w-7 stroke-[2]" />
+                </div>
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.24em] text-[#0f766e]">Luxury Travel Workspace</span>
+                <h2 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950">Customer Portal</h2>
+                <p className="mx-auto mt-2 max-w-sm text-sm leading-7 text-stone-500">Access secure bookings, travel documents & personalized AI packages</p>
+              </div>
 
-        <div className="mt-6 p-3 bg-stone-50 border border-stone-200 rounded text-[10px] text-stone-500 leading-relaxed">
-          <strong>🔒 Security Highlight:</strong> We employ a strict user matching design. Booking details and private documents can ONLY be read by you. Not even our travel operators can break into your Private Vault.
+              {/* Tab switchers */}
+              <div className="mb-6 grid grid-cols-3 rounded-full bg-stone-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => { setAuthTab('login'); setAuthError(''); setAuthSuccess(''); }}
+                  className={`rounded-full py-2.5 text-[10px] font-extrabold uppercase tracking-[0.12em] transition-all ${
+                    authTab === 'login' ? 'bg-white text-[#0f766e] shadow-sm' : 'text-stone-500 hover:text-stone-900'
+                  }`}
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAuthTab('emailLink'); setAuthError(''); setAuthSuccess(''); }}
+                  className={`rounded-full py-2.5 text-[10px] font-extrabold uppercase tracking-[0.12em] transition-all ${
+                    authTab === 'emailLink' ? 'bg-white text-[#0f766e] shadow-sm' : 'text-stone-500 hover:text-stone-900'
+                  }`}
+                >
+                  Email Link
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAuthTab('register'); setAuthError(''); setAuthSuccess(''); }}
+                  className={`rounded-full py-2.5 text-[10px] font-extrabold uppercase tracking-[0.12em] transition-all ${
+                    authTab === 'register' ? 'bg-white text-[#0f766e] shadow-sm' : 'text-stone-500 hover:text-stone-900'
+                  }`}
+                >
+                  Register
+                </button>
+              </div>
+
+              {/* Status Box */}
+              {authError && (
+                <div className="mb-5 flex items-start gap-2 rounded-2xl border border-rose-100 bg-rose-50 p-4 text-xs font-semibold text-rose-700">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{authError}</span>
+                </div>
+              )}
+              {authSuccess && (
+                <div className="mb-5 flex items-start gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-xs font-semibold text-emerald-700">
+                  <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                  <span>{authSuccess}</span>
+                </div>
+              )}
+
+              {/* Passwordless Email Link Form */}
+              {authTab === 'emailLink' ? (
+                <form onSubmit={handleSendEmailLink} className="space-y-5">
+                  <div>
+                    <label className="mb-2 block text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-500">Email Address</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full rounded-2xl border border-stone-200 bg-[#fffaf1] px-4 py-3.5 text-sm font-semibold text-stone-900 transition focus:border-[#0f766e] focus:bg-white focus:outline-none"
+                    />
+                    <p className="mt-2 text-xs leading-6 text-stone-500">We'll email you a secure link to log in instantly without passwords.</p>
+                  </div>
+
+                  {/* Custom Platform Configurations */}
+                  <div className="mt-4 space-y-4 rounded-3xl border border-stone-200 bg-[#fffaf1] p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="flex items-center text-xs font-extrabold text-stone-800">
+                        <Shield className="mr-2 h-4 w-4 text-[#0f766e]" />
+                        Redirect Platform Settings
+                      </span>
+                      <span className="rounded-full bg-white px-3 py-1 text-[9px] font-extrabold uppercase tracking-wider text-stone-500 shadow-sm">Android & Apple</span>
+                    </div>
+                    <p className="text-xs leading-6 text-stone-500">
+                      These package details will be packaged into the Firebase Dynamic/App Link settings to open your native apps natively.
+                    </p>
+                    
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block text-[9px] font-extrabold uppercase tracking-wider text-stone-500">Android Package Name</label>
+                        <input
+                          type="text"
+                          value={androidPackageName}
+                          onChange={(e) => setAndroidPackageName(e.target.value)}
+                          placeholder="com.example.android"
+                          className="w-full rounded-2xl border border-stone-200 bg-white px-3 py-2.5 font-mono text-[11px] font-medium focus:border-[#0f766e] focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-[9px] font-extrabold uppercase tracking-wider text-stone-500">Apple iOS Bundle ID</label>
+                        <input
+                          type="text"
+                          value={iosBundleId}
+                          onChange={(e) => setIosBundleId(e.target.value)}
+                          placeholder="com.example.ios"
+                          className="w-full rounded-2xl border border-stone-200 bg-white px-3 py-2.5 font-mono text-[11px] font-medium focus:border-[#0f766e] focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-[#0f766e] py-3.5 text-xs font-extrabold uppercase tracking-[0.16em] text-white shadow-[0_18px_38px_rgba(15,118,110,0.24)] transition hover:-translate-y-1 hover:bg-[#0d5f59] disabled:opacity-60"
+                  >
+                    {authLoading ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <span>Send Secure Passwordless Link</span>
+                    )}
+                  </button>
+
+                  {/* Instruction Guides toggle */}
+                  <div className="pt-1 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowPlatformConfigGuide(!showPlatformConfigGuide)}
+                      className="cursor-pointer text-xs font-extrabold text-[#0f766e] underline decoration-[#0f766e]/30 underline-offset-4 hover:text-[#0d5f59]"
+                    >
+                      {showPlatformConfigGuide ? 'Hide Setup Guide for Web, Android & Apple iOS' : 'Show Setup Guide for Web, Android & Apple iOS'}
+                    </button>
+                  </div>
+
+                  {showPlatformConfigGuide && (
+                    <div className="mt-4 animate-fadeIn space-y-4 rounded-3xl border border-stone-200 bg-stone-50 p-5 text-xs text-stone-800">
+                      <h4 className="flex border-b border-stone-200 pb-2 font-extrabold text-[#0f766e]">
+                        <Info className="mr-2 h-4 w-4" /> Multi-Platform Passwordless Authentication Configuration Guide
+                      </h4>
+                      
+                      <div className="space-y-3">
+                        <div className="rounded-2xl border border-stone-200 bg-white p-3">
+                          <span className="mb-1 block font-bold text-stone-700">1. Firebase Console Enablement</span>
+                          <p className="text-[11px] leading-relaxed text-stone-500">
+                            Go to <strong className="font-semibold text-stone-700">Authentication &gt; Sign-in method</strong>. Enable <strong className="font-semibold text-stone-700">Email/Password</strong>, check <strong className="font-semibold text-stone-700">Email link (passwordless sign-in)</strong>, and click Save.
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl border border-stone-200 bg-white p-3">
+                          <span className="mb-1 block font-bold text-stone-700">2. Web Configuration</span>
+                          <p className="mb-2 text-[11px] leading-relaxed text-stone-500">
+                            Authorized Domains: In Firebase, go to <strong className="font-semibold text-stone-700">Authentication &gt; Settings &gt; Authorized Domains</strong> and ensure your web URL (e.g., <code className="rounded bg-stone-100 px-1 py-0.5 font-mono text-[10px]">{window.location.host}</code>) is allowed.
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl border border-stone-200 bg-white p-3">
+                          <span className="mb-1 block font-bold text-stone-700">3. Android Setup (App Links)</span>
+                          <p className="space-y-1 text-[11px] leading-relaxed text-stone-500">
+                            <span className="block">- <strong className="font-semibold text-stone-700">Fingerprints:</strong> In Firebase Project Settings, add your Android App with Package Name <code className="rounded bg-stone-100 px-1 py-0.5 font-mono text-[10px]">{androidPackageName}</code> and add SHA-1 / SHA-256 signatures.</span>
+                            <span className="block">- <strong className="font-semibold text-stone-700">Assets Link:</strong> Place your <code className="font-mono text-[10px]">assetlinks.json</code> in your domain's <code className="font-mono text-[10px]">.well-known/assetlinks.json</code> location to match your fingerprints.</span>
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl border border-stone-200 bg-white p-3">
+                          <span className="mb-1 block font-bold text-stone-700">4. Apple iOS Setup (Universal Links)</span>
+                          <p className="space-y-1 text-[11px] leading-relaxed text-stone-500">
+                            <span className="block">- <strong className="font-semibold text-stone-700">Bundle ID & Team ID:</strong> Add an iOS App inside Firebase console with Bundle ID <code className="rounded bg-stone-100 px-1 py-0.5 font-mono text-[10px]">{iosBundleId}</code> and add your App Store ID and Apple Team ID.</span>
+                            <span className="block">- <strong className="font-semibold text-stone-700">AASA:</strong> Deploy your <code className="font-mono text-[10px]">apple-app-site-association</code> file to <code className="font-mono text-[10px]">.well-known/apple-app-site-association</code> domain file.</span>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </form>
+              ) : (
+                <form onSubmit={handleEmailAuth} className="space-y-5">
+                  {authTab === 'register' && (
+                    <div className="rounded-3xl border border-[#0f766e]/15 bg-[#0f766e]/5 p-4">
+                      <div className="mb-3 flex items-center gap-2 text-sm font-extrabold text-stone-900">
+                        <User className="h-4 w-4 text-[#0f766e]" />
+                        Premium traveler profile
+                      </div>
+                      <label className="mb-2 block text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-500">Your Full Name</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="E.g. Yash Sharma"
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3.5 text-sm font-semibold text-stone-900 transition focus:border-[#0f766e] focus:outline-none"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="mb-2 block text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-500">Email Address</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full rounded-2xl border border-stone-200 bg-[#fffaf1] px-4 py-3.5 text-sm font-semibold text-stone-900 transition focus:border-[#0f766e] focus:bg-white focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-500">Password</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full rounded-2xl border border-stone-200 bg-[#fffaf1] px-4 py-3.5 text-sm font-semibold text-stone-900 transition focus:border-[#0f766e] focus:bg-white focus:outline-none"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-[#0f766e] py-3.5 text-xs font-extrabold uppercase tracking-[0.16em] text-white shadow-[0_18px_38px_rgba(15,118,110,0.24)] transition hover:-translate-y-1 hover:bg-[#0d5f59] disabled:opacity-60"
+                  >
+                    {authLoading ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <span>{authTab === 'login' ? 'Sign In Securely' : 'Register Account'}</span>
+                    )}
+                  </button>
+                </form>
+              )}
+
+              {/* Social Authentication Row */}
+              <div className="relative my-7 text-center">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-stone-200"></span>
+                </div>
+                <span className="relative bg-white px-4 text-[10px] font-extrabold uppercase tracking-[0.2em] text-stone-400">Or Continue With</span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => handleSocialLogin('google')}
+                  className="flex cursor-pointer items-center justify-center gap-2 rounded-full border border-stone-200 bg-white px-4 py-3 text-xs font-extrabold text-stone-700 shadow-sm transition hover:-translate-y-0.5 hover:border-[#0f766e]/30 hover:bg-[#fffaf1]"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                  </svg>
+                  <span>Google</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSocialLogin('github')}
+                  className="flex cursor-pointer items-center justify-center gap-2 rounded-full border border-stone-200 bg-white px-4 py-3 text-xs font-extrabold text-stone-700 shadow-sm transition hover:-translate-y-0.5 hover:border-[#0f766e]/30 hover:bg-[#fffaf1]"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.577.688.479C19.138 20.161 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
+                  </svg>
+                  <span>GitHub</span>
+                </button>
+              </div>
+
+              <div className="mt-6 rounded-3xl border border-stone-200 bg-[#fffaf1] p-4 text-[11px] leading-6 text-stone-600">
+                <strong className="text-stone-900">Security Highlight:</strong> We employ a strict user matching design. Booking details and private documents can ONLY be read by you. Not even our travel operators can break into your Private Vault.
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
