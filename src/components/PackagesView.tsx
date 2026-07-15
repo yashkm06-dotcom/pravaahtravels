@@ -88,34 +88,60 @@ export default function PackagesView({
   };
 
   return (
-    <div id="packages-view" className="animate-fade-in bg-[#f8f7f4] py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+    <div id="packages-view" className="animate-fade-in overflow-hidden bg-[#fffaf1]">
+      <section className="relative bg-stone-950 px-4 py-20 text-white sm:px-6 lg:px-8">
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-45"
+          style={{ backgroundImage: 'url("https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=1800&q=80")' }}
+        />
+        <div className="absolute inset-0 bg-linear-to-r from-stone-950 via-stone-950/78 to-stone-950/35" />
         
-        {/* Page Title Header */}
-        <div className="text-center max-w-3xl mx-auto space-y-3">
-          <span className="text-xs font-bold text-[#008080] tracking-[0.2em] uppercase">Curated Catalog</span>
-          <h2 className="text-3xl sm:text-4xl font-serif font-normal text-[#333333] tracking-tight">
-            Explore Handcrafted Packages
-          </h2>
-          <div className="w-16 h-0.5 bg-[#F4C430] mx-auto mt-3" />
-          <p className="text-xs sm:text-sm text-stone-500 font-light">
-            Search and filter through our bespoke travel experiences. Click any package to view day-wise itineraries, pricing breakdown, and make enquiries.
-          </p>
+        <div className="relative mx-auto max-w-7xl">
+          <div className="max-w-3xl space-y-5">
+            <span className="inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.24em] text-[#fbbf24] backdrop-blur-md">
+              Curated Catalog
+            </span>
+            <h2 className="text-5xl font-semibold leading-tight tracking-tight text-white sm:text-6xl">
+              Explore handcrafted travel packages
+            </h2>
+            <p className="max-w-2xl text-sm leading-7 text-stone-200 sm:text-base">
+              Search, refine, and discover live package data from Pravaah's Firestore catalog. Every package opens into a detailed itinerary, pricing, and enquiry flow.
+            </p>
+          </div>
         </div>
+      </section>
+
+      <div className="mx-auto max-w-7xl space-y-10 px-4 py-12 sm:px-6 lg:px-8">
 
         {/* Filter & Search Bar */}
-        <div className="bg-white border border-stone-200 rounded p-6 shadow-xs space-y-6" id="filter-panel">
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <div className="-mt-24 rounded-[2rem] border border-stone-200 bg-white p-4 shadow-[0_24px_70px_rgba(18,38,32,0.18)] sm:p-6" id="filter-panel">
+          <div className="mb-5 flex flex-col gap-3 border-b border-stone-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#0f766e]">
+                <Filter className="h-3.5 w-3.5" />
+                Smart Filters
+              </div>
+              <p className="mt-1 text-xs text-stone-500">
+                Showing {filteredPackages.length} of {packages.filter((pkg) => pkg.active).length} active packages.
+              </p>
+            </div>
+            <div className="inline-flex w-fit items-center gap-2 rounded-full bg-[#fffaf1] px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.14em] text-stone-500 ring-1 ring-stone-200">
+              <SlidersHorizontal className="h-3.5 w-3.5 text-[#f97350]" />
+              <span>Sorted by curated order</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
             
             {/* Search Bar */}
             <div className="relative col-span-1 lg:col-span-2">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+              <Search className="absolute left-5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#0f766e]" />
               <input
                 type="text"
                 placeholder="Search by title, destination, keyword..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-11 pr-4 py-3 bg-[#f8f7f4] border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] focus:bg-white transition-all text-stone-800 font-medium"
+                className="h-full min-h-14 w-full rounded-2xl border border-stone-200 bg-[#fffaf1] py-4 pl-12 pr-4 text-sm font-semibold text-stone-900 transition-all focus:border-[#0f766e] focus:bg-white focus:outline-none"
               />
             </div>
 
@@ -124,7 +150,7 @@ export default function PackagesView({
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="w-full px-4 py-3 bg-[#f8f7f4] border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] focus:bg-white transition-all text-stone-700 font-medium cursor-pointer"
+                className="min-h-14 w-full cursor-pointer rounded-2xl border border-stone-200 bg-[#fffaf1] px-4 py-4 text-sm font-semibold text-stone-800 transition-all focus:border-[#0f766e] focus:bg-white focus:outline-none"
               >
                 <option value="All">All Categories</option>
                 <option value="Pilgrimage">Pilgrimage</option>
@@ -141,7 +167,7 @@ export default function PackagesView({
               <select
                 value={selectedDuration}
                 onChange={(e) => setSelectedDuration(e.target.value)}
-                className="w-full px-4 py-3 bg-[#f8f7f4] border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] focus:bg-white transition-all text-stone-700 font-medium cursor-pointer"
+                className="min-h-14 w-full cursor-pointer rounded-2xl border border-stone-200 bg-[#fffaf1] px-4 py-4 text-sm font-semibold text-stone-800 transition-all focus:border-[#0f766e] focus:bg-white focus:outline-none"
               >
                 <option value="All">All Durations</option>
                 <option value="Short (1-4 Days)">Short (1-4 Days)</option>
@@ -151,10 +177,13 @@ export default function PackagesView({
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-4 border-t border-stone-100 gap-4">
+          <div className="mt-5 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
             {/* Price Range Slider */}
-            <div className="flex items-center gap-4 w-full sm:w-auto">
-              <span className="text-[10px] font-bold text-[#333333] uppercase tracking-wider">Max Price:</span>
+            <div className="flex w-full flex-col gap-2 rounded-2xl bg-[#fffaf1] p-4 ring-1 ring-stone-200 sm:w-auto sm:min-w-[420px]">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-500">Max Price</span>
+                <span className="text-sm font-extrabold text-[#0f766e]">{formatPrice(maxPrice)}</span>
+              </div>
               <input
                 type="range"
                 min="5000"
@@ -162,17 +191,16 @@ export default function PackagesView({
                 step="5000"
                 value={maxPrice}
                 onChange={(e) => setMaxPrice(parseInt(e.target.value))}
-                className="accent-[#008080] cursor-pointer w-full sm:w-48"
+                className="w-full cursor-pointer accent-[#0f766e]"
               />
-              <span className="text-xs font-bold text-[#008080]">{formatPrice(maxPrice)}</span>
             </div>
 
             {/* Reset Filters */}
             <button
               onClick={handleReset}
-              className="text-[10px] font-bold text-[#333333] hover:text-[#008080] uppercase tracking-wider flex items-center gap-1.5 cursor-pointer py-1.5 px-3 rounded hover:bg-stone-50 transition border border-stone-200"
+              className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-stone-200 bg-white px-5 py-3 text-[10px] font-extrabold uppercase tracking-[0.15em] text-stone-700 transition hover:-translate-y-0.5 hover:border-[#0f766e] hover:text-[#0f766e]"
             >
-              <RefreshCw className="w-3 h-3" />
+              <RefreshCw className="h-3.5 w-3.5" />
               <span>Reset Filters</span>
             </button>
           </div>
@@ -182,35 +210,36 @@ export default function PackagesView({
         {loading ? (
           <SkeletonLoader />
         ) : filteredPackages.length === 0 ? (
-          <div className="text-center py-20 bg-white border border-stone-200 rounded space-y-4 p-8">
-            <SlidersHorizontal className="w-10 h-10 text-stone-300 mx-auto" />
-            <h4 className="text-lg font-serif italic text-[#333333]">No Packages Found</h4>
-            <p className="text-stone-400 text-xs max-w-md mx-auto font-light">
+          <div className="space-y-5 rounded-[2rem] border border-dashed border-stone-300 bg-white p-12 text-center shadow-sm">
+            <SlidersHorizontal className="mx-auto h-12 w-12 text-stone-300" />
+            <h4 className="text-2xl font-semibold text-stone-950">No packages found</h4>
+            <p className="mx-auto max-w-md text-sm leading-7 text-stone-500">
               No active packages match your current search queries or filters. Try adjusting the parameters or reset the panel.
             </p>
             <button
               onClick={handleReset}
-              className="px-5 py-2 bg-[#008080] hover:bg-[#006666] text-white font-bold text-[10px] uppercase tracking-wider rounded transition"
+              className="rounded-full bg-[#0f766e] px-6 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#0d5f59]"
             >
               Reset Filters
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" id="packages-grid">
+          <div className="grid grid-cols-1 gap-7 md:grid-cols-2 lg:grid-cols-3" id="packages-grid">
             {filteredPackages.map((pkg) => (
-              <div 
+              <article 
                 key={pkg.id} 
-                className="bg-white border border-stone-200 rounded overflow-hidden hover:shadow-lg transition-all duration-300 flex flex-col group"
+                className="group flex overflow-hidden rounded-[2rem] border border-stone-200 bg-white shadow-[0_18px_50px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_28px_70px_rgba(18,38,32,0.16)] flex-col"
               >
                 {/* Package Image Banner */}
-                <div className="relative h-60 overflow-hidden bg-stone-100">
+                <div className="relative h-72 overflow-hidden bg-stone-100">
                   <img 
                     src={pkg.imageUrl} 
                     alt={pkg.title}
-                    className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-500"
+                    className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
                     referrerPolicy="no-referrer"
                   />
-                  <div className="absolute top-4 left-4 bg-[#008080] text-white text-[10px] font-bold px-2.5 py-1 shadow-sm uppercase tracking-wider">
+                  <div className="absolute inset-0 bg-linear-to-t from-stone-950/72 via-transparent to-transparent" />
+                  <div className="absolute left-5 top-5 rounded-full bg-white/95 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider text-[#0f766e] shadow-sm">
                     {pkg.category}
                   </div>
                   {isAdminLoggedIn && onDeletePackage && (
@@ -219,50 +248,55 @@ export default function PackagesView({
                         e.stopPropagation();
                         onDeletePackage(pkg.id);
                       }}
-                      className="absolute top-4 right-4 bg-red-600 hover:bg-red-700 text-white p-2 rounded-full shadow-md hover:scale-105 transition-all cursor-pointer z-30"
+                      className="absolute right-5 top-5 z-30 cursor-pointer rounded-full bg-red-600 p-2 text-white shadow-md transition hover:scale-105 hover:bg-red-700"
                       title="Delete Package"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   )}
                   {pkg.price && (
-                    <div className="absolute bottom-4 right-4 bg-white/95 border border-stone-200 text-[#333333] text-xs font-semibold px-3 py-1.5 shadow-md">
-                      From <span className="text-[#008080] font-bold text-base">{formatPrice(pkg.price)}</span>
+                    <div className="absolute bottom-5 right-5 rounded-2xl bg-white px-4 py-2 text-xs font-semibold text-stone-600 shadow-lg">
+                      From <span className="text-base font-extrabold text-[#0f766e]">{formatPrice(pkg.price)}</span>
                     </div>
                   )}
                 </div>
 
                 {/* Card Info Body */}
-                <div className="p-6 flex-1 flex flex-col justify-between space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-1.5 text-[10px] text-[#FF7F50] font-bold uppercase tracking-widest">
-                      <Calendar className="w-3.5 h-3.5" />
+                <div className="flex flex-1 flex-col justify-between space-y-5 p-6">
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-3 text-[10px] font-extrabold uppercase tracking-[0.15em] text-stone-500">
+                      <span className="inline-flex items-center gap-1.5">
+                        <Calendar className="h-3.5 w-3.5 text-[#f97350]" />
                       <span>{pkg.duration}</span>
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-[#0f766e]" />
+                        <span className="line-clamp-1">{pkg.destination}</span>
+                      </span>
                     </div>
-                    <h3 className="text-lg font-serif italic text-[#333333] leading-snug group-hover:text-[#008080] transition-colors line-clamp-2">
+                    <h3 className="line-clamp-2 text-2xl font-semibold leading-tight text-stone-950 transition group-hover:text-[#0f766e]">
                       {pkg.title}
                     </h3>
-                    <p className="text-stone-500 text-xs leading-relaxed font-light line-clamp-3">
+                    <p className="line-clamp-3 text-sm leading-7 text-stone-600">
                       {pkg.shortDescription}
                     </p>
                   </div>
 
                   {/* Card Actions Bottom */}
-                  <div className="pt-4 border-t border-stone-100 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1 text-[11px] text-stone-400 font-bold uppercase tracking-wider">
-                      <MapPin className="w-3.5 h-3.5 text-[#008080] shrink-0" />
-                      <span className="line-clamp-1">{pkg.destination}</span>
+                  <div className="flex items-center justify-between gap-3 border-t border-stone-100 pt-5">
+                    <div className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">
+                      Details & Itinerary
                     </div>
                     <button
                       onClick={() => onNavigate('package-detail', pkg.id)}
-                      className="px-4 py-2 bg-[#008080] hover:bg-[#006666] text-white text-[10px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer flex items-center gap-1 group/btn"
+                      className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-[#102b2a] px-5 py-3 text-[10px] font-extrabold uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5 hover:bg-[#0f766e]"
                     >
                       <span>Details</span>
-                      <ArrowRight className="w-3 h-3 group-hover/btn:translate-x-0.5 transition-transform" />
+                      <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
                     </button>
                   </div>
                 </div>
-              </div>
+              </article>
             ))}
           </div>
         )}
