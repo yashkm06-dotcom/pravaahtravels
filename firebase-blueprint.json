@@ -1,0 +1,112 @@
+{
+  "entities": {
+    "package": {
+      "title": "Travel Package",
+      "description": "A curated travel package offered by Pravaah Travels",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "destination": { "type": "string" },
+        "category": { "type": "string" },
+        "duration": { "type": "string" },
+        "price": { "type": "number" },
+        "shortDescription": { "type": "string" },
+        "fullDescription": { "type": "string" },
+        "itinerary": { "type": "array" },
+        "inclusions": { "type": "array" },
+        "exclusions": { "type": "array" },
+        "featured": { "type": "boolean" },
+        "active": { "type": "boolean" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "destination", "category", "duration", "price", "shortDescription", "imageUrl"]
+    },
+    "enquiry": {
+      "title": "Enquiry",
+      "description": "A customer booking or holiday planning enquiry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "destination": { "type": "string" },
+        "travelDate": { "type": "string" },
+        "travelers": { "type": "number" },
+        "budget": { "type": "string" },
+        "message": { "type": "string" },
+        "packageId": { "type": "string" },
+        "status": { "type": "string", "enum": ["New", "Contacted", "Converted", "Closed"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "phone", "email", "destination", "travelDate", "travelers", "status", "createdAt"]
+    },
+    "galleryImage": {
+      "title": "Gallery Image",
+      "description": "An image uploaded to the media gallery",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["imageUrl", "createdAt"]
+    },
+    "review": {
+      "title": "Verified Review",
+      "description": "A customer travel review with star-rating and trip photo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "rating": { "type": "number" },
+        "comment": { "type": "string" },
+        "destination": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "verified": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "rating", "comment", "destination", "createdAt"]
+    },
+    "analytics_event": {
+      "title": "Analytics Event",
+      "description": "An event captured for dashboard metrics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "eventType": { "type": "string", "enum": ["page_view", "package_view", "destination_view"] },
+        "targetId": { "type": "string" },
+        "targetName": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["eventType", "targetId", "sessionId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "packages": {
+      "schema": "package",
+      "description": "Travel packages collections"
+    },
+    "enquiries": {
+      "schema": "enquiry",
+      "description": "Customer enquiries"
+    },
+    "gallery": {
+      "schema": "galleryImage",
+      "description": "Media gallery images"
+    },
+    "reviews": {
+      "schema": "review",
+      "description": "Verified traveler reviews"
+    },
+    "analytics_events": {
+      "schema": "analytics_event",
+      "description": "Stored analytics tracking events"
+    }
+  }
+}

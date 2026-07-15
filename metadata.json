@@ -1,0 +1,6 @@
+{
+  "name": "Pravaah Travels",
+  "description": "Premium curated holiday experiences for families, friends and explorers. Flow into journeys.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

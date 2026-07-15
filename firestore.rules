@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Secure authentication and authorization helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'yash.km06@gmail.com' ||
+        request.auth.token.email == 'admin@pravaahtravels.com' ||
+        request.auth.token.email.matches('(?i)^[a-zA-Z0-9._%+-]+@pravaahtravels\\.com$')
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // 1. Packages Collection
+    match /packages/{packageId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 2. Enquiries Collection
+    match /enquiries/{enquiryId} {
+      allow create: if true; // Any visitor can submit an inquiry
+      allow read, update, delete: if isAdmin();
+    }
+
+    // 3. Gallery Collection
+    match /gallery/{imageId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 4. Reviews Collection
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    // 5. Bookings Collection
+    match /bookings/{bookingId} {
+      allow read, update: if isAdmin() || (isSignedIn() && (resource.data.customerEmail == request.auth.token.email || resource.data.userId == request.auth.uid));
+      allow create: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
+    // 6. Users Collection (Profile and saved packages sub-collections)
+    match /users/{userId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+      
+      match /private/{docId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // 7. Analytics Events Collection (Production logging)
+    match /analytics_events/{eventId} {
+      allow create: if true; // Allow client analytics instrumentation
+      allow read, update, delete: if isAdmin();
+    }
+  }
+}
