@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, Calendar, MapPin, IndianRupee, Check, X, Send, Users, 
   ChevronDown, ChevronUp, Trash2, GripVertical, Sliders, ArrowUp, ArrowDown, Sparkles, Phone, Mail, Compass, HelpCircle, CheckCircle2, Heart
+  , Star, Camera
 } from 'lucide-react';
 import { TravelPackage, Enquiry, formatPrice } from '../types';
 import { db, collection, addDoc, auth, getDocs, query, where, deleteDoc, doc } from '../lib/firebase';
@@ -312,95 +313,77 @@ export default function PackageDetailView({
     pkg.packageBannerUrl || pkg.imageUrl,
     ...(pkg.galleryImages || [])
   ].filter(Boolean);
+  const packageReviews = Array.isArray((pkg as any).reviews) ? (pkg as any).reviews : [];
+  const relatedPackages = Array.isArray((pkg as any).relatedPackages) ? (pkg as any).relatedPackages : [];
 
   return (
     <div id="package-detail-view" className="animate-fade-in overflow-hidden bg-[#fffaf1]">
-      <section className="relative min-h-[72vh] overflow-hidden bg-stone-950 text-white">
+      <section className="relative min-h-[640px] overflow-hidden bg-stone-950 pt-28 text-white sm:pt-32">
         <img
           src={pkg.packageBannerUrl || pkg.imageUrl}
           alt={pkg.title}
           className="absolute inset-0 h-full w-full object-cover"
           referrerPolicy="no-referrer"
         />
-        <div className="absolute inset-0 bg-linear-to-r from-stone-950/90 via-stone-950/62 to-stone-950/12" />
-        <div className="absolute inset-0 bg-linear-to-t from-stone-950/78 via-transparent to-stone-950/18" />
+        <div className="absolute inset-0 bg-linear-to-r from-stone-950/92 via-stone-950/70 to-stone-950/20" />
+        <div className="absolute inset-0 bg-linear-to-t from-stone-950/86 via-transparent to-stone-950/20" />
+        <div className="absolute inset-x-0 bottom-0 h-28 bg-linear-to-t from-[#fffaf1] to-transparent" />
 
-        <div className="relative z-10 mx-auto flex min-h-[72vh] max-w-7xl flex-col justify-end px-4 py-12 sm:px-6 lg:px-8">
-          <button
-            onClick={onBack}
-            className="mb-10 inline-flex w-fit cursor-pointer items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.16em] text-white backdrop-blur-md transition hover:bg-white/18"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Back to packages</span>
-          </button>
+        <div className="relative z-10 mx-auto flex min-h-[512px] max-w-7xl flex-col justify-end px-4 pb-24 sm:px-6 lg:px-8">
+          <div className="mb-8 flex flex-wrap items-center gap-3 text-[12px] font-bold uppercase tracking-[0.14em] text-white/75">
+            <button type="button" onClick={onBack} className="inline-flex cursor-pointer items-center gap-2 transition hover:text-[#4DA528]">
+              <ArrowLeft className="h-4 w-4" />
+              <span>Packages</span>
+            </button>
+            <span className="h-px w-8 bg-white/45" />
+            <span className="text-[#4DA528]">Tour Single</span>
+          </div>
 
-          <div className="grid gap-8 lg:grid-cols-[1fr_380px] lg:items-end">
-            <div className="max-w-4xl space-y-6">
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="rounded-full bg-[#f59e0b] px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-950">
+          <div className="inner-heading-wrap flex-two grid gap-8 lg:grid-cols-[1fr_320px] lg:items-end">
+            <div className="inner-heading max-w-4xl">
+              <div className="mb-5 flex flex-wrap items-center gap-3">
+                <span className="feature rounded-[5px] bg-[#4DA528] px-4 py-2 text-[12px] font-bold uppercase tracking-[0.16em] text-white">
                   {pkg.category}
                 </span>
-                <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-white backdrop-blur-md">
-                  <MapPin className="h-3.5 w-3.5 text-[#5eead4]" />
+                <span className="inline-flex items-center gap-2 rounded-[5px] border border-white/20 bg-white/10 px-4 py-2 text-[12px] font-bold uppercase tracking-[0.14em] text-white backdrop-blur-md">
+                  <MapPin className="h-4 w-4 text-[#4DA528]" />
                   {pkg.destination}
                 </span>
               </div>
-
-              <div className="space-y-5">
-                <h1 className="text-5xl font-semibold leading-[1.02] tracking-tight text-white sm:text-6xl lg:text-7xl">
-                  {pkg.title}
-                </h1>
-                <p className="max-w-3xl text-sm leading-7 text-stone-200 sm:text-base">
-                  {pkg.shortDescription}
-                </p>
-              </div>
-
-              <div className="grid max-w-2xl grid-cols-2 gap-3 sm:grid-cols-3">
-                <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-md">
-                  <Calendar className="mb-2 h-5 w-5 text-[#fbbf24]" />
-                  <span className="block text-[10px] font-extrabold uppercase tracking-widest text-stone-300">Duration</span>
-                  <strong className="mt-1 block text-sm text-white">{pkg.duration}</strong>
-                </div>
-                <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-md">
-                  <Users className="mb-2 h-5 w-5 text-[#5eead4]" />
-                  <span className="block text-[10px] font-extrabold uppercase tracking-widest text-stone-300">Travel Style</span>
-                  <strong className="mt-1 block text-sm text-white">{pkg.category}</strong>
-                </div>
-                <div className="col-span-2 rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-md sm:col-span-1">
-                  <IndianRupee className="mb-2 h-5 w-5 text-[#f97350]" />
-                  <span className="block text-[10px] font-extrabold uppercase tracking-widest text-stone-300">Starts From</span>
-                  <strong className="mt-1 block text-sm text-white">{formatPrice(pkg.price)}</strong>
-                </div>
-              </div>
+              <h1 className="title max-w-5xl text-[46px] font-extrabold leading-[1.04] tracking-tight text-white sm:text-[64px] lg:text-[82px]">
+                {pkg.title}
+              </h1>
+              <p className="des mt-6 max-w-3xl text-[16px] leading-8 text-white/82">
+                {pkg.shortDescription}
+              </p>
+              <ul className="list-wrap-heading flex-three mt-8 flex flex-wrap gap-4 text-[14px] font-semibold text-white/86">
+                <li className="flex-three inline-flex items-center gap-2 rounded-[5px] border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-md">
+                  <Calendar className="h-4 w-4 text-[#4DA528]" />
+                  <span>{pkg.duration}</span>
+                </li>
+                <li className="flex-three inline-flex items-center gap-2 rounded-[5px] border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-md">
+                  <Users className="h-4 w-4 text-[#4DA528]" />
+                  <span>Max Guests: 12</span>
+                </li>
+                <li className="flex-three inline-flex items-center gap-2 rounded-[5px] border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-md">
+                  <MapPin className="h-4 w-4 text-[#4DA528]" />
+                  <span>{pkg.destination}</span>
+                </li>
+              </ul>
             </div>
 
-            <div className="rounded-[2rem] border border-white/18 bg-white/12 p-5 shadow-[0_24px_70px_rgba(0,0,0,0.24)] backdrop-blur-xl">
-              <span className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#fbbf24]">Offline booking request</span>
-              <div className="mt-3 rounded-3xl bg-white p-5 text-stone-950">
-                <span className="text-xs font-bold text-stone-500">Starting from</span>
-                <div className="mt-1 text-3xl font-extrabold text-[#0f766e]">{formatPrice(pkg.price)}</div>
-                <p className="mt-3 text-xs leading-6 text-stone-500">No online payment required. Submit your details and the Pravaah team will coordinate dates, route, hotels, and final pricing.</p>
-                <button
-                  onClick={() => {
-                    setBookingSuccess(false);
-                    setBookingError('');
-                    setIsBookingModalOpen(true);
-                  }}
-                  className="mt-5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-[#f97350] px-5 py-3 text-xs font-extrabold uppercase tracking-[0.14em] text-white shadow-[0_16px_35px_rgba(249,115,80,0.28)] transition hover:-translate-y-1 hover:bg-[#ea5f3c]"
-                >
-                  <Compass className="h-4 w-4" />
-                  <span>Book This Holiday</span>
-                </button>
+            <div className="inner-price rounded-[14px] border border-white/18 bg-white/12 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.24)] backdrop-blur-xl">
+              <div className="start flex-three flex items-center gap-1 text-[#FF970D]">
+                {[...Array(5)].map((_, index) => (
+                  <Star key={index} className="h-4 w-4 fill-current" />
+                ))}
+                <span className="review ml-2 text-[13px] font-semibold text-white/78">(1 Review)</span>
               </div>
-              {isAdminLoggedIn && onDeletePackage && (
-                <button
-                  onClick={() => onDeletePackage(pkg.id)}
-                  className="mt-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-red-600 px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-red-700"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  <span>Delete Package</span>
-                </button>
-              )}
+              <p className="price-sale text-main mt-4 text-[34px] font-extrabold text-[#4DA528]">
+                {formatPrice(pkg.offerPrice || pkg.price)}
+                {pkg.offerPrice && <span className="price ml-3 text-[18px] font-semibold text-white/58 line-through">{formatPrice(pkg.price)}</span>}
+              </p>
+              <p className="mt-2 text-[13px] leading-6 text-white/72">Starting price per person. Final quote depends on route, dates, hotels, and group size.</p>
             </div>
           </div>
         </div>
@@ -414,19 +397,10 @@ export default function PackageDetailView({
           {/* Left: General Details, Itinerary, Inclusions */}
           <div className="space-y-8 lg:col-span-2">
 
-            {/* Description */}
-            <div className="rounded-[2rem] border border-stone-200 bg-white p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8">
-              <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#0f766e]">About the holiday</span>
-              <h3 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950">A closer look at this journey</h3>
-              <p className="mt-5 whitespace-pre-line text-sm leading-8 text-stone-600">
-                {pkg.fullDescription || pkg.shortDescription}
-              </p>
-            </div>
-
             {packageGalleryImages.length > 0 && (
-              <div className="rounded-[2rem] border border-stone-200 bg-white p-4 shadow-[0_18px_50px_rgba(18,38,32,0.08)]" id="package-gallery">
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="relative h-72 overflow-hidden rounded-[1.5rem] md:col-span-2 md:h-96">
+              <div className="image-gallery-single rounded-[18px] border border-stone-200 bg-white p-4 shadow-[0_18px_50px_rgba(18,38,32,0.08)]" id="package-gallery">
+                <div className={packageGalleryImages.length === 1 ? 'grid gap-4' : 'grid gap-4 md:grid-cols-3'}>
+                  <div className={`relative h-72 overflow-hidden rounded-[14px] ${packageGalleryImages.length === 1 ? 'md:h-[520px]' : 'md:col-span-2 md:h-96'}`}>
                     <img
                       src={packageGalleryImages[0]}
                       alt={`${pkg.title} gallery lead`}
@@ -439,9 +413,10 @@ export default function PackageDetailView({
                       <h3 className="mt-3 text-2xl font-semibold">{pkg.destination}</h3>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4 md:grid-cols-1">
-                    {(packageGalleryImages.slice(1, 3).length > 0 ? packageGalleryImages.slice(1, 3) : packageGalleryImages.slice(0, 2)).map((imageUrl, idx) => (
-                      <div key={`${imageUrl}-${idx}`} className="h-34 overflow-hidden rounded-[1.5rem] bg-stone-100 md:h-[184px]">
+                  {packageGalleryImages.length > 1 && (
+                    <div className="grid grid-cols-2 gap-4 md:grid-cols-1">
+                      {packageGalleryImages.slice(1, 3).map((imageUrl, idx) => (
+                      <div key={`${imageUrl}-${idx}`} className="h-34 overflow-hidden rounded-[14px] bg-stone-100 md:h-[184px]">
                         <img
                           src={imageUrl}
                           alt={`${pkg.title} gallery ${idx + 1}`}
@@ -449,27 +424,74 @@ export default function PackageDetailView({
                           referrerPolicy="no-referrer"
                         />
                       </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
+            {/* Description */}
+            <div className="information-content-tour rounded-[18px] border border-stone-200 bg-white p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8">
+              <div className="description-wrap mb-40">
+                <span className="description text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Description:</span>
+                <h3 className="mt-3 text-3xl font-extrabold tracking-tight text-stone-950">A closer look at this journey</h3>
+                <p className="des mt-5 whitespace-pre-line text-sm leading-8 text-stone-600">
+                  {pkg.fullDescription || pkg.shortDescription}
+                </p>
+              </div>
+
+              {pkg.highlights && pkg.highlights.length > 0 && (
+                <div className="description-wrap mb-40">
+                  <span className="description text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">What to Expect</span>
+                  <ul className="listing-des mt-5 grid gap-3 sm:grid-cols-2">
+                    {pkg.highlights.map((item, idx) => (
+                      <li key={idx} className="flex items-start gap-3 rounded-[10px] bg-[#fffaf1] p-4 text-sm leading-6 text-stone-700">
+                        <Heart className="mt-1 h-4 w-4 shrink-0 text-[#FF970D]" />
+                        <p>{item}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="expect-wrap">
+                <h4 className="title mb-5 text-2xl font-extrabold text-stone-950">Quick Facts</h4>
+                {[
+                  ['Departure/Return Location', pkg.pickup || pkg.destination],
+                  ['Tour Duration', pkg.duration],
+                  ['Travel Category', pkg.category],
+                  ['Package Code', pkg.packageCode || pkg.id],
+                ].map(([label, value]) => (
+                  <div key={label} className="expect flex-three flex flex-col gap-1 border-t border-stone-100 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-[13px] font-bold uppercase tracking-[0.12em] text-stone-500">{label}</span>
+                    <p className="text-sm font-semibold text-stone-900">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Interactive Route Maps visualizer */}
-            <InteractiveRouteMap 
-              itinerary={localItinerary} 
-              destination={pkg.destination} 
-              category={pkg.category}
-              activeDay={activeDay}
-              onDayClick={(day) => setActiveDay(day)}
-            />
+            <div className="rounded-[18px] border border-stone-200 bg-white p-4 shadow-[0_18px_50px_rgba(18,38,32,0.08)]">
+              <div className="mb-4 px-2 pt-2">
+                <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Location share</span>
+                <h3 className="mt-2 text-3xl font-extrabold tracking-tight text-stone-950">Route map</h3>
+              </div>
+              <InteractiveRouteMap 
+                itinerary={localItinerary} 
+                destination={pkg.destination} 
+                category={pkg.category}
+                activeDay={activeDay}
+                onDayClick={(day) => setActiveDay(day)}
+              />
+            </div>
 
             {/* Day Wise Itinerary */}
-            <div className="space-y-6 rounded-[2rem] border border-stone-200 bg-white p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8" id="custom-itinerary-section">
+            <div className="space-y-6 rounded-[18px] border border-stone-200 bg-white p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8" id="custom-itinerary-section">
               <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                 <div className="space-y-2">
-                  <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#0f766e]">Day-wise route</span>
-                  <h3 className="text-3xl font-semibold tracking-tight text-stone-950">Interactive itinerary</h3>
+                  <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Tour Planing</span>
+                  <h3 className="text-3xl font-extrabold tracking-tight text-stone-950">Interactive itinerary</h3>
                   <p className="text-sm leading-6 text-stone-500">Click a day to focus its spot coordinate on the map above.</p>
                 </div>
                 
@@ -480,7 +502,7 @@ export default function PackageDetailView({
                   className={`flex cursor-pointer items-center gap-2 rounded-full border px-5 py-3 text-[10px] font-extrabold uppercase tracking-[0.14em] transition ${
                     isCustomizing 
                       ? 'border-amber-600 bg-amber-500 text-white shadow-md' 
-                      : 'border-stone-200 bg-[#fffaf1] text-stone-700 hover:border-[#0f766e] hover:text-[#0f766e]'
+                      : 'border-stone-200 bg-[#fffaf1] text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'
                   }`}
                 >
                   <Sliders className="h-4 w-4" />
@@ -499,7 +521,7 @@ export default function PackageDetailView({
                 </div>
               )}
 
-              <div className="space-y-4">
+              <div className="relative space-y-5 before:absolute before:bottom-6 before:left-[22px] before:top-6 before:w-px before:bg-stone-200 sm:before:left-[28px]">
                 {localItinerary && localItinerary.length > 0 ? (
                   localItinerary.map((dayItem, index) => {
                     const isOpen = activeDay === dayItem.day;
@@ -510,14 +532,19 @@ export default function PackageDetailView({
                         onDragStart={() => handleDragStart(index)}
                         onDragOver={(e) => handleDragOver(e, index)}
                         onDrop={() => handleDrop(index)}
-                        className={`overflow-hidden rounded-3xl border transition-all duration-300 ${
+                        className={`relative ml-12 rounded-[14px] border transition-all duration-300 sm:ml-16 ${
                           isCustomizing 
                             ? 'border-amber-300 bg-[#fffaf1] shadow-sm hover:border-amber-500 hover:shadow-md' 
                             : isOpen 
-                              ? 'border-[#0f766e]/60 shadow-sm ring-1 ring-[#0f766e]/10'
+                              ? 'border-[#4DA528]/60 shadow-sm ring-1 ring-[#4DA528]/10'
                               : 'border-stone-200 bg-white'
                         }`}
                       >
+                        <span className={`absolute -left-[49px] top-4 z-10 flex h-11 w-11 items-center justify-center rounded-full border-4 border-white text-[12px] font-extrabold shadow-md sm:-left-[61px] ${
+                          isOpen ? 'bg-[#4DA528] text-white' : 'bg-stone-100 text-stone-600'
+                        }`}>
+                          {dayItem.day}
+                        </span>
                         <div
                           className={`flex w-full items-center justify-between p-4 text-left transition sm:p-5 ${
                             isCustomizing ? 'cursor-grab' : 'cursor-pointer hover:bg-[#fffaf1]'
@@ -537,7 +564,7 @@ export default function PackageDetailView({
                               </div>
                             ) : (
                               <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border font-mono text-[10px] font-extrabold shadow-sm transition-colors ${
-                                isOpen ? 'border-transparent bg-[#0f766e] text-white' : 'border-stone-200 bg-[#fffaf1] text-stone-600'
+                                isOpen ? 'border-transparent bg-[#4DA528] text-white' : 'border-stone-200 bg-[#fffaf1] text-stone-600'
                               }`}>
                                 D{dayItem.day}
                               </span>
@@ -555,7 +582,7 @@ export default function PackageDetailView({
                                 type="button"
                                 disabled={index === 0}
                                 onClick={() => moveDay(index, 'up')}
-                                className="cursor-pointer rounded-full border border-stone-200 bg-white p-1 text-stone-500 hover:bg-stone-50 hover:text-[#0f766e] disabled:opacity-30"
+                                className="cursor-pointer rounded-full border border-stone-200 bg-white p-1 text-stone-500 hover:bg-stone-50 hover:text-[#4DA528] disabled:opacity-30"
                               >
                                 <ArrowUp className="h-3.5 w-3.5" />
                               </button>
@@ -563,14 +590,14 @@ export default function PackageDetailView({
                                 type="button"
                                 disabled={index === localItinerary.length - 1}
                                 onClick={() => moveDay(index, 'down')}
-                                className="cursor-pointer rounded-full border border-stone-200 bg-white p-1 text-stone-500 hover:bg-stone-50 hover:text-[#0f766e] disabled:opacity-30"
+                                className="cursor-pointer rounded-full border border-stone-200 bg-white p-1 text-stone-500 hover:bg-stone-50 hover:text-[#4DA528] disabled:opacity-30"
                               >
                                 <ArrowDown className="h-3.5 w-3.5" />
                               </button>
                             </div>
                           ) : (
                             <div>
-                              {isOpen ? <ChevronUp className="h-4 w-4 text-[#0f766e]" /> : <ChevronDown className="h-4 w-4 text-stone-400" />}
+                              {isOpen ? <ChevronUp className="h-4 w-4 text-[#4DA528]" /> : <ChevronDown className="h-4 w-4 text-stone-400" />}
                             </div>
                           )}
                         </div>
@@ -632,35 +659,22 @@ export default function PackageDetailView({
               </div>
             </div>
 
-            {pkg.highlights && pkg.highlights.length > 0 && (
-              <div className="rounded-[2rem] border border-stone-200 bg-white p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8">
-                <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#0f766e]">Highlights</span>
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  {pkg.highlights.map((item, idx) => (
-                    <div key={idx} className="flex items-start gap-3 rounded-2xl bg-[#fffaf1] p-4 text-sm leading-6 text-stone-700">
-                      <Heart className="mt-1 h-4 w-4 shrink-0 text-[#f97350]" />
-                      <span>{item}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {pkg.faqs && pkg.faqs.length > 0 && (
-              <div className="rounded-[2rem] border border-stone-200 bg-white p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8" id="package-faqs">
-                <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#0f766e]">FAQ</span>
-                <h3 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950">Questions before you go</h3>
+              <div className="rounded-[18px] border border-stone-200 bg-white p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8" id="package-faqs">
+                <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">FAQ</span>
+                <h3 className="mt-3 text-3xl font-extrabold tracking-tight text-stone-950">Questions before you go</h3>
                 <div className="mt-6 space-y-3">
                   {pkg.faqs.map((faq, idx) => (
-                    <div key={idx} className="rounded-3xl border border-stone-200 bg-[#fffaf1] p-5">
-                      <div className="flex items-start gap-3">
-                        <HelpCircle className="mt-1 h-5 w-5 shrink-0 text-[#0f766e]" />
-                        <div>
-                          <h4 className="text-sm font-extrabold text-stone-950">{faq.question}</h4>
-                          <p className="mt-2 text-sm leading-7 text-stone-600">{faq.answer}</p>
-                        </div>
-                      </div>
-                    </div>
+                    <details key={idx} className="group rounded-[12px] border border-stone-200 bg-[#fffaf1] p-5 open:bg-white open:shadow-sm">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
+                        <span className="flex items-start gap-3">
+                          <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-[#4DA528]" />
+                          <span className="text-sm font-extrabold text-stone-950">{faq.question}</span>
+                        </span>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-stone-400 transition group-open:rotate-180 group-open:text-[#4DA528]" />
+                      </summary>
+                      <p className="mt-4 pl-8 text-sm leading-7 text-stone-600">{faq.answer}</p>
+                    </details>
                   ))}
                 </div>
               </div>
@@ -670,18 +684,61 @@ export default function PackageDetailView({
 
           {/* Right: Sticky Enquiry Form */}
           <div className="lg:col-span-1">
-            <div className="sticky top-28 space-y-6 rounded-[2rem] border border-stone-200 bg-white p-6 shadow-[0_24px_70px_rgba(18,38,32,0.14)]" id="detail-enquiry-card">
+            <div className="side-bar-right sticky top-28 space-y-6 rounded-[18px] border border-stone-200 bg-white p-6 shadow-[0_24px_70px_rgba(18,38,32,0.14)]" id="detail-enquiry-card">
               
               {/* Box Heading */}
-              <div className="space-y-2 border-b border-stone-100 pb-5">
-                <span className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#0f766e]">Plan with us</span>
-                <h3 className="text-2xl font-semibold text-stone-950">Flow into journey</h3>
-                <p className="text-sm leading-7 text-stone-500">
-                  Enquire today, and get a customized draft itinerary within 24 hours.
-                </p>
-                <div className="rounded-3xl bg-[#fffaf1] p-4">
-                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Starts from</div>
-                  <div className="mt-1 text-2xl font-extrabold text-[#0f766e]">{formatPrice(pkg.price)}</div>
+              <div className="sidebar-widget space-y-4 border-b border-stone-100 pb-5">
+                <h6 className="block-heading text-2xl font-extrabold text-stone-950">Book This Tour</h6>
+                <div className="rounded-[14px] bg-[#fffaf1] p-5">
+                  <div className="text-[11px] font-extrabold uppercase tracking-wider text-stone-500">Total:</div>
+                  <div className="total text-main mt-1 text-3xl font-extrabold text-[#4DA528]">{formatPrice(pkg.offerPrice || pkg.price)}</div>
+                  <div className="mt-4 space-y-3 text-sm text-stone-600">
+                    <div className="flex-two flex items-center justify-between gap-4">
+                      <span className="label font-semibold">Duration:</span>
+                      <span>{pkg.duration}</span>
+                    </div>
+                    <div className="flex-two flex items-center justify-between gap-4">
+                      <span className="label font-semibold">Destination:</span>
+                      <span className="text-right">{pkg.destination}</span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBookingSuccess(false);
+                    setBookingError('');
+                    setIsBookingModalOpen(true);
+                  }}
+                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-[5px] bg-[#4DA528] px-5 py-4 text-[12px] font-extrabold uppercase tracking-[0.14em] text-white shadow-[0_16px_35px_rgba(77,165,40,0.25)] transition hover:-translate-y-0.5 hover:bg-[#FF970D]"
+                >
+                  <Compass className="h-4 w-4" />
+                  <span>Procced Booking</span>
+                </button>
+                {isAdminLoggedIn && onDeletePackage && (
+                  <button
+                    onClick={() => onDeletePackage(pkg.id)}
+                    className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-[5px] bg-red-600 px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-red-700"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span>Delete Package</span>
+                  </button>
+                )}
+                <div className="category-confidence space-y-3 pt-2 text-sm text-stone-600">
+                  <div className="flex-three flex items-center gap-3">
+                    <Phone className="h-4 w-4 text-[#4DA528]" />
+                    <span>Customer care available for planning support</span>
+                  </div>
+                  <div className="flex-three flex items-center gap-3">
+                    <CheckCircle2 className="h-4 w-4 text-[#4DA528]" />
+                    <span>Hand-picked tours and stays</span>
+                  </div>
+                </div>
+                <div className="pt-2">
+                  <span className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-[#4DA528]">Plan with us</span>
+                  <p className="mt-2 text-sm leading-7 text-stone-500">
+                    Enquire today, and get a customized draft itinerary within 24 hours.
+                  </p>
                 </div>
               </div>
 

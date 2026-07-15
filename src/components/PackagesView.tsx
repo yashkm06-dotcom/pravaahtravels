@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Filter, Calendar, MapPin, ArrowRight, SlidersHorizontal, RefreshCw, Trash2 } from 'lucide-react';
+import { Search, Filter, Calendar, MapPin, ArrowRight, SlidersHorizontal, RefreshCw, Trash2, Star, Camera, Heart } from 'lucide-react';
 import { TravelPackage, DestinationCategory, formatPrice } from '../types';
 import SkeletonLoader from './SkeletonLoader';
 
@@ -89,23 +89,31 @@ export default function PackagesView({
 
   return (
     <div id="packages-view" className="animate-fade-in overflow-hidden bg-[#fffaf1]">
-      <section className="relative bg-stone-950 px-4 py-20 text-white sm:px-6 lg:px-8">
+      <section className="relative min-h-[430px] bg-stone-950 px-4 pb-24 pt-36 text-white sm:px-6 sm:pt-40 lg:px-8">
         <div
-          className="absolute inset-0 bg-cover bg-center opacity-45"
-          style={{ backgroundImage: 'url("https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=1800&q=80")' }}
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: 'url("https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=2200&q=85")' }}
         />
-        <div className="absolute inset-0 bg-linear-to-r from-stone-950 via-stone-950/78 to-stone-950/35" />
+        <div className="absolute inset-0 bg-linear-to-r from-stone-950/92 via-stone-950/72 to-stone-950/35" />
+        <div className="absolute inset-x-0 bottom-0 h-40 bg-linear-to-t from-[#fffaf1] via-[#fffaf1]/45 to-transparent" />
         
-        <div className="relative mx-auto max-w-7xl">
-          <div className="max-w-3xl space-y-5">
-            <span className="inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.24em] text-[#fbbf24] backdrop-blur-md">
-              Curated Catalog
+        <div className="relative mx-auto flex min-h-[270px] max-w-7xl items-center">
+          <div className="max-w-3xl">
+            <div className="mb-5 flex items-center gap-3 text-[12px] font-bold uppercase tracking-[0.16em] text-white/75">
+              <button type="button" onClick={() => onNavigate('home')} className="cursor-pointer transition hover:text-[#4DA528]">
+                Home
+              </button>
+              <span className="h-px w-8 bg-white/45" />
+              <span className="text-[#4DA528]">Tour Package</span>
+            </div>
+            <span className="font-serif text-[30px] italic leading-none text-[#4DA528] sm:text-[42px]">
+              Explore the world
             </span>
-            <h2 className="text-5xl font-semibold leading-tight tracking-tight text-white sm:text-6xl">
-              Explore handcrafted travel packages
-            </h2>
-            <p className="max-w-2xl text-sm leading-7 text-stone-200 sm:text-base">
-              Search, refine, and discover live package data from Pravaah's Firestore catalog. Every package opens into a detailed itinerary, pricing, and enquiry flow.
+            <h1 className="mt-4 text-[52px] font-extrabold leading-[0.98] tracking-tight text-white sm:text-[72px] lg:text-[88px]">
+              Tour Package
+            </h1>
+            <p className="mt-6 max-w-2xl text-[16px] leading-8 text-white/82 sm:text-[18px]">
+              Search, refine, and discover live Pravaah journeys with detailed itineraries, pricing, and enquiry flow.
             </p>
           </div>
         </div>
@@ -114,7 +122,7 @@ export default function PackagesView({
       <div className="mx-auto max-w-7xl space-y-10 px-4 py-12 sm:px-6 lg:px-8">
 
         {/* Filter & Search Bar */}
-        <div className="-mt-24 rounded-[2rem] border border-stone-200 bg-white p-4 shadow-[0_24px_70px_rgba(18,38,32,0.18)] sm:p-6" id="filter-panel">
+        <div className="-mt-24 rounded-[14px] border border-stone-200 bg-white p-4 shadow-[0_24px_70px_rgba(18,38,32,0.18)] sm:p-6" id="filter-panel">
           <div className="mb-5 flex flex-col gap-3 border-b border-stone-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#0f766e]">
@@ -228,19 +236,31 @@ export default function PackagesView({
             {filteredPackages.map((pkg) => (
               <article 
                 key={pkg.id} 
-                className="group flex overflow-hidden rounded-[2rem] border border-stone-200 bg-white shadow-[0_18px_50px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_28px_70px_rgba(18,38,32,0.16)] flex-col"
+                className="tour-listing group flex overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_14px_38px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_28px_70px_rgba(18,38,32,0.16)] flex-col"
               >
                 {/* Package Image Banner */}
-                <div className="relative h-72 overflow-hidden bg-stone-100">
+                <div className="tour-listing-image relative aspect-[1.22/1] overflow-hidden bg-stone-100">
                   <img 
                     src={pkg.imageUrl} 
                     alt={pkg.title}
                     className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
                     referrerPolicy="no-referrer"
                   />
-                  <div className="absolute inset-0 bg-linear-to-t from-stone-950/72 via-transparent to-transparent" />
-                  <div className="absolute left-5 top-5 rounded-full bg-white/95 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider text-[#0f766e] shadow-sm">
-                    {pkg.category}
+                  <div className="absolute inset-0 bg-linear-to-t from-stone-950/55 via-transparent to-transparent" />
+                  <div className="badge-top flex-two absolute left-4 right-4 top-4 z-20 flex items-center justify-between gap-3">
+                    <span className="feature rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white shadow-sm">
+                      Featured
+                    </span>
+                    <div className="badge-media flex-five flex items-center gap-2">
+                      <span className="media inline-flex items-center gap-1 rounded bg-white/95 px-2.5 py-1 text-[12px] font-bold text-stone-800 shadow-sm">
+                        <Camera className="h-3.5 w-3.5 text-[#4DA528]" />
+                        5
+                      </span>
+                      <span className="media inline-flex items-center gap-1 rounded bg-white/95 px-2.5 py-1 text-[12px] font-bold text-stone-800 shadow-sm">
+                        <Heart className="h-3.5 w-3.5 text-[#FF970D]" />
+                        2
+                      </span>
+                    </div>
                   </div>
                   {isAdminLoggedIn && onDeletePackage && (
                     <button
@@ -255,15 +275,18 @@ export default function PackagesView({
                     </button>
                   )}
                   {pkg.price && (
-                    <div className="absolute bottom-5 right-5 rounded-2xl bg-white px-4 py-2 text-xs font-semibold text-stone-600 shadow-lg">
+                    <div className="absolute bottom-5 right-5 rounded-[6px] bg-white px-4 py-2 text-xs font-semibold text-stone-600 shadow-lg">
                       From <span className="text-base font-extrabold text-[#0f766e]">{formatPrice(pkg.price)}</span>
                     </div>
                   )}
                 </div>
 
                 {/* Card Info Body */}
-                <div className="flex flex-1 flex-col justify-between space-y-5 p-6">
+                <div className="tour-listing-content flex flex-1 flex-col justify-between space-y-5 p-6">
                   <div className="space-y-3">
+                    <span className="tag-listing inline-flex rounded bg-[#FF970D]/12 px-3 py-1 text-[12px] font-bold text-[#D57400]">
+                      {pkg.category}
+                    </span>
                     <div className="flex flex-wrap items-center gap-3 text-[10px] font-extrabold uppercase tracking-[0.15em] text-stone-500">
                       <span className="inline-flex items-center gap-1.5">
                         <Calendar className="h-3.5 w-3.5 text-[#f97350]" />
@@ -274,9 +297,15 @@ export default function PackagesView({
                         <span className="line-clamp-1">{pkg.destination}</span>
                       </span>
                     </div>
-                    <h3 className="line-clamp-2 text-2xl font-semibold leading-tight text-stone-950 transition group-hover:text-[#0f766e]">
+                    <h3 className="title-tour-list line-clamp-2 text-[22px] font-bold leading-tight text-stone-950 transition group-hover:text-[#4DA528]">
                       {pkg.title}
                     </h3>
+                    <div className="review flex items-center gap-1 text-[#FF970D]">
+                      {[...Array(5)].map((_, index) => (
+                        <Star key={index} className="h-4 w-4 fill-current" />
+                      ))}
+                      <span className="ml-2 text-[13px] font-medium text-stone-500">(1 Review)</span>
+                    </div>
                     <p className="line-clamp-3 text-sm leading-7 text-stone-600">
                       {pkg.shortDescription}
                     </p>
@@ -289,7 +318,7 @@ export default function PackagesView({
                     </div>
                     <button
                       onClick={() => onNavigate('package-detail', pkg.id)}
-                      className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-[#102b2a] px-5 py-3 text-[10px] font-extrabold uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5 hover:bg-[#0f766e]"
+                      className="btn-main inline-flex cursor-pointer items-center gap-2 rounded-[5px] bg-[#4DA528] px-5 py-3 text-[10px] font-extrabold uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5 hover:bg-[#FF970D]"
                     >
                       <span>Details</span>
                       <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
