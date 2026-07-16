@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 interface SEOProps {
   title: string;
   description: string;
+  keywords?: string;
   canonicalUrl?: string;
   ogImage?: string;
   ogType?: 'website' | 'article' | 'travel';
@@ -16,6 +17,7 @@ interface SEOProps {
 export default function SEO({
   title,
   description,
+  keywords,
   canonicalUrl,
   ogImage = 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&q=80',
   ogType = 'website',
@@ -39,6 +41,9 @@ export default function SEO({
 
     // 3. Set standard descriptions
     setMetaTag('name', 'description', description);
+    if (keywords) {
+      setMetaTag('name', 'keywords', keywords);
+    }
 
     // 4. Set Open Graph (OG) Tags
     const currentUrl = canonicalUrl || window.location.href;
@@ -107,7 +112,7 @@ export default function SEO({
         scriptToRemove.remove();
       }
     };
-  }, [title, description, canonicalUrl, ogImage, ogType, schemaMarkup]);
+  }, [title, description, keywords, canonicalUrl, ogImage, ogType, schemaMarkup]);
 
   return null; // Side-effect only component
 }

@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth, db, collection, getDocs, query, orderBy, deleteDoc, doc } from './lib/firebase';
+import { auth, db, collection, getDocs, query, orderBy, deleteDoc, doc, getDoc } from './lib/firebase';
 import { checkAndSeedDatabase } from './lib/seedHelper';
 import { SEED_PACKAGES, SEED_GALLERY } from './lib/seedData';
 import { MessageCircle, Sparkles, Compass } from 'lucide-react';
-import { TravelPackage, Enquiry, GalleryImage, DestinationCategory } from './types';
+import { TravelPackage, Enquiry, GalleryImage, DestinationCategory, WebsiteCMSSettings, DEFAULT_WEBSITE_CMS } from './types';
 
 // Component imports
 import Header from './components/Header';
@@ -21,6 +21,7 @@ import AdminDashboardView from './components/AdminDashboardView';
 import CustomerPortalView from './components/CustomerPortalView';
 import AiCuratorView from './components/AiCuratorView';
 import VerifiedReviews from './components/VerifiedReviews';
+import SEO from './components/SEO';
 
 interface RouteState {
   view: string;
@@ -108,6 +109,7 @@ export default function App() {
   const [packages, setPackages] = useState<TravelPackage[]>([]);
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [gallery, setGallery] = useState<GalleryImage[]>([]);
+  const [websiteCMS, setWebsiteCMS] = useState<WebsiteCMSSettings>(DEFAULT_WEBSITE_CMS);
 
   // Loading states
   const [loadingData, setLoadingData] = useState(true);
@@ -221,12 +223,38 @@ export default function App() {
     if (fetchedGallery.length === 0) {
       fetchedGallery = SEED_GALLERY.map((img, idx) => ({
         id: `seed-gallery-${idx}`,
+        order: idx,
         ...img,
       })) as unknown as GalleryImage[];
     }
+    fetchedGallery.sort((a, b) => {
+      const aOrder = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER;
+      const bOrder = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    });
     setGallery(fetchedGallery);
 
-    // 4. Fetch Enquiries (Only if admin is logged in, else security rules blocks it)
+    // 4. Fetch Website CMS settings
+    try {
+      const cmsSnap = await getDoc(doc(db, 'siteSettings', 'main'));
+      if (cmsSnap.exists()) {
+        setWebsiteCMS({
+          ...DEFAULT_WEBSITE_CMS,
+          ...cmsSnap.data(),
+        } as WebsiteCMSSettings);
+      } else {
+        setWebsiteCMS(DEFAULT_WEBSITE_CMS);
+      }
+    } catch (err: any) {
+      console.warn('Error fetching website CMS settings, using defaults:', err);
+      if (err.message?.includes('permission') || err.code === 'permission-denied') {
+        handleFirestoreError(err, OperationType.GET, 'siteSettings/main');
+      }
+      setWebsiteCMS(DEFAULT_WEBSITE_CMS);
+    }
+
+    // 5. Fetch Enquiries (Only if admin is logged in, else security rules blocks it)
     const enquiriesColName = 'enquiries';
     try {
       const currentAuthUser = auth.currentUser;
@@ -430,6 +458,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-gray-800 font-sans" id="app-root">
+      <SEO
+        title={websiteCMS.seoTitle}
+        description={websiteCMS.seoDescription}
+        keywords={websiteCMS.seoKeywords}
+        ogImage={websiteCMS.heroBackgroundImageUrl}
+      />
       
       {/* Hide header on full-screen admin dashboard */}
       {currentView !== 'admin-dashboard' && (
@@ -439,6 +473,7 @@ export default function App() {
           isAdminLoggedIn={isAdminLoggedIn}
           currentUser={currentUser}
           onAdminLogout={handleAdminLogout}
+          websiteCMS={websiteCMS}
         />
       )}
 
@@ -452,6 +487,7 @@ export default function App() {
             isAdminLoggedIn={isAdminLoggedIn}
             onDeletePackage={handleDeletePackage}
             onSelectCategory={handleSelectCategory}
+            websiteCMS={websiteCMS}
           />
         )}
 
@@ -530,13 +566,14 @@ export default function App() {
             onLogout={handleAdminLogout}
             onNavigatePublic={() => handleNavigate('home')}
             onRefreshData={fetchAllData}
+            websiteCMS={websiteCMS}
           />
         )}
       </main>
 
       {/* Hide footer on full-screen admin dashboard */}
       {currentView !== 'admin-dashboard' && (
-        <Footer onNavigate={handleNavigate} />
+        <Footer onNavigate={handleNavigate} websiteCMS={websiteCMS} gallery={gallery} />
       )}
 
       {/* Floating Action Buttons Vertical Stack */}

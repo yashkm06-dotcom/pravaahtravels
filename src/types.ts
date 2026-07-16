@@ -66,8 +66,50 @@ export interface GalleryImage {
   category: string;
   album?: string; // New: Album grouping support
   imageUrl: string;
+  order?: number;
   createdAt: string;
 }
+
+export interface WebsiteCMSSettings {
+  heroBackgroundImageUrl?: string;
+  logoUrl?: string;
+  heroTitle: string;
+  heroTitleAccent: string;
+  heroSubtitle: string;
+  heroCtaText: string;
+  heroCtaLink: string;
+  footerContactInfo: string;
+  footerEmail: string;
+  footerPhone: string;
+  footerAddress: string;
+  socialFacebook: string;
+  socialX: string;
+  socialLinkedIn: string;
+  socialInstagram: string;
+  seoTitle: string;
+  seoDescription: string;
+  seoKeywords: string;
+  updatedAt?: string;
+}
+
+export const DEFAULT_WEBSITE_CMS: WebsiteCMSSettings = {
+  heroTitle: 'Tour Travel & adventure',
+  heroTitleAccent: 'Camping',
+  heroSubtitle: 'Explore Uttarakhand with guides who respect the mountains.',
+  heroCtaText: 'Let,s get started',
+  heroCtaLink: 'packages',
+  footerContactInfo: 'Premium Himalayan journeys, slow travel, sacred valleys, adventure routes, and tailor-made comfort handled by local curators.',
+  footerEmail: 'pravaahtravels@gmail.com',
+  footerPhone: '+91 91231 36692',
+  footerAddress: '402, Signature Towers, Sector 30, Gurugram, HR - 122001, India',
+  socialFacebook: '#',
+  socialX: '#',
+  socialLinkedIn: '#',
+  socialInstagram: '#',
+  seoTitle: 'Pravaah Travels',
+  seoDescription: 'Premium Himalayan journeys, sacred valleys, adventure routes, and tailor-made comfort handled by local curators.',
+  seoKeywords: 'Pravaah Travels, Himalayan tours, Uttarakhand travel, Himachal packages, Kedarnath yatra, luxury travel India',
+};
 
 export type BookingStatus = 'Pending' | 'Confirmed' | 'Completed' | 'Cancelled';
 export type PaymentStatus = 'Unpaid' | 'Paid' | 'Refunded';

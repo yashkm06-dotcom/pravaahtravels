@@ -2,12 +2,12 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Compass, LayoutDashboard, FileText, Package, Image as ImageIcon, 
   Plus, Edit2, Trash2, Check, X, Search, Filter, Download, 
-  Calendar, DollarSign, Users, LogOut, Globe, Eye, ChevronDown, 
+  Calendar, DollarSign, Users, LogOut, Globe, Eye, ChevronDown, ChevronUp,
   Upload, CheckCircle, Clock, AlertCircle, Sparkles, Phone, Mail, MessageSquare, Share2, UserPlus, Clipboard, CheckCircle2, Award, ExternalLink, Star, LineChart as LineChartIcon, RefreshCw,
   Menu, Bell, Settings, Palette, Home, Megaphone, Images, PanelLeftClose, PanelLeftOpen, SlidersHorizontal
 } from 'lucide-react';
-import { TravelPackage, Enquiry, GalleryImage, DestinationCategory, EnquiryStatus, formatPrice } from '../types';
-import { db, storage, collection, addDoc, updateDoc, deleteDoc, doc, getDocs } from '../lib/firebase';
+import { TravelPackage, Enquiry, GalleryImage, DestinationCategory, EnquiryStatus, formatPrice, WebsiteCMSSettings, DEFAULT_WEBSITE_CMS } from '../types';
+import { db, storage, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, setDoc, writeBatch } from '../lib/firebase';
 import { triggerSystemEmail } from '../lib/emailClient';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { fetchAnalyticsEvents } from '../lib/analytics';
@@ -25,6 +25,7 @@ interface AdminDashboardViewProps {
   onLogout: () => void;
   onNavigatePublic: () => void;
   onRefreshData: () => Promise<void>;
+  websiteCMS: WebsiteCMSSettings;
 }
 
 type AdminTab = 'overview' | 'packages' | 'enquiries' | 'gallery' | 'media-library' | 'website' | 'bookings' | 'reviews' | 'blogs' | 'analytics';
@@ -37,6 +38,7 @@ export default function AdminDashboardView({
   onLogout,
   onNavigatePublic,
   onRefreshData,
+  websiteCMS,
 }: AdminDashboardViewProps) {
   // Navigation inside Dashboard
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -44,6 +46,10 @@ export default function AdminDashboardView({
   const [adminSearch, setAdminSearch] = useState('');
   const [mediaLibrarySearch, setMediaLibrarySearch] = useState('');
   const [mediaLibraryCategory, setMediaLibraryCategory] = useState('All');
+  const [cmsFormData, setCmsFormData] = useState<WebsiteCMSSettings>(websiteCMS);
+  const [cmsSaving, setCmsSaving] = useState(false);
+  const [cmsUploadingField, setCmsUploadingField] = useState<'heroBackgroundImageUrl' | 'logoUrl' | null>(null);
+  const [mediaUploading, setMediaUploading] = useState(false);
 
   // Analytics State
   const [analyticsEvents, setAnalyticsEvents] = useState<any[]>([]);
@@ -171,6 +177,13 @@ export default function AdminDashboardView({
     fetchBlogPosts();
     fetchAnalyticsData();
   }, []);
+
+  useEffect(() => {
+    setCmsFormData({
+      ...DEFAULT_WEBSITE_CMS,
+      ...websiteCMS,
+    });
+  }, [websiteCMS]);
 
   const handleUpdateBookingStatus = async (bookingId: string, status: string) => {
     try {
@@ -1100,7 +1113,9 @@ export default function AdminDashboardView({
       await addDoc(colRef, {
         title: galleryFormData.title || 'Untitled Journey',
         category: galleryFormData.category,
+        album: galleryFormData.album.trim(),
         imageUrl: galleryFormData.imageUrl,
+        order: gallery.length,
         createdAt: new Date().toISOString(),
       });
 
@@ -1220,6 +1235,7 @@ export default function AdminDashboardView({
           category: multipleUploadCategory,
           album: multipleUploadAlbum.trim(),
           imageUrl: imageUrl,
+          order: gallery.length + successCount,
           createdAt: new Date().toISOString(),
         });
         successCount++;
@@ -1235,6 +1251,106 @@ export default function AdminDashboardView({
       alert('An error occurred during bulk upload. Some files may not have saved.');
     } finally {
       setIsUploadingMultiple(false);
+    }
+  };
+
+  const handleSaveWebsiteCMS = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    setCmsSaving(true);
+    try {
+      await setDoc(doc(db, 'siteSettings', 'main'), {
+        ...cmsFormData,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      await onRefreshData();
+      alert('Website CMS settings saved successfully.');
+    } catch (err) {
+      console.error('Error saving website CMS settings:', err);
+      alert('Failed to save website CMS settings.');
+    } finally {
+      setCmsSaving(false);
+    }
+  };
+
+  const handleCmsImageUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    field: 'heroBackgroundImageUrl' | 'logoUrl'
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCmsUploadingField(field);
+    try {
+      const fileName = `${field}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const imageRef = ref(storage, `cms/${fileName}`);
+      const snapshot = await uploadBytes(imageRef, file);
+      const imageUrl = await getDownloadURL(snapshot.ref);
+      const nextData = {
+        ...cmsFormData,
+        [field]: imageUrl,
+        updatedAt: new Date().toISOString(),
+      };
+      setCmsFormData(nextData);
+      await setDoc(doc(db, 'siteSettings', 'main'), nextData, { merge: true });
+      await onRefreshData();
+    } catch (err) {
+      console.error('CMS image upload failed:', err);
+      alert('Failed to upload CMS image.');
+    } finally {
+      setCmsUploadingField(null);
+      e.target.value = '';
+    }
+  };
+
+  const handleMediaLibraryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setMediaUploading(true);
+    try {
+      for (let idx = 0; idx < files.length; idx++) {
+        const file = files[idx];
+        const fileName = `${Date.now()}_${idx}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+        const imageRef = ref(storage, `gallery/${fileName}`);
+        const snapshot = await uploadBytes(imageRef, file);
+        const imageUrl = await getDownloadURL(snapshot.ref);
+        const baseTitle = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+        await addDoc(collection(db, 'gallery'), {
+          title: baseTitle.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+          category: mediaLibraryCategory === 'All' ? 'Pilgrimage' : mediaLibraryCategory,
+          album: 'Media Library',
+          imageUrl,
+          order: gallery.length + idx,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      await onRefreshData();
+    } catch (err) {
+      console.error('Media library upload failed:', err);
+      alert('Failed to upload media library images.');
+    } finally {
+      setMediaUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleMoveGalleryImage = async (imageId: string, direction: 'up' | 'down') => {
+    const currentIndex = gallery.findIndex((img) => img.id === imageId);
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= gallery.length) return;
+
+    const reordered = [...gallery];
+    const [moved] = reordered.splice(currentIndex, 1);
+    reordered.splice(targetIndex, 0, moved);
+
+    try {
+      const batch = writeBatch(db);
+      reordered.forEach((img, index) => {
+        batch.update(doc(db, 'gallery', img.id), { order: index });
+      });
+      await batch.commit();
+      await onRefreshData();
+    } catch (err) {
+      console.error('Failed to reorder gallery:', err);
+      alert('Failed to reorder gallery images.');
     }
   };
 
@@ -1627,8 +1743,8 @@ export default function AdminDashboardView({
                 <div className="absolute inset-y-0 right-0 hidden w-1/3 bg-linear-to-l from-[#4DA528]/12 to-transparent lg:block" />
                 <div className="relative max-w-3xl">
                   <span className="inline-flex rounded-full bg-[#4DA528]/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Website CMS</span>
-                  <h2 className="mt-4 text-4xl font-extrabold tracking-tight text-stone-950">Public website controls, ready for future wiring.</h2>
-                  <p className="mt-3 text-sm leading-7 text-stone-500">These modules are UI placeholders only. They do not connect to Firestore, Storage, APIs, or live publishing yet.</p>
+                  <h2 className="mt-4 text-4xl font-extrabold tracking-tight text-stone-950">Public website controls connected to Firebase.</h2>
+                  <p className="mt-3 text-sm leading-7 text-stone-500">Manage homepage hero, logo, footer contact details, social links, and SEO metadata from one CMS document.</p>
                 </div>
               </section>
 
@@ -1641,18 +1757,93 @@ export default function AdminDashboardView({
                         <span className="flex h-12 w-12 items-center justify-center rounded-[16px] bg-[#4DA528]/10 text-[#4DA528]">
                           <CardIcon className="h-5 w-5" />
                         </span>
-                        <span className="rounded-full bg-stone-100 px-3 py-1 text-[9px] font-extrabold uppercase tracking-wider text-stone-500">{card.status}</span>
+                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-[9px] font-extrabold uppercase tracking-wider text-emerald-700">Connected</span>
                       </div>
                       <h3 className="mt-5 text-xl font-extrabold text-stone-950">{card.label}</h3>
                       <p className="mt-2 text-sm leading-6 text-stone-500">{card.description}</p>
-                      <button type="button" className="mt-5 inline-flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-wider text-stone-400" disabled>
-                        Coming Soon
+                      <button type="button" className="mt-5 inline-flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-wider text-[#4DA528]" onClick={() => document.getElementById('website-cms-form')?.scrollIntoView({ behavior: 'smooth' })}>
+                        Edit Settings
                         <ExternalLink className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   );
                 })}
               </section>
+
+              <form id="website-cms-form" onSubmit={handleSaveWebsiteCMS} className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                <section className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
+                  <div className="mb-5 flex items-center justify-between gap-4">
+                    <div>
+                      <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Hero Banner</span>
+                      <h3 className="mt-2 text-xl font-extrabold text-stone-950">Homepage content</h3>
+                    </div>
+                    <button type="submit" disabled={cmsSaving} className="rounded-[5px] bg-[#4DA528] px-4 py-2 text-[10px] font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D] disabled:opacity-60">
+                      {cmsSaving ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Hero title</label>
+                        <input value={cmsFormData.heroTitle} onChange={(e) => setCmsFormData(prev => ({ ...prev, heroTitle: e.target.value }))} className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Hero accent</label>
+                        <input value={cmsFormData.heroTitleAccent} onChange={(e) => setCmsFormData(prev => ({ ...prev, heroTitleAccent: e.target.value }))} className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Subtitle</label>
+                      <textarea value={cmsFormData.heroSubtitle} onChange={(e) => setCmsFormData(prev => ({ ...prev, heroSubtitle: e.target.value }))} rows={3} className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">CTA text</label>
+                        <input value={cmsFormData.heroCtaText} onChange={(e) => setCmsFormData(prev => ({ ...prev, heroCtaText: e.target.value }))} className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">CTA link</label>
+                        <input value={cmsFormData.heroCtaLink} onChange={(e) => setCmsFormData(prev => ({ ...prev, heroCtaLink: e.target.value }))} placeholder="packages or https://..." className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="rounded-[16px] border border-dashed border-stone-300 bg-[#f7f8f3] p-4">
+                        <span className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Upload hero background</span>
+                        <input type="file" accept="image/*" onChange={(e) => handleCmsImageUpload(e, 'heroBackgroundImageUrl')} className="mt-3 block w-full text-xs" />
+                        <span className="mt-2 block text-xs text-stone-500">{cmsUploadingField === 'heroBackgroundImageUrl' ? 'Uploading...' : 'Uploads to Firebase Storage'}</span>
+                      </label>
+                      <label className="rounded-[16px] border border-dashed border-stone-300 bg-[#f7f8f3] p-4">
+                        <span className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Upload logo</span>
+                        <input type="file" accept="image/*" onChange={(e) => handleCmsImageUpload(e, 'logoUrl')} className="mt-3 block w-full text-xs" />
+                        <span className="mt-2 block text-xs text-stone-500">{cmsUploadingField === 'logoUrl' ? 'Uploading...' : 'Header and footer update automatically'}</span>
+                      </label>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
+                  <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Footer & SEO</span>
+                  <div className="mt-5 space-y-4">
+                    <textarea value={cmsFormData.footerContactInfo} onChange={(e) => setCmsFormData(prev => ({ ...prev, footerContactInfo: e.target.value }))} rows={3} placeholder="Footer description" className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <input value={cmsFormData.footerEmail} onChange={(e) => setCmsFormData(prev => ({ ...prev, footerEmail: e.target.value }))} placeholder="Email" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                      <input value={cmsFormData.footerPhone} onChange={(e) => setCmsFormData(prev => ({ ...prev, footerPhone: e.target.value }))} placeholder="Phone" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                    </div>
+                    <input value={cmsFormData.footerAddress} onChange={(e) => setCmsFormData(prev => ({ ...prev, footerAddress: e.target.value }))} placeholder="Address" className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <input value={cmsFormData.socialFacebook} onChange={(e) => setCmsFormData(prev => ({ ...prev, socialFacebook: e.target.value }))} placeholder="Facebook URL" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                      <input value={cmsFormData.socialX} onChange={(e) => setCmsFormData(prev => ({ ...prev, socialX: e.target.value }))} placeholder="X URL" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                      <input value={cmsFormData.socialLinkedIn} onChange={(e) => setCmsFormData(prev => ({ ...prev, socialLinkedIn: e.target.value }))} placeholder="LinkedIn URL" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                      <input value={cmsFormData.socialInstagram} onChange={(e) => setCmsFormData(prev => ({ ...prev, socialInstagram: e.target.value }))} placeholder="Instagram URL" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                    </div>
+                    <input value={cmsFormData.seoTitle} onChange={(e) => setCmsFormData(prev => ({ ...prev, seoTitle: e.target.value }))} placeholder="Meta title" className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                    <textarea value={cmsFormData.seoDescription} onChange={(e) => setCmsFormData(prev => ({ ...prev, seoDescription: e.target.value }))} rows={2} placeholder="Meta description" className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                    <input value={cmsFormData.seoKeywords} onChange={(e) => setCmsFormData(prev => ({ ...prev, seoKeywords: e.target.value }))} placeholder="SEO keywords" className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                  </div>
+                </section>
+              </form>
 
               <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)] lg:col-span-2">
@@ -1677,7 +1868,7 @@ export default function AdminDashboardView({
           )}
 
           {/* ==================================================== */}
-          {/* TAB 1C: MEDIA LIBRARY UI ONLY */}
+          {/* TAB 1C: MEDIA LIBRARY */}
           {/* ==================================================== */}
           {activeTab === 'media-library' && (
             <div className="space-y-8 animate-fade-in">
@@ -1687,8 +1878,12 @@ export default function AdminDashboardView({
                     <Upload className="h-7 w-7" />
                   </div>
                   <h2 className="mt-5 text-2xl font-extrabold text-stone-950">Upload media</h2>
-                  <p className="mx-auto mt-3 max-w-sm text-sm leading-7 text-stone-500">UI placeholder only. Firebase Storage upload is intentionally not connected on this Media Library page.</p>
-                  <button type="button" disabled className="mt-6 rounded-[5px] bg-stone-200 px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-stone-500">Upload Disabled</button>
+                  <p className="mx-auto mt-3 max-w-sm text-sm leading-7 text-stone-500">Upload images to Firebase Storage and publish them into the existing public gallery collection.</p>
+                  <label className={`mt-6 inline-flex cursor-pointer items-center justify-center gap-2 rounded-[5px] px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition ${mediaUploading ? 'bg-stone-400' : 'bg-[#4DA528] hover:bg-[#FF970D]'}`}>
+                    <Upload className="h-4 w-4" />
+                    <span>{mediaUploading ? 'Uploading...' : 'Select Images'}</span>
+                    <input type="file" accept="image/*" multiple onChange={handleMediaLibraryUpload} disabled={mediaUploading} className="hidden" />
+                  </label>
                 </div>
 
                 <div className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
@@ -1742,10 +1937,24 @@ export default function AdminDashboardView({
                       <div className="relative aspect-[4/3] overflow-hidden bg-stone-100">
                         <img src={img.imageUrl} alt={img.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" loading="lazy" referrerPolicy="no-referrer" />
                         <span className="absolute left-3 top-3 rounded bg-white/95 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-[#4DA528] shadow-sm">{img.category}</span>
+                        <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition group-hover:opacity-100">
+                          <button type="button" onClick={() => handleMoveGalleryImage(img.id, 'up')} className="rounded bg-white/95 p-1.5 text-stone-700 shadow-sm transition hover:bg-[#4DA528] hover:text-white" title="Move up">
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          </button>
+                          <button type="button" onClick={() => handleMoveGalleryImage(img.id, 'down')} className="rounded bg-white/95 p-1.5 text-stone-700 shadow-sm transition hover:bg-[#4DA528] hover:text-white" title="Move down">
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </button>
+                          <button type="button" onClick={() => handleDeleteGalleryImage(img.id)} className="rounded bg-white/95 p-1.5 text-rose-600 shadow-sm transition hover:bg-rose-600 hover:text-white" title="Delete image">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                       <div className="p-4">
                         <h3 className="line-clamp-1 text-sm font-extrabold text-stone-950">{img.title}</h3>
-                        <p className="mt-1 text-xs text-stone-500">{img.album || 'Unassigned album'}</p>
+                        <div className="mt-2 flex items-center justify-between gap-3">
+                          <p className="truncate text-xs text-stone-500">{img.album || 'Unassigned album'}</p>
+                          <span className="text-[10px] font-bold text-stone-400">#{typeof img.order === 'number' ? img.order + 1 : '-'}</span>
+                        </div>
                       </div>
                     </div>
                   ))

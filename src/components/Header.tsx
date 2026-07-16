@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CalendarDays, Compass, Mail, Menu, Phone, Search, ShieldAlert, UserCircle, X } from 'lucide-react';
+import { WebsiteCMSSettings } from '../types';
 
 interface HeaderProps {
   currentView: string;
@@ -7,6 +8,7 @@ interface HeaderProps {
   isAdminLoggedIn: boolean;
   currentUser: any;
   onAdminLogout: () => void;
+  websiteCMS: WebsiteCMSSettings;
 }
 
 export default function Header({
@@ -15,6 +17,7 @@ export default function Header({
   isAdminLoggedIn,
   currentUser,
   onAdminLogout,
+  websiteCMS,
 }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -30,6 +33,12 @@ export default function Header({
     onNavigate(view);
     setIsMenuOpen(false);
   };
+
+  const logoMark = websiteCMS.logoUrl ? (
+    <img src={websiteCMS.logoUrl} alt="Pravaah Travels logo" className="h-full w-full object-contain" referrerPolicy="no-referrer" />
+  ) : (
+    <Compass className="h-7 w-7" />
+  );
 
   const dashboardButton = isAdminLoggedIn ? (
     <>
@@ -81,11 +90,11 @@ export default function Header({
             </li>
             <li className="flex items-center gap-2">
               <Mail className="h-4 w-4 text-[#4DA528]" />
-              <span>pravaahtravels@gmail.com</span>
+              <span>{websiteCMS.footerEmail}</span>
             </li>
             <li className="flex items-center gap-2">
               <Phone className="h-4 w-4 text-[#4DA528]" />
-              <span>+91 91231 36692</span>
+              <span>{websiteCMS.footerPhone}</span>
             </li>
           </ul>
           <div className="flex items-center gap-7">
@@ -95,9 +104,9 @@ export default function Header({
             </button>
             <div className="flex items-center gap-3 text-stone-500">
               <span>Follow Us :</span>
-              <span className="h-2 w-2 rounded-full bg-[#4DA528]" />
-              <span className="h-2 w-2 rounded-full bg-[#FF970D]" />
-              <span className="h-2 w-2 rounded-full bg-stone-900" />
+              <a href={websiteCMS.socialFacebook || '#'} className="h-2 w-2 rounded-full bg-[#4DA528]" aria-label="Facebook" />
+              <a href={websiteCMS.socialInstagram || '#'} className="h-2 w-2 rounded-full bg-[#FF970D]" aria-label="Instagram" />
+              <a href={websiteCMS.socialLinkedIn || '#'} className="h-2 w-2 rounded-full bg-stone-900" aria-label="LinkedIn" />
             </div>
           </div>
         </div>
@@ -112,8 +121,8 @@ export default function Header({
             className="group flex cursor-pointer items-center gap-3"
             id="logo-container"
           >
-            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#4DA528] text-white shadow-[0_12px_28px_rgba(77,165,40,0.28)] transition group-hover:bg-[#FF970D]">
-              <Compass className="h-7 w-7" />
+            <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-[#4DA528] p-2 text-white shadow-[0_12px_28px_rgba(77,165,40,0.28)] transition group-hover:bg-[#FF970D]">
+              {logoMark}
             </span>
             <span className="text-left">
               <span className="block text-2xl font-extrabold leading-none text-stone-950">Pravaah</span>

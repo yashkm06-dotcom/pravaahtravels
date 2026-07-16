@@ -1,12 +1,15 @@
 import { ArrowRight, Check, Compass, Mail, MapPin, Phone, Send, Shield } from 'lucide-react';
+import { GalleryImage, WebsiteCMSSettings } from '../types';
 
 interface FooterProps {
   onNavigate: (view: string, packageId?: string | null) => void;
+  websiteCMS: WebsiteCMSSettings;
+  gallery: GalleryImage[];
 }
 
-export default function Footer({ onNavigate }: FooterProps) {
+export default function Footer({ onNavigate, websiteCMS, gallery }: FooterProps) {
   const currentYear = new Date().getFullYear();
-  const footerGallery = [
+  const fallbackFooterGallery = [
     'https://images.unsplash.com/photo-1626830503244-3d2ac0493ae0?auto=format&fit=crop&w=240&q=80',
     'https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=240&q=80',
     'https://images.unsplash.com/photo-1593693397690-362cb9666fc2?auto=format&fit=crop&w=240&q=80',
@@ -14,6 +17,18 @@ export default function Footer({ onNavigate }: FooterProps) {
     'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=240&q=80',
     'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=240&q=80',
   ];
+  const footerGallery = gallery.length > 0 ? gallery.slice(0, 6).map((item) => item.imageUrl) : fallbackFooterGallery;
+  const socialLinks = [
+    ['f', websiteCMS.socialFacebook],
+    ['x', websiteCMS.socialX],
+    ['in', websiteCMS.socialLinkedIn],
+    ['ig', websiteCMS.socialInstagram],
+  ];
+  const logoMark = websiteCMS.logoUrl ? (
+    <img src={websiteCMS.logoUrl} alt="Pravaah Travels logo" className="h-full w-full object-contain" referrerPolicy="no-referrer" />
+  ) : (
+    <Compass className="h-7 w-7" />
+  );
 
   return (
     <footer className="relative bg-[#081E2A] pt-28 text-white" id="main-footer">
@@ -26,8 +41,8 @@ export default function Footer({ onNavigate }: FooterProps) {
               className="group flex cursor-pointer items-center gap-3"
               id="footer-logo"
             >
-              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#4DA528] text-white transition group-hover:bg-[#FF970D]">
-                <Compass className="h-7 w-7" />
+              <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-[#4DA528] p-2 text-white transition group-hover:bg-[#FF970D]">
+                {logoMark}
               </span>
               <span className="text-left">
                 <span className="block text-2xl font-extrabold leading-none">Pravaah</span>
@@ -35,20 +50,20 @@ export default function Footer({ onNavigate }: FooterProps) {
               </span>
             </button>
             <p className="max-w-sm text-[15px] font-light leading-8 text-white/70">
-              Premium Himalayan journeys, slow travel, sacred valleys, adventure routes, and tailor-made comfort handled by local curators.
+              {websiteCMS.footerContactInfo}
             </p>
             <ul className="space-y-4 text-[15px] text-white/78">
               <li className="flex items-center gap-3">
                 <Mail className="h-5 w-5 text-[#4DA528]" />
-                <a href="mailto:pravaahtravels@gmail.com" className="transition hover:text-[#FF970D]">pravaahtravels@gmail.com</a>
+                <a href={`mailto:${websiteCMS.footerEmail}`} className="transition hover:text-[#FF970D]">{websiteCMS.footerEmail}</a>
               </li>
               <li className="flex items-center gap-3">
                 <Phone className="h-5 w-5 text-[#4DA528]" />
-                <a href="tel:+919123136692" className="transition hover:text-[#FF970D]">+91 91231 36692</a>
+                <a href={`tel:${websiteCMS.footerPhone.replace(/[^0-9+]/g, '')}`} className="transition hover:text-[#FF970D]">{websiteCMS.footerPhone}</a>
               </li>
               <li className="flex items-start gap-3">
                 <MapPin className="mt-1 h-5 w-5 shrink-0 text-[#4DA528]" />
-                <span>402, Signature Towers, Sector 30, Gurugram, HR - 122001, India</span>
+                <span>{websiteCMS.footerAddress}</span>
               </li>
             </ul>
           </div>
@@ -118,9 +133,9 @@ export default function Footer({ onNavigate }: FooterProps) {
               </div>
             </form>
             <ul className="mt-8 flex gap-3">
-              {['f', 'x', 'in', 'ig'].map((item) => (
+              {socialLinks.map(([item, href]) => (
                 <li key={item}>
-                  <a href="#" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 text-[12px] font-bold uppercase text-white/70 transition hover:border-[#4DA528] hover:bg-[#4DA528] hover:text-white">
+                  <a href={href || '#'} className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 text-[12px] font-bold uppercase text-white/70 transition hover:border-[#4DA528] hover:bg-[#4DA528] hover:text-white">
                     {item}
                   </a>
                 </li>

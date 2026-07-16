@@ -5,7 +5,7 @@ import {
   Sliders, GripVertical, ArrowUp, ArrowDown, X, Users, Clock, ThumbsUp, MessageSquare, Check, Phone, Send, Info,
   ChevronUp, ChevronDown
 } from 'lucide-react';
-import { TravelPackage, formatPrice, DestinationCategory } from '../types';
+import { TravelPackage, formatPrice, DestinationCategory, WebsiteCMSSettings } from '../types';
 import InteractiveRouteMap from './InteractiveRouteMap';
 import { db, collection, addDoc, getDocs, query, orderBy, limit } from '../lib/firebase';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
@@ -17,6 +17,7 @@ interface HomeViewProps {
   isAdminLoggedIn?: boolean;
   onDeletePackage?: (id: string) => void;
   onSelectCategory: (category: DestinationCategory) => void;
+  websiteCMS: WebsiteCMSSettings;
 }
 
 export default function HomeView({
@@ -26,6 +27,7 @@ export default function HomeView({
   isAdminLoggedIn = false,
   onDeletePackage,
   onSelectCategory,
+  websiteCMS,
 }: HomeViewProps) {
   // Wizard Planner State
   const [plannerCategory, setPlannerCategory] = useState<DestinationCategory>('Pilgrimage');
@@ -221,6 +223,20 @@ export default function HomeView({
     setAiError('');
   };
 
+  const handleHeroCtaClick = () => {
+    const link = (websiteCMS.heroCtaLink || 'packages').trim();
+    if (/^https?:\/\//i.test(link)) {
+      window.open(link, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    const normalized = link.replace(/^\//, '') || 'packages';
+    onNavigate(normalized);
+  };
+
+  const heroBackgroundImage = getTravelImage(
+    websiteCMS.heroBackgroundImageUrl || 'https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&q=80&w=1700'
+  );
+
   // AI Generation API Caller
   const handleGenerateAiItinerary = async () => {
     setAiGenerating(true);
@@ -360,7 +376,7 @@ export default function HomeView({
         <div className="absolute inset-0 bg-linear-to-r from-[#081E2A] via-[#081E2A]/92 to-[#081E2A]/10" />
         <div className="absolute inset-y-0 right-0 hidden w-[57%] overflow-hidden lg:block">
           <img
-            src={getTravelImage('https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&q=80&w=1700')}
+            src={heroBackgroundImage}
             alt="Himalayan mountain backdrop"
             className="absolute inset-0 h-full w-full object-cover object-center opacity-88"
             referrerPolicy="no-referrer"
@@ -402,7 +418,7 @@ export default function HomeView({
         </div>
 
         <img
-          src={getTravelImage('https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&q=80&w=1400')}
+          src={heroBackgroundImage}
           alt="Himalayan mobile tour"
           className="absolute inset-0 h-full w-full object-cover opacity-45 lg:hidden"
           referrerPolicy="no-referrer"
@@ -417,18 +433,18 @@ export default function HomeView({
               Explore the world
             </span>
             <h1 className="text-[58px] font-extrabold leading-[0.98] tracking-[-0.03em] text-white sm:text-[82px] lg:text-[104px] xl:text-[118px]">
-              Tour Travel & adventure
-              <span className="block text-[#4DA528]">Camping</span>
+              {websiteCMS.heroTitle}
+              <span className="block text-[#4DA528]">{websiteCMS.heroTitleAccent}</span>
             </h1>
             <p className="mt-8 max-w-[610px] text-[17px] leading-[1.85] text-white/82 sm:text-[18px]">
-              Explore Uttarakhand with guides who respect the mountains.
+              {websiteCMS.heroSubtitle}
             </p>
             <div className="mt-11 flex flex-col items-start gap-5 sm:flex-row sm:items-center">
               <button
-                onClick={() => onNavigate('packages')}
+                onClick={handleHeroCtaClick}
                 className="group inline-flex cursor-pointer items-center justify-center gap-3 rounded-[5px] bg-[#4DA528] px-8 py-[18px] text-[15px] font-semibold uppercase tracking-[0.05em] text-white transition hover:bg-[#FF970D]"
               >
-                <span className="translate-x-[15px] transition group-hover:translate-x-0">Let,s get started</span>
+                <span className="translate-x-[15px] transition group-hover:translate-x-0">{websiteCMS.heroCtaText}</span>
                 <ArrowRight className="h-4 w-4 -translate-x-[15px] opacity-0 transition group-hover:translate-x-0 group-hover:opacity-100" />
               </button>
               <button
