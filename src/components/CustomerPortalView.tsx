@@ -19,6 +19,7 @@ import {
 import { auth, db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy, getDoc, setDoc } from '../lib/firebase';
 import { formatPrice } from '../types';
 import { triggerSystemEmail } from '../lib/emailClient';
+import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 
 interface CustomerPortalViewProps {
   onLogout: () => void;
@@ -1197,56 +1198,131 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
   // ----------------------------------------------------
   // PORTAL LOGGED-IN VIEW
   // ----------------------------------------------------
+  const portalUserName = profileName || user.displayName || user.email?.split('@')[0] || 'Traveler';
+  const portalAvatarInitial = portalUserName.charAt(0).toUpperCase();
+  const currentDateLabel = new Intl.DateTimeFormat('en-IN', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  }).format(new Date());
+  const confirmedTrips = bookings.filter(b => b.status === 'Confirmed');
+  const completedTrips = confirmedTrips.length;
+  const upcomingBookings = bookings.filter(b => b.status !== 'Cancelled' && b.status !== 'Completed');
+  const pendingEnquiries = bookings.filter(b => b.status === 'Pending' || b.status === 'New Lead' || b.status === 'New').length;
+  const memberSince = user.metadata?.creationTime
+    ? new Date(user.metadata.creationTime).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+    : 'Recently';
+  const getBookingImage = (booking: any) => {
+    const savedMatch = savedPackages.find(saved => saved.title === booking.packageTitle || saved.destination === booking.destination);
+    return getTravelImage(booking.imageUrl || booking.packageImageUrl || savedMatch?.imageUrl);
+  };
+
   return (
-    <div className="max-w-6xl mx-auto my-8 px-4 font-sans" id="customer-portal-active-root">
+    <div className="min-h-screen bg-[#f6f7f2] px-4 py-8 font-sans sm:px-6 lg:px-8" id="customer-portal-active-root">
+      <div className="mx-auto max-w-7xl space-y-8">
       
       {/* Header Banner */}
-      <div className="bg-[#1f2937] text-white p-6 rounded-xl flex flex-col md:flex-row md:items-center md:justify-between shadow-lg mb-8">
-        <div>
-          <div className="flex items-center space-x-2">
-            <span className="bg-teal-500 text-xs font-bold px-2 py-0.5 rounded-full">Customer Portal</span>
-            <span className="text-[11px] text-stone-300 flex items-center"><Shield className="w-3.5 h-3.5 mr-1 text-emerald-400" /> End-to-End Secure</span>
-          </div>
-          <h1 className="text-2xl font-extrabold tracking-tight mt-1">Welcome, {user.displayName || user.email?.split('@')[0]}</h1>
-          <p className="text-xs text-stone-300 mt-1">{user.email}</p>
-        </div>
+      <section className="relative overflow-hidden rounded-[24px] bg-[#081E2A] p-5 text-white shadow-[0_24px_70px_rgba(8,30,42,0.24)] sm:p-7 lg:p-8">
+        <img
+          src={getTravelImage('https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=1800&q=80')}
+          alt="Luxury mountain dashboard"
+          className="absolute inset-0 h-full w-full object-cover opacity-38"
+          referrerPolicy="no-referrer"
+          onError={handleTravelImageError}
+        />
+        <div className="absolute inset-0 bg-linear-to-r from-[#081E2A] via-[#081E2A]/86 to-[#081E2A]/45" />
+        <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full border border-white/10 bg-white/5" />
 
-        <div className="flex items-center space-x-3 mt-4 md:mt-0">
-          <button
-            type="button"
-            onClick={onNavigateToHome}
-            className="px-4 py-2 text-xs bg-stone-700 hover:bg-stone-600 font-bold rounded-lg transition-colors flex items-center space-x-1"
-          >
-            <Compass className="w-4 h-4" />
-            <span>Browse Packages</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="px-4 py-2 text-xs bg-rose-700 hover:bg-rose-600 font-bold rounded-lg transition-colors flex items-center space-x-1"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>Sign Out</span>
-          </button>
+        <div className="relative grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
+          <div className="rounded-[20px] border border-white/14 bg-white/10 p-5 shadow-[0_18px_55px_rgba(0,0,0,0.22)] backdrop-blur-md sm:p-6">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-4 border-white/25 bg-[#4DA528] text-3xl font-extrabold text-white shadow-xl">
+                {user.photoURL ? (
+                  <img src={getTravelImage(user.photoURL)} alt={portalUserName} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+                ) : (
+                  <span>{portalAvatarInitial}</span>
+                )}
+              </div>
+              <div>
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-[#4DA528] px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.18em] text-white">Customer Portal</span>
+                  <span className="flex items-center rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/80"><Shield className="mr-1.5 h-3.5 w-3.5 text-emerald-300" /> Secure</span>
+                </div>
+                <p className="font-serif text-[28px] italic leading-none text-[#4DA528]">Welcome back</p>
+                <h1 className="mt-2 text-[34px] font-extrabold leading-tight tracking-tight text-white sm:text-[44px]">{portalUserName}</h1>
+                <p className="mt-2 text-sm text-white/72">{user.email}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-5">
+            <div className="rounded-[18px] border border-white/14 bg-white/10 p-5 backdrop-blur-md">
+              <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/55">Today</span>
+              <p className="mt-2 text-xl font-bold text-white">{currentDateLabel}</p>
+              <p className="mt-2 text-sm leading-6 text-white/68">Your bookings, vault, saved trips, and reviews are ready in one luxury travel dashboard.</p>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={onNavigateToHome}
+                className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[5px] bg-[#4DA528] px-5 py-3 text-[12px] font-extrabold uppercase tracking-[0.12em] text-white transition hover:-translate-y-0.5 hover:bg-[#FF970D]"
+              >
+                <Compass className="h-4 w-4" />
+                <span>Browse Packages</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[5px] border border-white/20 bg-white/10 px-5 py-3 text-[12px] font-extrabold uppercase tracking-[0.12em] text-white transition hover:-translate-y-0.5 hover:bg-white/18"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5" id="customer-dashboard-stats">
+        {[
+          ['Upcoming Bookings', upcomingBookings.length, Calendar, 'from-[#4DA528]/12 to-white'],
+          ['Completed Trips', completedTrips, Briefcase, 'from-[#FF970D]/14 to-white'],
+          ['Wishlist', savedPackages.length, Heart, 'from-rose-100 to-white'],
+          ['Reviews', reviewSuccess ? 1 : 0, Star, 'from-amber-100 to-white'],
+          ['Pending Enquiries', pendingEnquiries, AlertCircle, 'from-sky-100 to-white'],
+        ].map(([label, value, Icon, tone]) => {
+          const StatIcon = Icon as typeof Calendar;
+          return (
+            <div key={label as string} className={`group rounded-[18px] border border-stone-200 bg-linear-to-br ${tone as string} p-5 shadow-[0_12px_35px_rgba(18,38,32,0.06)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_45px_rgba(18,38,32,0.12)]`}>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-stone-500">{label as string}</span>
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#4DA528] shadow-sm">
+                  <StatIcon className="h-5 w-5" />
+                </span>
+              </div>
+              <p className="mt-5 text-3xl font-extrabold text-stone-950">{value as number}</p>
+            </div>
+          );
+        })}
+      </section>
 
       {portalError && (
-        <div className="bg-rose-50 border border-rose-100 text-rose-700 p-4 rounded-xl text-xs font-semibold mb-6 flex items-center space-x-2 shadow-sm">
+        <div className="flex items-center space-x-2 rounded-xl border border-rose-100 bg-rose-50 p-4 text-xs font-semibold text-rose-700 shadow-sm">
           <AlertTriangle className="w-4.5 h-4.5 shrink-0 text-rose-600 animate-bounce" />
           <span>Firestore Error: {portalError}</span>
         </div>
       )}
 
       {/* Tabs */}
-      <div className="flex border-b border-stone-200 mb-6 overflow-x-auto space-x-6 scrollbar-none">
+      <div className="scrollbar-none flex gap-2 overflow-x-auto rounded-[18px] border border-stone-200 bg-white p-2 shadow-[0_12px_35px_rgba(18,38,32,0.06)]">
         <button
           type="button"
           onClick={() => setActiveTab('bookings')}
-          className={`pb-3.5 text-xs font-bold transition-all border-b-2 flex items-center space-x-2 shrink-0 ${
+          className={`flex shrink-0 items-center gap-2 rounded-[12px] px-4 py-3 text-xs font-bold transition-all ${
             activeTab === 'bookings' 
-              ? 'border-[#008080] text-[#008080]' 
-              : 'border-transparent text-stone-500 hover:text-stone-850'
+              ? 'bg-[#4DA528] text-white shadow-sm' 
+              : 'text-stone-500 hover:bg-[#f6f7f2] hover:text-stone-850'
           }`}
         >
           <Calendar className="w-4.5 h-4.5" />
@@ -1256,10 +1332,10 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
         <button
           type="button"
           onClick={() => setActiveTab('ai-assistant')}
-          className={`pb-3.5 text-xs font-bold transition-all border-b-2 flex items-center space-x-2 shrink-0 ${
+          className={`flex shrink-0 items-center gap-2 rounded-[12px] px-4 py-3 text-xs font-bold transition-all ${
             activeTab === 'ai-assistant' 
-              ? 'border-[#008080] text-[#008080]' 
-              : 'border-transparent text-stone-500 hover:text-stone-850'
+              ? 'bg-[#4DA528] text-white shadow-sm' 
+              : 'text-stone-500 hover:bg-[#f6f7f2] hover:text-stone-850'
           }`}
         >
           <Sparkles className="w-4.5 h-4.5 text-teal-500 animate-pulse" />
@@ -1269,10 +1345,10 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
         <button
           type="button"
           onClick={() => setActiveTab('private-vault')}
-          className={`pb-3.5 text-xs font-bold transition-all border-b-2 flex items-center space-x-2 shrink-0 ${
+          className={`flex shrink-0 items-center gap-2 rounded-[12px] px-4 py-3 text-xs font-bold transition-all ${
             activeTab === 'private-vault' 
-              ? 'border-[#008080] text-[#008080]' 
-              : 'border-transparent text-stone-500 hover:text-stone-850'
+              ? 'bg-[#4DA528] text-white shadow-sm' 
+              : 'text-stone-500 hover:bg-[#f6f7f2] hover:text-stone-850'
           }`}
         >
           <Lock className="w-4.5 h-4.5 text-amber-500" />
@@ -1282,10 +1358,10 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
         <button
           type="button"
           onClick={() => setActiveTab('saved-packages')}
-          className={`pb-3.5 text-xs font-bold transition-all border-b-2 flex items-center space-x-2 shrink-0 ${
+          className={`flex shrink-0 items-center gap-2 rounded-[12px] px-4 py-3 text-xs font-bold transition-all ${
             activeTab === 'saved-packages' 
-              ? 'border-[#008080] text-[#008080]' 
-              : 'border-transparent text-stone-500 hover:text-stone-850'
+              ? 'bg-[#4DA528] text-white shadow-sm' 
+              : 'text-stone-500 hover:bg-[#f6f7f2] hover:text-stone-850'
           }`}
         >
           <Heart className="w-4.5 h-4.5 text-rose-500 fill-current" />
@@ -1295,10 +1371,10 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
         <button
           type="button"
           onClick={() => setActiveTab('travel-history')}
-          className={`pb-3.5 text-xs font-bold transition-all border-b-2 flex items-center space-x-2 shrink-0 ${
+          className={`flex shrink-0 items-center gap-2 rounded-[12px] px-4 py-3 text-xs font-bold transition-all ${
             activeTab === 'travel-history' 
-              ? 'border-[#008080] text-[#008080]' 
-              : 'border-transparent text-stone-500 hover:text-stone-850'
+              ? 'bg-[#4DA528] text-white shadow-sm' 
+              : 'text-stone-500 hover:bg-[#f6f7f2] hover:text-stone-850'
           }`}
         >
           <Briefcase className="w-4.5 h-4.5 text-[#008080]" />
@@ -1308,10 +1384,10 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
         <button
           type="button"
           onClick={() => setActiveTab('profile')}
-          className={`pb-3.5 text-xs font-bold transition-all border-b-2 flex items-center space-x-2 shrink-0 ${
+          className={`flex shrink-0 items-center gap-2 rounded-[12px] px-4 py-3 text-xs font-bold transition-all ${
             activeTab === 'profile' 
-              ? 'border-[#008080] text-[#008080]' 
-              : 'border-transparent text-stone-500 hover:text-stone-850'
+              ? 'bg-[#4DA528] text-white shadow-sm' 
+              : 'text-stone-500 hover:bg-[#f6f7f2] hover:text-stone-850'
           }`}
         >
           <User className="w-4.5 h-4.5 text-teal-600" />
@@ -1321,10 +1397,10 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
         <button
           type="button"
           onClick={() => setActiveTab('reviews')}
-          className={`pb-3.5 text-xs font-bold transition-all border-b-2 flex items-center space-x-2 shrink-0 ${
+          className={`flex shrink-0 items-center gap-2 rounded-[12px] px-4 py-3 text-xs font-bold transition-all ${
             activeTab === 'reviews' 
-              ? 'border-[#008080] text-[#008080]' 
-              : 'border-transparent text-stone-500 hover:text-stone-850'
+              ? 'bg-[#4DA528] text-white shadow-sm' 
+              : 'text-stone-500 hover:bg-[#f6f7f2] hover:text-stone-850'
           }`}
         >
           <Star className="w-4.5 h-4.5 text-[#F4C430] fill-current" />
@@ -1616,15 +1692,16 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
           </div>
 
           {/* Bookings Title Header */}
-          <div className="flex items-center justify-between border-t border-stone-150 pt-6">
+          <div className="flex flex-col gap-4 border-t border-stone-200 pt-6 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="text-lg font-bold text-stone-850">Your Booking Orders</h3>
-              <p className="text-xs text-stone-500 mt-0.5">Track your past travels, verify confirmations and clear dues</p>
+              <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">My Bookings</span>
+              <h3 className="mt-2 text-2xl font-extrabold text-stone-950">Your Booking Orders</h3>
+              <p className="mt-1 text-sm text-stone-500">Track upcoming journeys, confirmations, requests, and dues.</p>
             </div>
             <button
               type="button"
               onClick={() => setShowNewBookingModal(true)}
-              className="px-4 py-2.5 bg-[#008080] hover:bg-[#006666] text-white text-xs font-bold rounded-lg shadow transition-colors flex items-center space-x-1 cursor-pointer"
+              className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[5px] bg-[#4DA528] px-5 py-3 text-xs font-extrabold uppercase tracking-[0.12em] text-white shadow transition hover:-translate-y-0.5 hover:bg-[#FF970D]"
             >
               <Plus className="w-4 h-4" />
               <span>Request Custom Package</span>
@@ -1632,58 +1709,89 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
           </div>
 
           {bookingsLoading ? (
-            <div className="text-center py-12 bg-white rounded-xl border border-stone-150">
+            <div className="rounded-[18px] border border-stone-200 bg-white py-14 text-center shadow-sm">
               <RefreshCw className="w-8 h-8 text-[#008080] animate-spin mx-auto mb-2" />
               <p className="text-xs text-stone-500">Retrieving secure records from Firestore...</p>
             </div>
           ) : bookings.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-xl border border-stone-150">
-              <Compass className="w-12 h-12 text-stone-300 mx-auto mb-3" />
-              <h4 className="text-sm font-bold text-stone-700">No bookings yet</h4>
-              <p className="text-xs text-stone-500 max-w-sm mx-auto mt-1">
+            <div className="relative overflow-hidden rounded-[22px] border border-dashed border-stone-300 bg-white p-10 text-center shadow-sm">
+              <div className="absolute inset-x-0 top-0 h-24 bg-linear-to-b from-[#4DA528]/10 to-transparent" />
+              <div className="relative mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#4DA528]/10 text-[#4DA528]">
+                <Compass className="h-10 w-10" />
+              </div>
+              <h4 className="relative mt-5 text-xl font-extrabold text-stone-900">No bookings yet</h4>
+              <p className="relative mx-auto mt-2 max-w-md text-sm leading-7 text-stone-500">
                 You haven't requested any custom trip packages yet. Create a personalized trip using our AI engine or request a booking now!
               </p>
+              <div className="relative mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+                <button type="button" onClick={() => setShowNewBookingModal(true)} className="rounded-[5px] bg-[#4DA528] px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]">
+                  Request a Trip
+                </button>
+                <button type="button" onClick={() => setActiveTab('ai-assistant')} className="rounded-[5px] border border-stone-200 bg-white px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]">
+                  Open AI Planner
+                </button>
+              </div>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
               {bookings.map((booking) => {
                 const isExpanded = expandedBookingId === booking.id;
                 return (
                   <div 
                     key={booking.id}
-                    className="bg-white border border-stone-200 rounded-lg shadow-xs overflow-hidden transition-all"
+                    className="group overflow-hidden rounded-[18px] border border-stone-200 bg-white shadow-[0_14px_38px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_55px_rgba(18,38,32,0.14)]"
                   >
+                    <div className="relative h-52 overflow-hidden bg-stone-100">
+                      <img
+                        src={getBookingImage(booking)}
+                        alt={booking.destination || booking.packageTitle || 'Travel booking'}
+                        className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+                        referrerPolicy="no-referrer"
+                        onError={handleTravelImageError}
+                      />
+                      <div className="absolute inset-0 bg-linear-to-t from-stone-950/70 via-transparent to-transparent" />
+                      <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+                        <span className={`rounded bg-white px-3 py-1 text-[11px] font-extrabold uppercase tracking-wider ${
+                          booking.status === 'Confirmed' ? 'text-emerald-700' :
+                          booking.status === 'Cancelled' ? 'text-rose-700' : 'text-amber-700'
+                        }`}>
+                          {booking.status}
+                        </span>
+                        <span className="rounded bg-[#4DA528] px-3 py-1 text-[11px] font-extrabold uppercase tracking-wider text-white">
+                          {booking.paymentStatus || 'Unpaid'}
+                        </span>
+                      </div>
+                      <div className="absolute bottom-4 left-4 right-4 text-white">
+                        <p className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-wider text-white/75">
+                          <MapPin className="h-4 w-4 text-[#4DA528]" />
+                          {booking.destination || 'Custom Destination'}
+                        </p>
+                        <h4 className="mt-2 line-clamp-2 text-2xl font-extrabold leading-tight">{booking.packageTitle}</h4>
+                      </div>
+                    </div>
+
                     {/* Header Clickbar */}
                     <div 
                       onClick={() => setExpandedBookingId(isExpanded ? null : booking.id)}
-                      className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between cursor-pointer hover:bg-stone-50 transition-colors"
+                      className="flex cursor-pointer flex-col gap-4 p-5 transition-colors hover:bg-[#fffaf1] sm:flex-row sm:items-center sm:justify-between"
                     >
-                      <div className="flex items-start space-x-3">
-                        <div className="p-2 bg-stone-100 rounded-lg text-[#008080]">
-                          <MapPin className="w-5 h-5" />
+                      <div className="grid flex-1 grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+                        <div className="rounded-[12px] bg-stone-50 p-3">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-stone-400">Date</span>
+                          <p className="mt-1 font-bold text-stone-900">{booking.travelDate || 'Flexible'}</p>
                         </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-stone-800">{booking.packageTitle}</h4>
-                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-500 mt-1">
-                            <span>Travelers: {booking.travelers}</span>
-                            <span>•</span>
-                            <span>Travel Date: {booking.travelDate}</span>
-                          </div>
+                        <div className="rounded-[12px] bg-stone-50 p-3">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-stone-400">Travelers</span>
+                          <p className="mt-1 font-bold text-stone-900">{booking.travelers || ((booking.adults || 0) + (booking.children || 0)) || 1}</p>
+                        </div>
+                        <div className="col-span-2 rounded-[12px] bg-stone-50 p-3 sm:col-span-1">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-stone-400">Price</span>
+                          <p className="mt-1 font-extrabold text-[#4DA528]">{formatPrice(booking.price)}</p>
                         </div>
                       </div>
 
-                      <div className="flex items-center space-x-4 mt-3 sm:mt-0">
-                        {/* Status pill */}
-                        <div className="flex flex-col items-end">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            booking.status === 'Confirmed' ? 'bg-emerald-50 text-emerald-700' :
-                            booking.status === 'Cancelled' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'
-                          }`}>
-                            {booking.status}
-                          </span>
-                          <span className="text-[10px] text-stone-400 mt-1">{new Date(booking.createdAt).toLocaleDateString()}</span>
-                        </div>
-
+                      <div className="flex items-center justify-between gap-4 sm:flex-col sm:items-end">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">{new Date(booking.createdAt).toLocaleDateString()}</span>
                         <ChevronDown className={`w-5 h-5 text-stone-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                       </div>
                     </div>
@@ -1999,14 +2107,17 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
       {activeTab === 'private-vault' && (
         <div className="space-y-6 animate-fade-in" id="private-vault-panel">
           
-          <div className="bg-amber-50 border border-amber-100 p-4 rounded-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="relative overflow-hidden rounded-[22px] border border-amber-200 bg-[#fff8e8] p-5 shadow-[0_14px_38px_rgba(18,38,32,0.08)] sm:p-6">
+            <div className="absolute -right-16 -top-16 h-40 w-40 rounded-full bg-amber-300/20" />
+            <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start space-x-3">
-              <div className="p-2 bg-amber-100 rounded text-amber-700 mt-0.5 shrink-0">
+              <div className="mt-0.5 shrink-0 rounded-[14px] bg-amber-100 p-3 text-amber-700">
                 <Shield className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="text-sm font-bold text-amber-900">Zero-Knowledge Private Travel Vault</h4>
-                <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-amber-700">Encrypted Travel Locker</span>
+                <h4 className="mt-1 text-xl font-extrabold text-stone-950">Zero-Knowledge Private Travel Vault</h4>
+                <p className="mt-2 max-w-3xl text-sm leading-7 text-amber-900/75">
                   Save confidential travel insurance policies, credit card emergency limits, flight coordinates, and passport copies safely. 
                   Protected strictly by Firestore rules; <strong>Not even Pravaah Travels operators can view this information</strong>.
                 </p>
@@ -2016,51 +2127,65 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
             <button
               type="button"
               onClick={() => setShowAddVaultModal(true)}
-              className="px-4 py-2 bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold rounded shadow transition-colors flex items-center space-x-1 shrink-0"
+              className="flex shrink-0 items-center space-x-1 rounded-[5px] bg-amber-700 px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white shadow transition-all hover:-translate-y-0.5 hover:bg-[#FF970D]"
             >
               <Plus className="w-4 h-4" />
               <span>Add Record</span>
             </button>
+            </div>
           </div>
 
           {vaultLoading ? (
-            <div className="text-center py-12 bg-white rounded-xl border border-stone-150">
+            <div className="rounded-[18px] border border-stone-200 bg-white py-14 text-center shadow-sm">
               <RefreshCw className="w-8 h-8 text-amber-600 animate-spin mx-auto mb-2" />
               <p className="text-xs text-stone-500">Decrypting vault documents...</p>
             </div>
           ) : vaultDocs.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-xl border border-stone-150">
-              <Lock className="w-12 h-12 text-stone-300 mx-auto mb-3" />
-              <h4 className="text-sm font-bold text-stone-700">Vault is empty</h4>
-              <p className="text-xs text-stone-500 mt-1">Save secure backups of travel credentials for emergency retrieve anywhere!</p>
+            <div className="relative overflow-hidden rounded-[22px] border border-dashed border-amber-200 bg-white p-10 text-center shadow-sm">
+              <div className="absolute inset-x-0 top-0 h-24 bg-linear-to-b from-amber-100 to-transparent" />
+              <div className="relative mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                <Lock className="h-10 w-10" />
+              </div>
+              <h4 className="relative mt-5 text-xl font-extrabold text-stone-900">Vault is empty</h4>
+              <p className="relative mx-auto mt-2 max-w-md text-sm leading-7 text-stone-500">Save secure backups of travel credentials for emergency retrieval anywhere.</p>
+              <button
+                type="button"
+                onClick={() => setShowAddVaultModal(true)}
+                className="relative mt-6 rounded-[5px] bg-amber-700 px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
+              >
+                Add Secure Record
+              </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               {vaultDocs.map((doc) => (
-                <div key={doc.id} className="bg-white border border-stone-200 rounded-lg p-4 shadow-xs relative hover:shadow-sm transition-all">
+                <div key={doc.id} className="relative overflow-hidden rounded-[18px] border border-stone-200 bg-white p-5 shadow-[0_14px_38px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_20px_45px_rgba(18,38,32,0.12)]">
+                  <div className="absolute right-4 top-4 text-amber-100">
+                    <Lock className="h-16 w-16" />
+                  </div>
                   <div className="flex items-start justify-between">
                     <div>
-                      <span className="text-[9px] font-bold bg-amber-50 border border-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                      <span className="rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-[9px] font-bold uppercase tracking-wider text-amber-700">
                         {doc.category || 'General Notes'}
                       </span>
-                      <h4 className="text-sm font-bold text-stone-850 mt-2">{doc.title}</h4>
+                      <h4 className="mt-3 text-lg font-extrabold text-stone-950">{doc.title}</h4>
                     </div>
 
                     <button
                       type="button"
                       onClick={() => handleDeleteVaultDoc(doc.id)}
-                      className="p-1 text-stone-400 hover:text-rose-600 hover:bg-stone-50 rounded transition-all"
+                      className="relative rounded p-1 text-stone-400 transition-all hover:bg-rose-50 hover:text-rose-600"
                       title="Delete securely"
                     >
                       <Trash2 className="w-4.5 h-4.5" />
                     </button>
                   </div>
 
-                  <p className="text-xs text-stone-600 mt-2 bg-stone-50 p-2.5 rounded border border-stone-100 font-mono whitespace-pre-wrap leading-relaxed select-all">
+                  <p className="mt-4 select-all whitespace-pre-wrap rounded-[12px] border border-stone-100 bg-[#f6f7f2] p-4 font-mono text-xs leading-relaxed text-stone-600">
                     {doc.content}
                   </p>
 
-                  <div className="text-[9px] text-stone-400 mt-3 flex items-center justify-between">
+                  <div className="mt-4 flex items-center justify-between text-[9px] text-stone-400">
                     <span>Saved: {new Date(doc.createdAt).toLocaleDateString()}</span>
                     <span className="flex items-center text-amber-600"><Lock className="w-3 h-3 mr-0.5" /> Local Rules Restrict Read</span>
                   </div>
@@ -2075,53 +2200,59 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
       {/* Saved Packages Tab */}
       {activeTab === 'saved-packages' && (
         <div className="space-y-6 animate-fade-in" id="saved-packages-panel">
-          <div>
-            <h3 className="text-lg font-bold text-stone-850 flex items-center gap-1.5">
+          <div className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
+            <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Wishlist</span>
+            <h3 className="mt-2 flex items-center gap-2 text-2xl font-extrabold text-stone-950">
               <Heart className="w-5 h-5 text-rose-500 fill-current" />
               <span>Your Saved & Bookmarked Packages</span>
             </h3>
-            <p className="text-xs text-stone-500 mt-0.5">Quickly access and request bookings for tour packages you bookmarked</p>
+            <p className="mt-1 text-sm text-stone-500">Quickly access and request bookings for tour packages you bookmarked.</p>
           </div>
 
           {savedPackagesLoading ? (
-            <div className="text-center py-12 bg-white rounded-xl border border-stone-150">
+            <div className="rounded-[18px] border border-stone-200 bg-white py-14 text-center shadow-sm">
               <RefreshCw className="w-8 h-8 text-[#008080] animate-spin mx-auto mb-2" />
               <p className="text-xs text-stone-500">Retrieving saved packages...</p>
             </div>
           ) : savedPackages.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-xl border border-stone-150 p-6">
-              <Heart className="w-12 h-12 text-stone-300 mx-auto mb-3" />
-              <h4 className="text-sm font-bold text-stone-700">No saved packages yet</h4>
-              <p className="text-xs text-stone-500 max-w-sm mx-auto mt-1 leading-relaxed">
+            <div className="relative overflow-hidden rounded-[22px] border border-dashed border-stone-300 bg-white p-10 text-center shadow-sm">
+              <div className="absolute inset-x-0 top-0 h-24 bg-linear-to-b from-rose-100 to-transparent" />
+              <div className="relative mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-rose-50 text-rose-500">
+                <Heart className="h-10 w-10 fill-current" />
+              </div>
+              <h4 className="relative mt-5 text-xl font-extrabold text-stone-900">No saved packages yet</h4>
+              <p className="relative mx-auto mt-2 max-w-md text-sm leading-7 text-stone-500">
                 Browse our selection of pilgrimage and adventure itineraries, and tap the heart icon on any package page to bookmark it here!
               </p>
               <button
                 type="button"
                 onClick={onNavigateToHome}
-                className="mt-4 px-4 py-2 bg-[#008080] hover:bg-[#006666] text-white text-xs font-bold rounded-lg transition-colors inline-flex items-center gap-1"
+                className="relative mt-6 inline-flex items-center gap-2 rounded-[5px] bg-[#4DA528] px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
               >
                 <Compass className="w-4 h-4" />
                 <span>Browse Packages</span>
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
               {savedPackages.map((saved) => (
-                <div key={saved.id} className="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-xs hover:shadow-sm transition-all flex flex-col justify-between">
+                <div key={saved.id} className="group flex flex-col justify-between overflow-hidden rounded-[18px] border border-stone-200 bg-white shadow-[0_14px_38px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_55px_rgba(18,38,32,0.14)]">
                   <div>
-                    {saved.imageUrl && (
-                      <img 
-                        src={saved.imageUrl} 
-                        alt={saved.title} 
-                        className="w-full h-40 object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    )}
+                    <div className="relative h-48 overflow-hidden">
+                    <img 
+                      src={getTravelImage(saved.imageUrl)} 
+                      alt={saved.title} 
+                      className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+                      referrerPolicy="no-referrer"
+                      onError={handleTravelImageError}
+                    />
+                    <div className="absolute inset-0 bg-linear-to-t from-stone-950/55 to-transparent" />
+                    <span className="absolute left-4 top-4 rounded bg-white px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-[#4DA528]">
+                      {saved.duration || 'Flexible Days'}
+                    </span>
+                    </div>
                     <div className="p-4 space-y-2">
-                      <span className="text-[10px] bg-teal-50 text-[#008080] font-bold px-2.5 py-0.5 rounded uppercase tracking-wider">
-                        {saved.duration || 'Flexible Days'}
-                      </span>
-                      <h4 className="text-sm font-bold text-stone-850 leading-tight">{saved.title}</h4>
+                      <h4 className="text-lg font-extrabold leading-tight text-stone-950">{saved.title}</h4>
                       {saved.destination && (
                         <p className="text-xs text-stone-500 flex items-center gap-1">
                           <MapPin className="w-3.5 h-3.5 text-stone-400" />
@@ -2131,10 +2262,10 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
                     </div>
                   </div>
 
-                  <div className="p-4 pt-0 border-t border-stone-100 mt-2 flex items-center justify-between">
+                  <div className="mt-2 flex items-center justify-between border-t border-stone-100 p-4">
                     <div>
                       <span className="text-[9px] text-stone-400 block uppercase tracking-wider">Target Budget</span>
-                      <span className="text-sm font-bold text-[#008080]">{formatPrice(saved.price)}</span>
+                      <span className="text-lg font-extrabold text-[#4DA528]">{formatPrice(saved.price)}</span>
                     </div>
                     
                     <div className="flex items-center gap-2">
@@ -2146,7 +2277,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
                           setNewBookingBudget(saved.price || 50000);
                           setShowNewBookingModal(true);
                         }}
-                        className="px-3 py-1.5 bg-[#008080] hover:bg-[#006666] text-white text-[10px] font-bold uppercase rounded"
+                        className="rounded-[5px] bg-[#4DA528] px-3 py-2 text-[10px] font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
                       >
                         Book Now
                       </button>
@@ -2170,39 +2301,60 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
       {/* Travel History Tab */}
       {activeTab === 'travel-history' && (
         <div className="space-y-6 animate-fade-in" id="travel-history-panel">
-          <div>
-            <h3 className="text-lg font-bold text-stone-850 flex items-center gap-1.5">
+          <div className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
+            <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Travel Journal</span>
+            <h3 className="mt-2 flex items-center gap-2 text-2xl font-extrabold text-stone-950">
               <Briefcase className="w-5 h-5 text-[#008080]" />
               <span>Your Himalayan Travel History</span>
             </h3>
-            <p className="text-xs text-stone-500 mt-0.5">Relive and browse your verified, completed expeditions with Pravaah Travels</p>
+            <p className="mt-1 text-sm text-stone-500">Relive and browse your verified, completed expeditions with Pravaah Travels.</p>
           </div>
 
           {bookings.filter(b => b.status === 'Confirmed').length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-xl border border-stone-150 p-6">
-              <Compass className="w-12 h-12 text-stone-300 mx-auto mb-3" />
-              <h4 className="text-sm font-bold text-stone-700">No travel history detected</h4>
-              <p className="text-xs text-stone-500 max-w-sm mx-auto mt-1 leading-relaxed">
+            <div className="relative overflow-hidden rounded-[22px] border border-dashed border-stone-300 bg-white p-10 text-center shadow-sm">
+              <div className="absolute inset-x-0 top-0 h-24 bg-linear-to-b from-[#4DA528]/10 to-transparent" />
+              <div className="relative mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#4DA528]/10 text-[#4DA528]">
+                <Compass className="h-10 w-10" />
+              </div>
+              <h4 className="relative mt-5 text-xl font-extrabold text-stone-900">No travel history detected</h4>
+              <p className="relative mx-auto mt-2 max-w-md text-sm leading-7 text-stone-500">
                 Once you complete your customized pilgrimage or scenic packages with us, your confirmed routes and completed dates will show up in this history pipeline!
               </p>
             </div>
           ) : (
-            <div className="relative border-l-2 border-teal-500/30 pl-6 ml-4 space-y-6 py-2">
+            <div className="relative ml-4 space-y-6 border-l-2 border-[#4DA528]/30 py-2 pl-6">
               {bookings.filter(b => b.status === 'Confirmed').map((trip, idx) => (
-                <div key={trip.id} className="relative bg-white border border-stone-200 rounded-xl p-5 shadow-xs hover:shadow-sm transition-all max-w-2xl">
+                <div key={trip.id} className="relative max-w-4xl overflow-hidden rounded-[18px] border border-stone-200 bg-white shadow-[0_14px_38px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_55px_rgba(18,38,32,0.14)]">
                   {/* Timeline point */}
-                  <div className="absolute -left-[31px] top-6 w-3 h-3 rounded-full bg-[#008080] border-2 border-white shadow-xs" />
+                  <div className="absolute -left-[31px] top-8 z-10 h-3 w-3 rounded-full border-2 border-white bg-[#4DA528] shadow-xs" />
                   
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div className="space-y-1.5">
-                      <span className="text-[10px] bg-emerald-50 text-emerald-800 font-bold px-2 py-0.5 rounded tracking-wide">
+                  <div className="grid gap-0 md:grid-cols-[220px_1fr]">
+                    <div className="relative h-48 md:h-full">
+                      <img
+                        src={getBookingImage(trip)}
+                        alt={trip.destination || trip.packageTitle || 'Travel history'}
+                        className="h-full w-full object-cover"
+                        referrerPolicy="no-referrer"
+                        onError={handleTravelImageError}
+                      />
+                      <div className="absolute inset-0 bg-linear-to-t from-stone-950/55 to-transparent md:bg-linear-to-r" />
+                    </div>
+                    <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-2">
+                      <span className="rounded bg-emerald-50 px-3 py-1 text-[10px] font-bold tracking-wide text-emerald-800">
                         Verified Travel Log
                       </span>
-                      <h4 className="text-base font-bold text-stone-850">{trip.packageTitle}</h4>
-                      <p className="text-xs text-stone-500 flex items-center gap-1">
+                      <h4 className="text-xl font-extrabold text-stone-950">{trip.packageTitle}</h4>
+                      <p className="flex items-center gap-1 text-sm text-stone-500">
                         <Calendar className="w-3.5 h-3.5" />
                         <span>Traveled on: {trip.travelDate}</span>
                       </p>
+                      {trip.destination && (
+                        <p className="flex items-center gap-1 text-sm text-stone-500">
+                          <MapPin className="w-3.5 h-3.5" />
+                          <span>{trip.destination}</span>
+                        </p>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -2213,10 +2365,11 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
                           setReviewComment(`My trip to ${trip.destination} with Pravaah Travels was fantastic. Everything was organized perfectly.`);
                           setActiveTab('reviews');
                         }}
-                        className="px-3.5 py-2 bg-[#008080]/10 hover:bg-[#008080]/20 text-[#008080] text-[10px] font-bold uppercase tracking-wider rounded transition-colors"
+                        className="rounded-[5px] bg-[#4DA528]/10 px-4 py-3 text-[10px] font-extrabold uppercase tracking-wider text-[#4DA528] transition-colors hover:bg-[#4DA528] hover:text-white"
                       >
                         Write traveler review
                       </button>
+                    </div>
                     </div>
                   </div>
                 </div>
@@ -2229,15 +2382,50 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
       {/* Profile Settings Tab */}
       {activeTab === 'profile' && (
         <div className="space-y-6 animate-fade-in" id="profile-settings-panel">
-          <div>
-            <h3 className="text-lg font-bold text-stone-850 flex items-center gap-1.5">
-              <User className="w-5 h-5 text-teal-600" />
-              <span>Your Secure Profile Settings</span>
-            </h3>
-            <p className="text-xs text-stone-500 mt-0.5">Manage your personal coordinates and favorite destinations for customized trips</p>
+          <div className="relative overflow-hidden rounded-[22px] bg-[#081E2A] p-6 text-white shadow-[0_20px_55px_rgba(8,30,42,0.18)] sm:p-8">
+            <img
+              src={getTravelImage('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80')}
+              alt="Profile travel background"
+              className="absolute inset-0 h-full w-full object-cover opacity-25"
+              referrerPolicy="no-referrer"
+              onError={handleTravelImageError}
+            />
+            <div className="absolute inset-0 bg-linear-to-r from-[#081E2A] via-[#081E2A]/88 to-[#081E2A]/55" />
+            <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border-4 border-white/20 bg-[#4DA528] text-4xl font-extrabold shadow-xl">
+                  {user.photoURL ? (
+                    <img src={getTravelImage(user.photoURL)} alt={portalUserName} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+                  ) : (
+                    <span>{portalAvatarInitial}</span>
+                  )}
+                </div>
+                <div>
+                  <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Traveler Profile</span>
+                  <h3 className="mt-2 text-3xl font-extrabold text-white">{portalUserName}</h3>
+                  <p className="mt-1 text-sm text-white/72">{user.email}</p>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[470px]">
+                {[
+                  ['Phone', profilePhone || 'Not added'],
+                  ['WhatsApp', profileWhatsApp || 'Not added'],
+                  ['Member Since', memberSince],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-[14px] border border-white/14 bg-white/10 p-4 backdrop-blur-md">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-white/50">{label}</span>
+                    <p className="mt-2 truncate text-sm font-bold text-white">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="bg-white border border-stone-200 rounded-xl p-6 sm:p-8 shadow-xs max-w-xl">
+          <div className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)] sm:p-8">
+            <div className="mb-6">
+              <h4 className="text-xl font-extrabold text-stone-950">Secure Profile Settings</h4>
+              <p className="mt-1 text-sm text-stone-500">Manage your personal coordinates and favorite destinations for customized trips.</p>
+            </div>
             <form onSubmit={handleUpdateProfile} className="space-y-4">
               <div className="grid grid-cols-1 gap-4">
                 <div>
@@ -2248,7 +2436,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
                     placeholder="Enter your name"
                     value={profileName}
                     onChange={(e) => setProfileName(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080]"
+                    className="w-full rounded-[12px] border border-stone-200 bg-[#f6f7f2] px-4 py-3 text-sm focus:border-[#4DA528] focus:bg-white focus:outline-none"
                   />
                 </div>
 
@@ -2260,7 +2448,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
                       placeholder="E.g. +91 98765 43210"
                       value={profilePhone}
                       onChange={(e) => setProfilePhone(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080]"
+                      className="w-full rounded-[12px] border border-stone-200 bg-[#f6f7f2] px-4 py-3 text-sm focus:border-[#4DA528] focus:bg-white focus:outline-none"
                     />
                   </div>
 
@@ -2271,7 +2459,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
                       placeholder="E.g. +91 98765 43210"
                       value={profileWhatsApp}
                       onChange={(e) => setProfileWhatsApp(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080]"
+                      className="w-full rounded-[12px] border border-stone-200 bg-[#f6f7f2] px-4 py-3 text-sm focus:border-[#4DA528] focus:bg-white focus:outline-none"
                     />
                   </div>
                 </div>
@@ -2283,7 +2471,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
                     placeholder="E.g. Kedarnath, Spiti, Chardham"
                     value={profilePrefDest}
                     onChange={(e) => setProfilePrefDest(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080]"
+                    className="w-full rounded-[12px] border border-stone-200 bg-[#f6f7f2] px-4 py-3 text-sm focus:border-[#4DA528] focus:bg-white focus:outline-none"
                   />
                 </div>
               </div>
@@ -2293,7 +2481,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
                 <button
                   type="submit"
                   disabled={profileSaving}
-                  className="px-5 py-2.5 bg-[#008080] hover:bg-[#006666] text-white text-xs font-bold rounded-lg shadow transition-all flex items-center space-x-1.5"
+                  className="flex items-center space-x-1.5 rounded-[5px] bg-[#4DA528] px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white shadow transition-all hover:bg-[#FF970D]"
                 >
                   {profileSaving ? (
                     <>
@@ -2316,33 +2504,34 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
       {/* Reviews and Feedback Tab */}
       {activeTab === 'reviews' && (
         <div className="space-y-6 animate-fade-in" id="customer-reviews-tab">
-          <div className="bg-white border border-stone-200 rounded-xl p-6 sm:p-8 shadow-xs">
+          <div className="relative overflow-hidden rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)] sm:p-8">
+            <div className="absolute inset-x-0 top-0 h-32 bg-linear-to-b from-[#4DA528]/10 to-transparent" />
             <div className="max-w-2xl mx-auto space-y-6">
-              <div className="space-y-2 text-center">
-                <span className="text-[10px] bg-[#008080]/10 text-[#008080] font-extrabold uppercase tracking-widest px-3.5 py-1.5 rounded-full inline-block">
+              <div className="relative space-y-2 text-center">
+                <span className="inline-block rounded-full bg-[#4DA528]/10 px-3.5 py-1.5 text-[10px] font-extrabold uppercase tracking-widest text-[#4DA528]">
                   Share Your Experience
                 </span>
-                <h3 className="text-xl sm:text-2xl font-serif font-light text-stone-900">
-                  Write Your <span className="italic text-[#008080] font-normal font-serif">Traveler Log</span>
+                <h3 className="font-serif text-3xl font-light text-stone-950 sm:text-4xl">
+                  Write Your <span className="font-serif font-normal italic text-[#4DA528]">Traveler Log</span>
                 </h3>
-                <p className="text-xs text-stone-500 font-light max-w-md mx-auto">
+                <p className="mx-auto max-w-md text-sm font-light leading-7 text-stone-500">
                   Document your mountain journeys across Uttarakhand and Himachal Pradesh. Your reviews appear instantly on the homepage reviews section!
                 </p>
               </div>
 
               {reviewSuccess ? (
-                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-8 text-center space-y-4 animate-fade-in">
-                  <div className="w-12 h-12 bg-[#008080] text-white rounded-full flex items-center justify-center mx-auto shadow">
+                <div className="animate-fade-in space-y-4 rounded-[18px] border border-emerald-500/20 bg-emerald-500/10 p-8 text-center">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#4DA528] text-white shadow">
                     <Check className="w-6 h-6 stroke-[3]" />
                   </div>
-                  <h4 className="text-base font-bold text-stone-800">Review Published Successfully!</h4>
-                  <p className="text-xs text-stone-600 leading-relaxed font-light max-w-sm mx-auto">
+                  <h4 className="text-xl font-extrabold text-stone-900">Review Published Successfully!</h4>
+                  <p className="mx-auto max-w-sm text-sm font-light leading-7 text-stone-600">
                     Your direct customer experience has been published to the homepage reviews section. Thank you for choosing Pravaah Travels!
                   </p>
                   <button 
                     type="button"
                     onClick={() => setReviewSuccess(false)}
-                    className="px-5 py-2.5 bg-stone-900 hover:bg-stone-850 text-white text-[10px] font-bold uppercase tracking-wider rounded"
+                    className="rounded-[5px] bg-stone-900 px-5 py-3 text-[10px] font-extrabold uppercase tracking-wider text-white hover:bg-stone-850"
                   >
                     Write Another Review
                   </button>
@@ -2531,6 +2720,8 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
           </div>
         </div>
       )}
+
+      </div>
 
       {/* MODALS */}
       {showNewBookingModal && (

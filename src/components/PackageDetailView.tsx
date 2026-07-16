@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ArrowLeft, Calendar, MapPin, IndianRupee, Check, X, Send, Users, 
-  ChevronDown, ChevronUp, Trash2, GripVertical, Sliders, ArrowUp, ArrowDown, Sparkles, Phone, Mail, Compass, HelpCircle, CheckCircle2, Heart
-  , Star, Camera
+  ArrowLeft, Calendar, MapPin, Check, X, Send, Users, 
+  ChevronDown, ChevronUp, Trash2, GripVertical, Sliders, ArrowUp, ArrowDown, Sparkles, Phone, Compass, HelpCircle, CheckCircle2, Heart,
+  Star
 } from 'lucide-react';
 import { TravelPackage, Enquiry, formatPrice } from '../types';
-import { db, collection, addDoc, auth, getDocs, query, where, deleteDoc, doc } from '../lib/firebase';
+import { db, collection, addDoc, auth } from '../lib/firebase';
 import { triggerSystemEmail } from '../lib/emailClient';
 import InteractiveRouteMap from './InteractiveRouteMap';
+import { DEFAULT_TRAVEL_IMAGE, getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 
 interface PackageDetailViewProps {
   pkg: TravelPackage;
@@ -313,6 +314,7 @@ export default function PackageDetailView({
     pkg.packageBannerUrl || pkg.imageUrl,
     ...(pkg.galleryImages || [])
   ].filter(Boolean);
+  const displayGalleryImages = packageGalleryImages.length > 0 ? packageGalleryImages : [DEFAULT_TRAVEL_IMAGE];
   const packageReviews = Array.isArray((pkg as any).reviews) ? (pkg as any).reviews : [];
   const relatedPackages = Array.isArray((pkg as any).relatedPackages) ? (pkg as any).relatedPackages : [];
 
@@ -320,10 +322,11 @@ export default function PackageDetailView({
     <div id="package-detail-view" className="animate-fade-in overflow-hidden bg-[#fffaf1]">
       <section className="relative min-h-[640px] overflow-hidden bg-stone-950 pt-28 text-white sm:pt-32">
         <img
-          src={pkg.packageBannerUrl || pkg.imageUrl}
+          src={getTravelImage(pkg.packageBannerUrl || pkg.imageUrl)}
           alt={pkg.title}
           className="absolute inset-0 h-full w-full object-cover"
           referrerPolicy="no-referrer"
+          onError={handleTravelImageError}
         />
         <div className="absolute inset-0 bg-linear-to-r from-stone-950/92 via-stone-950/70 to-stone-950/20" />
         <div className="absolute inset-0 bg-linear-to-t from-stone-950/86 via-transparent to-stone-950/20" />
@@ -397,15 +400,16 @@ export default function PackageDetailView({
           {/* Left: General Details, Itinerary, Inclusions */}
           <div className="space-y-8 lg:col-span-2">
 
-            {packageGalleryImages.length > 0 && (
+            {displayGalleryImages.length > 0 && (
               <div className="image-gallery-single rounded-[18px] border border-stone-200 bg-white p-4 shadow-[0_18px_50px_rgba(18,38,32,0.08)]" id="package-gallery">
-                <div className={packageGalleryImages.length === 1 ? 'grid gap-4' : 'grid gap-4 md:grid-cols-3'}>
-                  <div className={`relative h-72 overflow-hidden rounded-[14px] ${packageGalleryImages.length === 1 ? 'md:h-[520px]' : 'md:col-span-2 md:h-96'}`}>
+                <div className={displayGalleryImages.length === 1 ? 'grid gap-4' : 'grid gap-4 md:grid-cols-3'}>
+                  <div className={`relative h-72 overflow-hidden rounded-[14px] ${displayGalleryImages.length === 1 ? 'md:h-[520px]' : 'md:col-span-2 md:h-96'}`}>
                     <img
-                      src={packageGalleryImages[0]}
+                      src={getTravelImage(displayGalleryImages[0])}
                       alt={`${pkg.title} gallery lead`}
                       className="h-full w-full object-cover"
                       referrerPolicy="no-referrer"
+                      onError={handleTravelImageError}
                     />
                     <div className="absolute inset-0 bg-linear-to-t from-stone-950/45 to-transparent" />
                     <div className="absolute bottom-5 left-5 right-5 text-white">
@@ -413,15 +417,16 @@ export default function PackageDetailView({
                       <h3 className="mt-3 text-2xl font-semibold">{pkg.destination}</h3>
                     </div>
                   </div>
-                  {packageGalleryImages.length > 1 && (
+                  {displayGalleryImages.length > 1 && (
                     <div className="grid grid-cols-2 gap-4 md:grid-cols-1">
-                      {packageGalleryImages.slice(1, 3).map((imageUrl, idx) => (
+                      {displayGalleryImages.slice(1, 3).map((imageUrl, idx) => (
                       <div key={`${imageUrl}-${idx}`} className="h-34 overflow-hidden rounded-[14px] bg-stone-100 md:h-[184px]">
                         <img
-                          src={imageUrl}
+                          src={getTravelImage(imageUrl)}
                           alt={`${pkg.title} gallery ${idx + 1}`}
                           className="h-full w-full object-cover transition duration-700 hover:scale-105"
                           referrerPolicy="no-referrer"
+                          onError={handleTravelImageError}
                         />
                       </div>
                       ))}
@@ -901,6 +906,85 @@ export default function PackageDetailView({
           </div>
 
         </div>
+
+        <section className="review-content-tour rounded-[18px] border border-stone-200 bg-white p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8" id="package-reviews">
+          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Reviews</span>
+              <h3 className="mt-3 text-3xl font-extrabold tracking-tight text-stone-950">Client’s Review</h3>
+            </div>
+            <div className="flex items-center gap-1 text-[#FF970D]">
+              {[...Array(5)].map((_, index) => (
+                <Star key={index} className="h-4 w-4 fill-current" />
+              ))}
+              <span className="ml-2 text-sm font-semibold text-stone-500">({packageReviews.length || 0} Review)</span>
+            </div>
+          </div>
+
+          {packageReviews.length > 0 ? (
+            <div className="client-review-list grid gap-5 md:grid-cols-2">
+              {packageReviews.map((review: any, index: number) => (
+                <article key={review.id || `${review.name || 'review'}-${index}`} className="client-review-item flex gap-4 rounded-[14px] border border-stone-200 bg-[#fffaf1] p-5 transition hover:-translate-y-1 hover:bg-white hover:shadow-sm">
+                  <img src={getTravelImage(review.imageUrl)} alt={review.name || 'Traveler'} className="h-14 w-14 shrink-0 rounded-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="font-extrabold text-stone-950">{review.name || 'Traveler'}</h4>
+                      {review.verified && <span className="rounded bg-[#4DA528]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#4DA528]">Verified</span>}
+                    </div>
+                    <div className="mt-2 flex items-center gap-1 text-[#FF970D]">
+                      {[...Array(Math.max(1, Math.min(5, Number(review.rating) || 5)))].map((_, starIndex) => (
+                        <Star key={starIndex} className="h-3.5 w-3.5 fill-current" />
+                      ))}
+                    </div>
+                    <p className="mt-3 text-sm leading-7 text-stone-600">{review.comment}</p>
+                    {review.destination && <p className="mt-3 text-[11px] font-bold uppercase tracking-wider text-stone-400">{review.destination}</p>}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-[14px] border border-dashed border-stone-300 bg-[#fffaf1] p-8 text-center">
+              <p className="text-sm leading-7 text-stone-500">No package-specific reviews are attached to this package yet.</p>
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-[18px] border border-stone-200 bg-white p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8" id="related-packages">
+          <div className="mb-8">
+            <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Explore the world</span>
+            <h3 className="mt-3 text-3xl font-extrabold tracking-tight text-stone-950">Related Packages</h3>
+          </div>
+
+          {relatedPackages.length > 0 ? (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {relatedPackages.map((related: any, index: number) => (
+                <article key={related.id || `${related.title || 'related'}-${index}`} className="tour-listing group overflow-hidden rounded-[14px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_24px_55px_rgba(18,38,32,0.16)]">
+                  <div className="tour-listing-image relative block aspect-[1.22/1] w-full overflow-hidden bg-stone-100 text-left">
+                    <img src={getTravelImage(related.imageUrl)} alt={related.title || 'Related package'} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+                    <span className="feature absolute left-4 top-4 rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">{related.category || 'Tour'}</span>
+                  </div>
+                  <div className="tour-listing-content p-5">
+                    {related.destination && (
+                      <p className="map flex items-center gap-2 text-[13px] font-semibold text-stone-500">
+                        <MapPin className="h-4 w-4 text-[#4DA528]" />
+                        {related.destination}
+                      </p>
+                    )}
+                    <h4 className="title-tour-list mt-3 line-clamp-2 text-[20px] font-extrabold leading-tight text-stone-950">{related.title}</h4>
+                    <div className="mt-4 flex items-center justify-between border-t border-stone-100 pt-4">
+                      <span className="text-sm text-stone-500">{related.duration}</span>
+                      <span className="font-extrabold text-[#4DA528]">{formatPrice(related.price)}</span>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-[14px] border border-dashed border-stone-300 bg-[#fffaf1] p-8 text-center">
+              <p className="text-sm leading-7 text-stone-500">No related package data is attached to this package yet.</p>
+            </div>
+          )}
+        </section>
 
       </div>
 

@@ -3,7 +3,8 @@ import {
   Compass, LayoutDashboard, FileText, Package, Image as ImageIcon, 
   Plus, Edit2, Trash2, Check, X, Search, Filter, Download, 
   Calendar, DollarSign, Users, LogOut, Globe, Eye, ChevronDown, 
-  Upload, CheckCircle, Clock, AlertCircle, Sparkles, Phone, Mail, MessageSquare, Share2, UserPlus, Clipboard, CheckCircle2, Award, ExternalLink, Star, LineChart as LineChartIcon, RefreshCw
+  Upload, CheckCircle, Clock, AlertCircle, Sparkles, Phone, Mail, MessageSquare, Share2, UserPlus, Clipboard, CheckCircle2, Award, ExternalLink, Star, LineChart as LineChartIcon, RefreshCw,
+  Menu, Bell, Settings, Palette, Home, Megaphone, Images, PanelLeftClose, PanelLeftOpen, SlidersHorizontal
 } from 'lucide-react';
 import { TravelPackage, Enquiry, GalleryImage, DestinationCategory, EnquiryStatus, formatPrice } from '../types';
 import { db, storage, collection, addDoc, updateDoc, deleteDoc, doc, getDocs } from '../lib/firebase';
@@ -26,6 +27,8 @@ interface AdminDashboardViewProps {
   onRefreshData: () => Promise<void>;
 }
 
+type AdminTab = 'overview' | 'packages' | 'enquiries' | 'gallery' | 'media-library' | 'website' | 'bookings' | 'reviews' | 'blogs' | 'analytics';
+
 export default function AdminDashboardView({
   packages,
   enquiries,
@@ -36,7 +39,11 @@ export default function AdminDashboardView({
   onRefreshData,
 }: AdminDashboardViewProps) {
   // Navigation inside Dashboard
-  const [activeTab, setActiveTab] = useState<'overview' | 'packages' | 'enquiries' | 'gallery' | 'bookings' | 'reviews' | 'blogs' | 'analytics'>('overview');
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [adminSearch, setAdminSearch] = useState('');
+  const [mediaLibrarySearch, setMediaLibrarySearch] = useState('');
+  const [mediaLibraryCategory, setMediaLibraryCategory] = useState('All');
 
   // Analytics State
   const [analyticsEvents, setAnalyticsEvents] = useState<any[]>([]);
@@ -1231,330 +1238,519 @@ export default function AdminDashboardView({
     }
   };
 
+  const navSections = [
+    {
+      label: 'Command Center',
+      items: [
+        { id: 'overview' as AdminTab, label: 'Dashboard', icon: LayoutDashboard, count: null },
+        { id: 'website' as AdminTab, label: 'Website CMS', icon: Globe, count: null },
+        { id: 'media-library' as AdminTab, label: 'Media Library', icon: Images, count: gallery.length },
+        { id: 'analytics' as AdminTab, label: 'Analytics', icon: LineChartIcon, count: null },
+      ],
+    },
+    {
+      label: 'Operations',
+      items: [
+        { id: 'packages' as AdminTab, label: 'Packages', icon: Package, count: packages.length },
+        { id: 'bookings' as AdminTab, label: 'Bookings', icon: Calendar, count: bookings.length },
+        { id: 'enquiries' as AdminTab, label: 'Enquiries', icon: FileText, count: enquiries.length },
+        { id: 'reviews' as AdminTab, label: 'Reviews', icon: Star, count: adminReviews.length },
+        { id: 'gallery' as AdminTab, label: 'Gallery CRUD', icon: ImageIcon, count: gallery.length },
+        { id: 'blogs' as AdminTab, label: 'Blog CMS', icon: FileText, count: blogPosts.length },
+      ],
+    },
+  ];
+
+  const activeNavItem = navSections.flatMap((section) => section.items).find((item) => item.id === activeTab);
+
+  const dashboardStats = [
+    { label: 'Total Revenue', value: formatPrice(metrics.totalRevenue), icon: DollarSign, tone: 'from-emerald-500/12 to-white', detail: 'Confirmed and paid bookings' },
+    { label: 'Active Bookings', value: metrics.activeBookingsCount, icon: Calendar, tone: 'from-[#4DA528]/12 to-white', detail: `${metrics.totalBookingsCount} total booking records` },
+    { label: 'Customers & Leads', value: metrics.totalEnquiries + metrics.totalBookingsCount, icon: Users, tone: 'from-sky-500/12 to-white', detail: `${metrics.thisMonthEnquiries} enquiries this month` },
+    { label: 'Active Packages', value: `${metrics.activePackages}/${metrics.totalPackages}`, icon: Package, tone: 'from-amber-500/14 to-white', detail: 'Public catalogue health' },
+  ];
+
+  const quickActions = [
+    { label: 'Add Package', icon: Plus, action: handleOpenPkgAdd, tone: 'bg-[#4DA528] text-white hover:bg-[#FF970D]' },
+    { label: 'Upload Gallery', icon: Upload, action: () => { setGalleryUploadMode('single'); setIsGalleryFormOpen(true); }, tone: 'bg-stone-950 text-white hover:bg-stone-800' },
+    { label: 'Sync Data', icon: RefreshCw, action: onRefreshData, tone: 'bg-white text-stone-700 hover:text-[#4DA528] border border-stone-200' },
+  ];
+
+  const websiteCards = [
+    { label: 'Homepage', icon: Home, description: 'Hero, featured sections, CTA layout', status: 'Placeholder' },
+    { label: 'Hero Banner', icon: Megaphone, description: 'Primary campaign imagery and copy', status: 'Placeholder' },
+    { label: 'Gallery', icon: Images, description: 'Public visual story collections', status: 'Placeholder' },
+    { label: 'Testimonials', icon: Star, description: 'Customer proof and featured reviews', status: 'Placeholder' },
+    { label: 'Contact', icon: Phone, description: 'Contact blocks, forms, and support links', status: 'Placeholder' },
+    { label: 'Footer', icon: LayoutDashboard, description: 'Footer columns, links, and trust badges', status: 'Placeholder' },
+    { label: 'SEO', icon: LineChartIcon, description: 'Meta title, description, and search preview', status: 'Placeholder' },
+    { label: 'Theme', icon: Palette, description: 'Colors, spacing, typography, and buttons', status: 'Placeholder' },
+  ];
+
+  const mediaLibraryCategories = useMemo(() => ['All', ...uniqueCategories], [uniqueCategories]);
+  const mediaLibraryImages = useMemo(() => {
+    return gallery.filter((img) => {
+      const term = mediaLibrarySearch.toLowerCase();
+      const matchesSearch = !term ||
+        img.title.toLowerCase().includes(term) ||
+        img.category.toLowerCase().includes(term) ||
+        (img.album || '').toLowerCase().includes(term);
+      const matchesCategory = mediaLibraryCategory === 'All' || img.category === mediaLibraryCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [gallery, mediaLibrarySearch, mediaLibraryCategory]);
+
+  const recentBookings = bookings.slice(0, 5);
+
 
   return (
-    <div id="admin-dashboard-layout" className="flex flex-col min-h-screen bg-[#f8f7f4] text-stone-800 animate-fade-in">
+    <div id="admin-dashboard-layout" className="min-h-screen bg-[#f4f6f0] text-stone-800 animate-fade-in">
       
-      {/* 1. Header Bar */}
-      <header className="bg-stone-900 text-white h-20 px-6 flex items-center justify-between border-b border-stone-800 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-[#008080] rounded-sm flex items-center justify-center text-white shadow-md">
-            <Compass className="w-5 h-5 text-white animate-spin-slow" />
-          </div>
-          <div>
-            <h1 className="text-md sm:text-lg font-serif font-normal tracking-tight">
-              Pravaah <span className="text-[#008080]">Panel</span>
-            </h1>
-            <span className="text-[9px] text-stone-400 uppercase tracking-[0.2em] block font-bold mt-0.5">
-              Secure Core Workspace
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4">
-          {/* Operator label */}
-          <div className="hidden sm:block text-right">
-            <span className="text-[10px] text-stone-400 block font-bold uppercase tracking-wider">Active Operator</span>
-            <span className="text-xs font-bold text-teal-300">{adminEmail}</span>
-          </div>
-
-          <button
-            onClick={onNavigatePublic}
-            className="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 text-white text-[10px] font-bold uppercase tracking-wider rounded-sm transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <Globe className="w-3.5 h-3.5 text-[#008080]" />
-            <span>View Public Website</span>
-          </button>
-
-          <button
-            onClick={onLogout}
-            className="p-2 bg-rose-950/40 hover:bg-rose-900 text-rose-300 hover:text-white rounded-sm transition cursor-pointer"
-            title="Secure Logout"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
-      </header>
-
-      {/* 2. Main content block splits: Sidebar & Content Area */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+      {/* 1. Premium Admin Shell */}
+      <div className="flex min-h-screen">
         
         {/* Navigation Sidebar */}
-        <aside className="w-full md:w-64 bg-stone-900 border-r border-stone-800 text-stone-400 p-4 shrink-0 space-y-2">
-          
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-none text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
-              activeTab === 'overview' 
-                ? 'bg-[#008080] text-white shadow-sm' 
-                : 'hover:bg-stone-800 hover:text-white'
-            }`}
-          >
-            <LayoutDashboard className="w-4 h-4 shrink-0" />
-            <span>Workspace Overview</span>
-          </button>
+        <aside className={`${isSidebarCollapsed ? 'w-[88px]' : 'w-[292px]'} hidden shrink-0 border-r border-white/10 bg-[#071d28] text-white shadow-[18px_0_50px_rgba(7,29,40,0.16)] transition-all duration-300 lg:flex lg:flex-col`}>
+          <div className="flex h-20 items-center justify-between border-b border-white/10 px-5">
+            <div className={`flex items-center gap-3 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[#4DA528] text-white shadow-lg">
+                <Compass className="h-5 w-5 animate-spin-slow" />
+              </div>
+              {!isSidebarCollapsed && (
+                <div>
+                  <h1 className="font-serif text-lg font-normal tracking-tight">Pravaah CMS</h1>
+                  <span className="mt-0.5 block text-[9px] font-bold uppercase tracking-[0.22em] text-white/45">Travel Control Suite</span>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              className="hidden rounded-[10px] border border-white/10 p-2 text-white/65 transition hover:bg-white/10 hover:text-white lg:inline-flex"
+              title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {isSidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </button>
+          </div>
 
-          <button
-            onClick={() => setActiveTab('packages')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-none text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
-              activeTab === 'packages' 
-                ? 'bg-[#008080] text-white shadow-sm' 
-                : 'hover:bg-stone-800 hover:text-white'
-            }`}
-          >
-            <Package className="w-4 h-4 shrink-0" />
-            <span>Manage Packages ({packages.length})</span>
-          </button>
+          <div className="flex-1 space-y-6 overflow-y-auto px-4 py-5">
+            {navSections.map((section) => (
+              <div key={section.label} className="space-y-2">
+                {!isSidebarCollapsed && (
+                  <p className="px-3 text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/35">{section.label}</p>
+                )}
+                {section.items.map((item) => {
+                  const NavIcon = item.icon;
+                  const selected = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setActiveTab(item.id)}
+                      className={`group flex w-full items-center gap-3 rounded-[14px] px-3 py-3 text-left text-xs font-extrabold uppercase tracking-[0.08em] transition ${
+                        selected
+                          ? 'bg-[#4DA528] text-white shadow-[0_14px_35px_rgba(77,165,40,0.3)]'
+                          : 'text-white/62 hover:bg-white/10 hover:text-white'
+                      } ${isSidebarCollapsed ? 'justify-center' : ''}`}
+                      title={item.label}
+                    >
+                      <NavIcon className="h-4.5 w-4.5 shrink-0" />
+                      {!isSidebarCollapsed && (
+                        <>
+                          <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                          {item.count !== null && (
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] ${selected ? 'bg-white/20 text-white' : 'bg-white/8 text-white/50'}`}>
+                              {item.count}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
 
-          <button
-            onClick={() => setActiveTab('enquiries')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-none text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
-              activeTab === 'enquiries' 
-                ? 'bg-[#008080] text-white shadow-sm' 
-                : 'hover:bg-stone-800 hover:text-white'
-            }`}
-          >
-            <FileText className="w-4 h-4 shrink-0" />
-            <span>Client Enquiries ({enquiries.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('gallery')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-none text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
-              activeTab === 'gallery' 
-                ? 'bg-[#008080] text-white shadow-sm' 
-                : 'hover:bg-stone-800 hover:text-white'
-            }`}
-          >
-            <ImageIcon className="w-4 h-4 shrink-0" />
-            <span>Gallery & Media ({gallery.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('bookings')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-none text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
-              activeTab === 'bookings' 
-                ? 'bg-[#008080] text-white shadow-sm' 
-                : 'hover:bg-stone-800 hover:text-white'
-            }`}
-          >
-            <Calendar className="w-4 h-4 shrink-0" />
-            <span>Customer Bookings ({bookings.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('reviews')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-none text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
-              activeTab === 'reviews' 
-                ? 'bg-[#008080] text-white shadow-sm' 
-                : 'hover:bg-stone-800 hover:text-white'
-            }`}
-          >
-            <Star className="w-4 h-4 shrink-0 text-amber-400 fill-amber-400" />
-            <span>Review Management ({adminReviews.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('blogs')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-none text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
-              activeTab === 'blogs' 
-                ? 'bg-[#008080] text-white shadow-sm' 
-                : 'hover:bg-stone-800 hover:text-white'
-            }`}
-          >
-            <FileText className="w-4 h-4 shrink-0 text-sky-400" />
-            <span>Blog CMS ({blogPosts.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-none text-xs font-bold uppercase tracking-wider transition cursor-pointer ${
-              activeTab === 'analytics' 
-                ? 'bg-[#008080] text-white shadow-sm' 
-                : 'hover:bg-stone-800 hover:text-white'
-            }`}
-          >
-            <LineChartIcon className="w-4 h-4 shrink-0 text-teal-400" />
-            <span>Analytics Dashboard</span>
-          </button>
+          <div className="border-t border-white/10 p-4">
+            <div className={`rounded-[18px] border border-white/10 bg-white/8 p-4 ${isSidebarCollapsed ? 'hidden' : ''}`}>
+              <span className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#FF970D]">Operator</span>
+              <p className="mt-2 truncate text-sm font-bold text-white">{adminEmail}</p>
+              <button
+                type="button"
+                onClick={onLogout}
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[5px] bg-white/10 px-3 py-2 text-[10px] font-extrabold uppercase tracking-wider text-white transition hover:bg-rose-500"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                Logout
+              </button>
+            </div>
+          </div>
 
         </aside>
 
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/* Premium Header Bar */}
+          <header className="sticky top-0 z-40 border-b border-stone-200/70 bg-white/88 px-4 py-4 shadow-[0_12px_35px_rgba(18,38,32,0.06)] backdrop-blur-xl sm:px-6">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-[12px] border border-stone-200 bg-white text-stone-700 shadow-sm lg:hidden"
+                  onClick={() => setIsSidebarCollapsed(false)}
+                  title="Admin navigation"
+                >
+                  <Menu className="h-5 w-5" />
+                </button>
+                <div>
+                  <span className="text-[10px] font-extrabold uppercase tracking-[0.22em] text-[#4DA528]">Admin Workspace</span>
+                  <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-stone-950 sm:text-3xl">{activeNavItem?.label || 'Dashboard'}</h2>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                <div className="relative min-w-0 md:w-[340px]">
+                  <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                  <input
+                    type="text"
+                    value={adminSearch}
+                    onChange={(e) => setAdminSearch(e.target.value)}
+                    placeholder="Search CMS, leads, packages..."
+                    className="h-11 w-full rounded-[14px] border border-stone-200 bg-[#f7f8f3] pl-11 pr-4 text-sm outline-none transition focus:border-[#4DA528] focus:bg-white"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={onNavigatePublic}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] border border-stone-200 bg-white px-4 text-xs font-extrabold uppercase tracking-wider text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
+                  >
+                    <Globe className="h-4 w-4" />
+                    <span className="hidden sm:inline">View Site</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="relative inline-flex h-11 w-11 items-center justify-center rounded-[12px] border border-stone-200 bg-white text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
+                    title="Notifications"
+                  >
+                    <Bell className="h-4.5 w-4.5" />
+                    <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#FF970D]" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('website')}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-[12px] border border-stone-200 bg-white text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
+                    title="Website quick actions"
+                  >
+                    <Settings className="h-4.5 w-4.5" />
+                  </button>
+                  <div className="flex h-11 items-center gap-3 rounded-[14px] bg-stone-950 px-3 text-white shadow-sm">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#4DA528] text-xs font-extrabold">
+                      {adminEmail?.charAt(0).toUpperCase() || 'A'}
+                    </div>
+                    <div className="hidden text-left sm:block">
+                      <span className="block text-[9px] font-extrabold uppercase tracking-wider text-white/45">Admin</span>
+                      <span className="block max-w-[150px] truncate text-xs font-bold">{adminEmail}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex gap-2 overflow-x-auto pb-1 lg:hidden">
+              {navSections.flatMap((section) => section.items).map((item) => {
+                const NavIcon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setActiveTab(item.id)}
+                    className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-[11px] font-extrabold uppercase tracking-wider transition ${
+                      activeTab === item.id ? 'bg-[#4DA528] text-white' : 'bg-white text-stone-600'
+                    }`}
+                  >
+                    <NavIcon className="h-3.5 w-3.5" />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          </header>
+
         {/* Dynamic Display Area */}
-        <main className="flex-1 p-6 overflow-y-auto space-y-6">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 xl:p-8">
           
           {/* ==================================================== */}
           {/* TAB 1: OVERVIEW */}
           {/* ==================================================== */}
           {activeTab === 'overview' && (
             <div className="space-y-8 animate-fade-in">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-serif font-normal text-[#333333] tracking-tight">Workspace Overview</h2>
-                  <p className="text-xs text-stone-500 font-light">Real-time indicators and dynamic operational telemetry.</p>
-                </div>
-              </div>
-
-              {/* Grid Metrics */}
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-xs font-bold text-stone-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                    <FileText className="w-3.5 h-3.5 text-[#008080]" />
-                    <span>Inquiries & Marketing Performance</span>
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {/* Metric 1 */}
-                    <div className="bg-white border border-stone-200 rounded p-6 shadow-xs flex items-center justify-between">
-                      <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">Total Enquiries</span>
-                        <strong className="text-3xl font-serif font-normal text-[#333333]">{metrics.totalEnquiries}</strong>
-                      </div>
-                      <div className="w-12 h-12 bg-[#f8f7f4] text-[#008080] rounded-sm flex items-center justify-center">
-                        <FileText className="w-6 h-6" />
-                      </div>
-                    </div>
-
-                    {/* Metric 2 */}
-                    <div className="bg-white border border-stone-200 rounded p-6 shadow-xs flex items-center justify-between">
-                      <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">This Month's Enquiries</span>
-                        <strong className="text-3xl font-serif font-normal text-[#008080]">{metrics.thisMonthEnquiries}</strong>
-                      </div>
-                      <div className="w-12 h-12 bg-[#f8f7f4] text-[#008080] rounded-sm flex items-center justify-center">
-                        <Sparkles className="w-6 h-6 text-[#008080]" />
-                      </div>
-                    </div>
-
-                    {/* Metric 3 */}
-                    <div className="bg-white border border-stone-200 rounded p-6 shadow-xs flex items-center justify-between">
-                      <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">Total Packages</span>
-                        <strong className="text-3xl font-serif font-normal text-[#333333]">{metrics.totalPackages}</strong>
-                      </div>
-                      <div className="w-12 h-12 bg-stone-50 text-[#F4C430] rounded-sm flex items-center justify-center">
-                        <Package className="w-6 h-6 text-[#F4C430]" />
-                      </div>
-                    </div>
-
-                    {/* Metric 4 */}
-                    <div className="bg-white border border-stone-200 rounded p-6 shadow-xs flex items-center justify-between">
-                      <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">Active Packages</span>
-                        <strong className="text-3xl font-serif font-normal text-[#008080]">{metrics.activePackages}</strong>
-                      </div>
-                      <div className="w-12 h-12 bg-[#f8f7f4] text-[#008080] rounded-sm flex items-center justify-center">
-                        <CheckCircle className="w-6 h-6" />
-                      </div>
+              <section className="relative overflow-hidden rounded-[26px] bg-[#071d28] p-6 text-white shadow-[0_24px_70px_rgba(7,29,40,0.22)] sm:p-8">
+                <div className="absolute inset-0 bg-linear-to-r from-[#071d28] via-[#071d28]/92 to-[#244034]" />
+                <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full border border-white/10 bg-white/5" />
+                <div className="relative grid gap-8 xl:grid-cols-[1.3fr_0.7fr] xl:items-center">
+                  <div>
+                    <span className="inline-flex rounded-full bg-[#4DA528] px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.2em]">Premium Travel CMS</span>
+                    <h2 className="mt-5 max-w-3xl text-4xl font-extrabold tracking-tight sm:text-5xl">Command center for bookings, content, and guest journeys.</h2>
+                    <p className="mt-4 max-w-2xl text-sm leading-7 text-white/68">Monitor revenue, manage the package catalogue, respond to leads, and prepare website content from a single luxury operations dashboard.</p>
+                  </div>
+                  <div className="rounded-[22px] border border-white/12 bg-white/10 p-5 backdrop-blur-md">
+                    <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/50">Quick Actions</span>
+                    <div className="mt-4 grid gap-3">
+                      {quickActions.map((action) => {
+                        const ActionIcon = action.icon;
+                        return (
+                          <button
+                            key={action.label}
+                            type="button"
+                            onClick={action.action}
+                            className={`inline-flex items-center justify-center gap-2 rounded-[5px] px-4 py-3 text-xs font-extrabold uppercase tracking-wider transition hover:-translate-y-0.5 ${action.tone}`}
+                          >
+                            <ActionIcon className="h-4 w-4" />
+                            {action.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
+              </section>
 
-                <div>
-                  <h3 className="text-xs font-bold text-stone-500 uppercase tracking-widest mb-3 flex items-center gap-2 pt-2">
-                    <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Sales, Revenue & Fulfillment</span>
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {/* Revenue Card */}
-                    <div className="bg-white border border-stone-200 rounded p-6 shadow-xs flex items-center justify-between">
-                      <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">Total Bookings Revenue</span>
-                        <strong className="text-3xl font-serif font-normal text-emerald-700">{formatPrice(metrics.totalRevenue)}</strong>
+              <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+                {dashboardStats.map((stat) => {
+                  const StatIcon = stat.icon;
+                  return (
+                    <div key={stat.label} className={`group rounded-[20px] border border-stone-200 bg-linear-to-br ${stat.tone} p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_55px_rgba(18,38,32,0.14)]`}>
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <span className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-500">{stat.label}</span>
+                          <strong className="mt-3 block text-3xl font-extrabold tracking-tight text-stone-950">{stat.value}</strong>
+                        </div>
+                        <span className="flex h-12 w-12 items-center justify-center rounded-[16px] bg-white text-[#4DA528] shadow-sm">
+                          <StatIcon className="h-5 w-5" />
+                        </span>
                       </div>
-                      <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-sm flex items-center justify-center">
-                        <DollarSign className="w-6 h-6" />
-                      </div>
+                      <p className="mt-4 text-sm text-stone-500">{stat.detail}</p>
                     </div>
+                  );
+                })}
+              </section>
 
-                    {/* Receivables Card */}
-                    <div className="bg-white border border-stone-200 rounded p-6 shadow-xs flex items-center justify-between">
-                      <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">Pending Receivables</span>
-                        <strong className="text-3xl font-serif font-normal text-amber-600">{formatPrice(metrics.pendingReceivables)}</strong>
-                      </div>
-                      <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-sm flex items-center justify-center">
-                        <Clock className="w-6 h-6" />
-                      </div>
+              <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+                <div className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
+                  <div className="mb-5 flex items-center justify-between gap-4">
+                    <div>
+                      <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Recent Bookings</span>
+                      <h3 className="mt-2 text-2xl font-extrabold text-stone-950">Latest customer requests</h3>
                     </div>
+                    <button type="button" onClick={() => setActiveTab('bookings')} className="rounded-[5px] bg-stone-950 px-4 py-2 text-[10px] font-extrabold uppercase tracking-wider text-white transition hover:bg-[#4DA528]">Open CRM</button>
+                  </div>
 
-                    {/* Bookings Count */}
-                    <div className="bg-white border border-stone-200 rounded p-6 shadow-xs flex items-center justify-between">
-                      <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">Total Client Bookings</span>
-                        <strong className="text-3xl font-serif font-normal text-stone-800">{metrics.totalBookingsCount}</strong>
-                      </div>
-                      <div className="w-12 h-12 bg-stone-50 text-stone-600 rounded-sm flex items-center justify-center">
-                        <Calendar className="w-6 h-6" />
-                      </div>
+                  {recentBookings.length === 0 ? (
+                    <div className="rounded-[18px] border border-dashed border-stone-300 bg-[#f7f8f3] p-10 text-center">
+                      <Calendar className="mx-auto h-10 w-10 text-stone-300" />
+                      <p className="mt-3 text-sm font-bold text-stone-600">No recent bookings yet.</p>
                     </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {recentBookings.map((booking) => (
+                        <button
+                          key={booking.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveBooking(booking);
+                            setAssignee(booking.assignedStaff || '');
+                            setFollowUpDate(booking.followUpDate || '');
+                          }}
+                          className="flex w-full flex-col gap-3 rounded-[16px] border border-stone-100 bg-[#fbfcf7] p-4 text-left transition hover:border-[#4DA528]/40 hover:bg-white sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div>
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#4DA528]">{booking.destination || 'Custom Trip'}</span>
+                            <h4 className="mt-1 text-sm font-extrabold text-stone-950">{booking.packageTitle || 'Custom Holiday Package'}</h4>
+                            <p className="mt-1 text-xs text-stone-500">{booking.customerName || 'Traveler'} · {booking.travelDate || 'Flexible dates'}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-extrabold text-stone-950">{formatPrice(booking.price || 0)}</span>
+                            <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-amber-700">{booking.status || 'New Lead'}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-                    {/* Active Bookings (Pending / Confirmed) */}
-                    <div className="bg-white border border-stone-200 rounded p-6 shadow-xs flex items-center justify-between">
-                      <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">Active Bookings</span>
-                        <strong className="text-3xl font-serif font-normal text-teal-600">{metrics.activeBookingsCount}</strong>
+                <div className="space-y-6">
+                  <div className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
+                    <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Booking Statistics</span>
+                    <div className="mt-5 grid grid-cols-2 gap-3">
+                      {[
+                        ['New Leads', bookings.filter(b => !b.status || b.status === 'New Lead' || b.status === 'Pending').length],
+                        ['Confirmed', bookings.filter(b => b.status === 'Confirmed').length],
+                        ['Receivables', formatPrice(metrics.pendingReceivables)],
+                        ['Reviews', adminReviews.length],
+                      ].map(([label, value]) => (
+                        <div key={label as string} className="rounded-[16px] bg-[#f7f8f3] p-4">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-stone-400">{label}</span>
+                          <strong className="mt-2 block text-xl font-extrabold text-stone-950">{value}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
+                    <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Package Statistics</span>
+                    <div className="mt-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-stone-600">Active package ratio</span>
+                        <span className="text-sm font-extrabold text-stone-950">{metrics.totalPackages ? Math.round((metrics.activePackages / metrics.totalPackages) * 100) : 0}%</span>
                       </div>
-                      <div className="w-12 h-12 bg-teal-50 text-teal-600 rounded-sm flex items-center justify-center">
-                        <Users className="w-6 h-6" />
+                      <div className="h-3 overflow-hidden rounded-full bg-stone-100">
+                        <div className="h-full rounded-full bg-[#4DA528]" style={{ width: `${metrics.totalPackages ? Math.round((metrics.activePackages / metrics.totalPackages) * 100) : 0}%` }} />
                       </div>
+                      <button type="button" onClick={() => setActiveTab('packages')} className="inline-flex w-full items-center justify-center gap-2 rounded-[5px] border border-stone-200 px-4 py-3 text-xs font-extrabold uppercase tracking-wider text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]">
+                        Manage Catalogue
+                      </button>
                     </div>
                   </div>
                 </div>
-              </div>
+              </section>
+            </div>
+          )}
 
-              {/* Recent Enquiries Block */}
-              <div className="bg-white border border-stone-200 rounded shadow-xs p-6 space-y-4">
-                <div className="flex justify-between items-center border-b border-stone-100 pb-3">
-                  <h3 className="font-serif italic text-base text-[#333333]">Recent Operational Enquiries</h3>
-                  <button
-                    onClick={() => setActiveTab('enquiries')}
-                    className="text-[10px] font-bold text-[#008080] uppercase tracking-wider hover:underline cursor-pointer"
-                  >
-                    View All Enquiries
-                  </button>
+          {/* ==================================================== */}
+          {/* TAB 1B: WEBSITE CMS PLACEHOLDERS */}
+          {/* ==================================================== */}
+          {activeTab === 'website' && (
+            <div className="space-y-8 animate-fade-in">
+              <section className="relative overflow-hidden rounded-[26px] bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)] sm:p-8">
+                <div className="absolute inset-y-0 right-0 hidden w-1/3 bg-linear-to-l from-[#4DA528]/12 to-transparent lg:block" />
+                <div className="relative max-w-3xl">
+                  <span className="inline-flex rounded-full bg-[#4DA528]/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Website CMS</span>
+                  <h2 className="mt-4 text-4xl font-extrabold tracking-tight text-stone-950">Public website controls, ready for future wiring.</h2>
+                  <p className="mt-3 text-sm leading-7 text-stone-500">These modules are UI placeholders only. They do not connect to Firestore, Storage, APIs, or live publishing yet.</p>
                 </div>
+              </section>
 
-                {metrics.recentEnquiries.length === 0 ? (
-                  <p className="text-stone-400 text-xs italic py-4 text-center font-light">No enquiries have been submitted yet.</p>
-                ) : (
-                  <div className="divide-y divide-stone-100">
-                    {metrics.recentEnquiries.map((enq) => (
-                      <div 
-                        key={enq.id}
-                        onClick={() => {
-                          setActiveEnquiry(enq);
-                          setActiveTab('enquiries');
-                        }}
-                        className="py-4 flex items-center justify-between gap-4 hover:bg-[#f8f7f4] px-2 rounded-sm transition cursor-pointer"
-                      >
-                        <div className="space-y-1">
-                          <strong className="text-xs sm:text-sm text-[#333333] font-bold block">{enq.name}</strong>
-                          <span className="text-[11px] text-stone-500 flex items-center gap-2 font-light">
-                            <span>Phone: {enq.phone}</span>
-                            <span>•</span>
-                            <span className="text-[#008080] font-semibold">{enq.destination}</span>
-                          </span>
-                        </div>
+              <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+                {websiteCards.map((card) => {
+                  const CardIcon = card.icon;
+                  return (
+                    <div key={card.label} className="group rounded-[20px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_55px_rgba(18,38,32,0.14)]">
+                      <div className="flex items-start justify-between gap-4">
+                        <span className="flex h-12 w-12 items-center justify-center rounded-[16px] bg-[#4DA528]/10 text-[#4DA528]">
+                          <CardIcon className="h-5 w-5" />
+                        </span>
+                        <span className="rounded-full bg-stone-100 px-3 py-1 text-[9px] font-extrabold uppercase tracking-wider text-stone-500">{card.status}</span>
+                      </div>
+                      <h3 className="mt-5 text-xl font-extrabold text-stone-950">{card.label}</h3>
+                      <p className="mt-2 text-sm leading-6 text-stone-500">{card.description}</p>
+                      <button type="button" className="mt-5 inline-flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-wider text-stone-400" disabled>
+                        Coming Soon
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </section>
 
-                        <div className="flex items-center gap-3">
-                          <span className="text-[10px] font-light text-stone-400 hidden sm:block">
-                            {enq.createdAt && new Date(enq.createdAt).toLocaleDateString()}
-                          </span>
-                          
-                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-none uppercase tracking-wider ${
-                            enq.status === 'New' ? 'bg-blue-50 border border-blue-100 text-blue-700' :
-                            enq.status === 'Contacted' ? 'bg-amber-50 border border-amber-100 text-amber-700' :
-                            enq.status === 'Converted' ? 'bg-emerald-50 border border-emerald-100 text-emerald-700' :
-                            'bg-stone-50 border border-stone-150 text-stone-700'
-                          }`}>
-                            {enq.status}
-                          </span>
-                        </div>
+              <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                <div className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)] lg:col-span-2">
+                  <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Publishing Pipeline</span>
+                  <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                    {['Draft Design', 'Review Content', 'Connect Backend'].map((step, index) => (
+                      <div key={step} className="rounded-[16px] bg-[#f7f8f3] p-4">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-xs font-extrabold text-[#4DA528] shadow-sm">{index + 1}</span>
+                        <h4 className="mt-4 text-sm font-extrabold text-stone-950">{step}</h4>
+                        <p className="mt-2 text-xs leading-5 text-stone-500">Placeholder CMS stage for future admin editing workflows.</p>
                       </div>
                     ))}
                   </div>
+                </div>
+                <div className="rounded-[22px] border border-stone-200 bg-[#071d28] p-6 text-white shadow-[0_14px_38px_rgba(18,38,32,0.12)]">
+                  <Palette className="h-8 w-8 text-[#FF970D]" />
+                  <h3 className="mt-5 text-2xl font-extrabold">Theme system</h3>
+                  <p className="mt-3 text-sm leading-7 text-white/62">Future controls for colors, typography, button shapes, cards, and section rhythm.</p>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {/* ==================================================== */}
+          {/* TAB 1C: MEDIA LIBRARY UI ONLY */}
+          {/* ==================================================== */}
+          {activeTab === 'media-library' && (
+            <div className="space-y-8 animate-fade-in">
+              <section className="grid grid-cols-1 gap-6 xl:grid-cols-[0.8fr_1.2fr]">
+                <div className="rounded-[24px] border border-dashed border-[#4DA528]/40 bg-white p-8 text-center shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[20px] bg-[#4DA528]/10 text-[#4DA528]">
+                    <Upload className="h-7 w-7" />
+                  </div>
+                  <h2 className="mt-5 text-2xl font-extrabold text-stone-950">Upload media</h2>
+                  <p className="mx-auto mt-3 max-w-sm text-sm leading-7 text-stone-500">UI placeholder only. Firebase Storage upload is intentionally not connected on this Media Library page.</p>
+                  <button type="button" disabled className="mt-6 rounded-[5px] bg-stone-200 px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-stone-500">Upload Disabled</button>
+                </div>
+
+                <div className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
+                  <div className="grid gap-4 md:grid-cols-[1fr_220px]">
+                    <div className="relative">
+                      <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                      <input
+                        type="text"
+                        value={mediaLibrarySearch}
+                        onChange={(e) => setMediaLibrarySearch(e.target.value)}
+                        placeholder="Search images, albums, categories..."
+                        className="h-12 w-full rounded-[14px] border border-stone-200 bg-[#f7f8f3] pl-11 pr-4 text-sm outline-none transition focus:border-[#4DA528] focus:bg-white"
+                      />
+                    </div>
+                    <select
+                      value={mediaLibraryCategory}
+                      onChange={(e) => setMediaLibraryCategory(e.target.value)}
+                      className="h-12 rounded-[14px] border border-stone-200 bg-[#f7f8f3] px-4 text-sm font-bold text-stone-700 outline-none transition focus:border-[#4DA528] focus:bg-white"
+                    >
+                      {mediaLibraryCategories.map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    {mediaLibraryCategories.slice(0, 8).map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setMediaLibraryCategory(cat)}
+                        className={`rounded-full px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider transition ${
+                          mediaLibraryCategory === cat ? 'bg-[#4DA528] text-white' : 'bg-[#f7f8f3] text-stone-500 hover:text-[#4DA528]'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </section>
+
+              <section className="grid grid-cols-2 gap-5 md:grid-cols-3 xl:grid-cols-4">
+                {mediaLibraryImages.length === 0 ? (
+                  <div className="col-span-full rounded-[22px] border border-dashed border-stone-300 bg-white p-12 text-center text-sm text-stone-500">
+                    No media matches the current UI filters.
+                  </div>
+                ) : (
+                  mediaLibraryImages.map((img) => (
+                    <div key={img.id} className="group overflow-hidden rounded-[20px] border border-stone-200 bg-white shadow-[0_14px_38px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_55px_rgba(18,38,32,0.14)]">
+                      <div className="relative aspect-[4/3] overflow-hidden bg-stone-100">
+                        <img src={img.imageUrl} alt={img.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" loading="lazy" referrerPolicy="no-referrer" />
+                        <span className="absolute left-3 top-3 rounded bg-white/95 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-[#4DA528] shadow-sm">{img.category}</span>
+                      </div>
+                      <div className="p-4">
+                        <h3 className="line-clamp-1 text-sm font-extrabold text-stone-950">{img.title}</h3>
+                        <p className="mt-1 text-xs text-stone-500">{img.album || 'Unassigned album'}</p>
+                      </div>
+                    </div>
+                  ))
                 )}
-              </div>
+              </section>
             </div>
           )}
 
@@ -3274,6 +3470,7 @@ export default function AdminDashboardView({
           )}
 
         </main>
+      </div>
       </div>
 
       {/* ==================================================== */}

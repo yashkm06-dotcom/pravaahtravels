@@ -8,6 +8,7 @@ import {
 import { TravelPackage, formatPrice, DestinationCategory } from '../types';
 import InteractiveRouteMap from './InteractiveRouteMap';
 import { db, collection, addDoc, getDocs, query, orderBy, limit } from '../lib/firebase';
+import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 
 interface HomeViewProps {
   featuredPackages: TravelPackage[];
@@ -359,10 +360,11 @@ export default function HomeView({
         <div className="absolute inset-0 bg-linear-to-r from-[#081E2A] via-[#081E2A]/92 to-[#081E2A]/10" />
         <div className="absolute inset-y-0 right-0 hidden w-[57%] overflow-hidden lg:block">
           <img
-            src="https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&q=80&w=1700"
+            src={getTravelImage('https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&q=80&w=1700')}
             alt="Himalayan mountain backdrop"
             className="absolute inset-0 h-full w-full object-cover object-center opacity-88"
             referrerPolicy="no-referrer"
+            onError={handleTravelImageError}
           />
           <div className="absolute inset-0 bg-linear-to-r from-[#081E2A]/74 via-[#081E2A]/16 to-[#081E2A]/4" />
           <div className="absolute inset-0 bg-linear-to-t from-[#081E2A]/48 via-transparent to-white/8" />
@@ -371,10 +373,11 @@ export default function HomeView({
 
           <div className="absolute right-[12%] top-[94px] h-[640px] w-[430px] overflow-hidden rounded-t-full rounded-b-[220px] border border-white/24 bg-white/10 shadow-[0_36px_90px_rgba(0,0,0,0.38)] backdrop-blur-[2px]">
             <img
-              src="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&q=80&w=1050"
+              src={getTravelImage('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&q=80&w=1050')}
               alt="Traveler enjoying mountain route"
               className="h-full w-full object-cover object-center"
               referrerPolicy="no-referrer"
+              onError={handleTravelImageError}
             />
             <div className="absolute inset-0 bg-linear-to-t from-[#081E2A]/28 via-transparent to-white/10" />
           </div>
@@ -399,10 +402,11 @@ export default function HomeView({
         </div>
 
         <img
-          src="https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&q=80&w=1400"
+          src={getTravelImage('https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&q=80&w=1400')}
           alt="Himalayan mobile tour"
           className="absolute inset-0 h-full w-full object-cover opacity-45 lg:hidden"
           referrerPolicy="no-referrer"
+          onError={handleTravelImageError}
         />
         <div className="absolute inset-0 bg-linear-to-r from-[#081E2A] via-[#081E2A]/88 to-[#081E2A]/32 lg:hidden" />
         <div className="absolute inset-x-0 bottom-0 h-56 bg-linear-to-t from-white via-white/50 to-transparent" />
@@ -599,7 +603,7 @@ export default function HomeView({
               <div className="image-list flex-three flex -space-x-4">
                 {ugcPosts.map((post) => (
                   <button key={post.id} type="button" onClick={() => setSelectedUgcPost(post)} className="item h-14 w-14 overflow-hidden rounded-full border-4 border-white shadow-md">
-                    <img src={post.avatar} alt={post.handle} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                    <img src={getTravelImage(post.avatar)} alt={post.handle} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                   </button>
                 ))}
                 <div className="icon item flex-five flex h-14 w-14 items-center justify-center rounded-full border-4 border-white bg-[#4DA528] text-white shadow-md">
@@ -613,7 +617,7 @@ export default function HomeView({
           <div className="row pt-115 mt-20 grid gap-12 lg:grid-cols-2 lg:items-center">
             <div className="col-lg-6">
               <div className="travel-video relative">
-                <img src={popularDestinations[0].image} alt={popularDestinations[0].name} className="image-video min-h-[520px] w-full rounded-[24px] object-cover" referrerPolicy="no-referrer" />
+                <img src={getTravelImage(popularDestinations[0].image)} alt={popularDestinations[0].name} className="image-video min-h-[520px] w-full rounded-[24px] object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                 <div className="video-wrap">
                   <button type="button" onClick={handleLaunchPlanner} className="widget-icon-video widget-videos flex-five z-index3 absolute left-1/2 top-1/2 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#4DA528] text-white shadow-[0_20px_45px_rgba(0,0,0,0.25)] transition hover:bg-[#FF970D]">
                     <Sparkles className="h-8 w-8" />
@@ -653,7 +657,7 @@ export default function HomeView({
                   </button>
                   <div className="profile flex-three flex items-center gap-3">
                     <div className="image h-12 w-12 overflow-hidden rounded-full">
-                      <img src={ugcPosts[0].avatar} alt={ugcPosts[0].handle} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                      <img src={getTravelImage(ugcPosts[0].avatar)} alt={ugcPosts[0].handle} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                     </div>
                     <div className="content">
                       <p className="font-serif text-[20px] italic text-stone-950">Pravaah Curator</p>
@@ -725,11 +729,7 @@ export default function HomeView({
                                     <span className="media rounded bg-white/90 px-3 py-1 text-[12px] font-bold text-stone-800">{liveReviews.length || 1}</span>
                                   </div>
                                 </div>
-                                {pkg.imageUrl ? (
-                                  <img src={pkg.imageUrl} alt={pkg.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" />
-                                ) : (
-                                  <div className="flex h-full w-full items-center justify-center bg-stone-100 text-stone-400">No image</div>
-                                )}
+                                <img src={getTravelImage(pkg.imageUrl)} alt={pkg.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                                 {isAdminLoggedIn && onDeletePackage && (
                                   <button
                                     type="button"
@@ -830,7 +830,7 @@ export default function HomeView({
                 <div className="tab-pane fade show active" role="tabpanel" tabIndex={0}>
                   <div className="tabs-activities-content flex flex-col overflow-hidden rounded-[18px] bg-[#081E2A] lg:flex-row">
                     <div className="activities-image lg:w-1/2">
-                      <img src={popularDestinations[1].image} alt={popularDestinations[1].name} className="h-[360px] w-full object-cover lg:h-full" referrerPolicy="no-referrer" />
+                      <img src={getTravelImage(popularDestinations[1].image)} alt={popularDestinations[1].name} className="h-[360px] w-full object-cover lg:h-full" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                     </div>
                     <div className="activities-content relative flex-1 p-8 sm:p-12">
                       <span className="sub-title text-white/70">Welcome to Pravaah</span>
@@ -862,7 +862,7 @@ export default function HomeView({
       </section>
 
       <section className="offer-package pd-main bg-1 relative overflow-hidden bg-white py-24">
-        <img src={popularDestinations[3].image} alt={popularDestinations[3].name} className="feature-ofer absolute inset-y-0 right-0 hidden h-full w-[34%] object-cover opacity-20 lg:block" referrerPolicy="no-referrer" />
+        <img src={getTravelImage(popularDestinations[3].image)} alt={popularDestinations[3].name} className="feature-ofer absolute inset-y-0 right-0 hidden h-full w-[34%] object-cover opacity-20 lg:block" referrerPolicy="no-referrer" onError={handleTravelImageError} />
         <div className="tf-container relative z-index3 mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
           <div className="row align-center grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
             <div className="col-lg-5">
@@ -908,11 +908,7 @@ export default function HomeView({
                       <div key={`offer-${pkg.id}`} className="swiper-slide">
                         <article className="tour-listing overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)]">
                           <button type="button" onClick={() => onNavigate('package-detail', pkg.id)} className="tour-listing-image relative block h-[260px] w-full cursor-pointer overflow-hidden text-left">
-                            {pkg.imageUrl ? (
-                              <img src={pkg.imageUrl} alt={pkg.title} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center bg-stone-100 text-stone-400">No image</div>
-                            )}
+                            <img src={getTravelImage(pkg.imageUrl)} alt={pkg.title} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                             <span className="feature absolute left-4 top-4 rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">Featured</span>
                           </button>
                           <div className="tour-listing-content p-6">
@@ -943,7 +939,7 @@ export default function HomeView({
           <div className="row mb-50 mb-12 grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
             <div className="col-lg-9 cta-wrap flex-three flex flex-col gap-5 sm:flex-row sm:items-center">
               <div className="image fadeInLeft wow h-20 w-20 overflow-hidden rounded-full border-4 border-white/20">
-                <img src={popularDestinations[2].image} alt={popularDestinations[2].name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                <img src={getTravelImage(popularDestinations[2].image)} alt={popularDestinations[2].name} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
               </div>
               <div className="content">
                 <h2 className="title-call mb-18 fadeInUp wow text-[34px] font-extrabold leading-tight text-white">Ready to adventure and enjoy natural</h2>
@@ -993,7 +989,7 @@ export default function HomeView({
               <div key={`${dest.name}-${idx}`} className="tf-widget-destination wow fadeInUp animated">
                 <button type="button" onClick={() => onSelectCategory(dest.category)} className="destination-imgae group relative block min-h-[360px] w-full cursor-pointer overflow-hidden rounded-[12px] text-left shadow-[0_14px_38px_rgba(0,0,0,0.12)]">
                   <span className="tour absolute left-5 top-5 z-10 rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">{idx + 3} tours</span>
-                  <img src={dest.image} alt={dest.name} className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" />
+                  <img src={getTravelImage(dest.image)} alt={dest.name} className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                   <span className="absolute inset-0 bg-linear-to-t from-black/74 via-black/18 to-transparent" />
                   <span className="destination-content absolute inset-x-0 bottom-0 p-6 text-white">
                     <span className="nation text-[15px] font-medium uppercase text-white/76">{dest.name}</span>
@@ -1049,7 +1045,7 @@ export default function HomeView({
                       {popularDestinations.map((dest) => (
                         <div key={`${dest.name}-adventure`} className="col-sm-6 col-lg-3">
                           <button type="button" onClick={() => onSelectCategory(dest.category)} className="group adventure-image relative block min-h-[300px] w-full cursor-pointer overflow-hidden rounded-[12px] text-left">
-                            <img src={dest.image} alt={dest.name} className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" />
+                            <img src={getTravelImage(dest.image)} alt={dest.name} className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                             <span className="absolute inset-0 bg-linear-to-t from-black/70 to-transparent" />
                             <span className="tour-ad absolute left-5 top-5 rounded bg-white px-3 py-1 text-[12px] font-bold text-[#4DA528]">(3 Tour)</span>
                             <span className="absolute bottom-5 left-5 right-5">
@@ -1071,8 +1067,8 @@ export default function HomeView({
       <section className="bg-[#F4F6F8] py-24" id="testimonials">
         <div className="mx-auto grid max-w-[1320px] gap-12 px-4 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:px-8">
           <div className="relative hidden min-h-[520px] md:block">
-            <img src="https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=700&q=80" alt="Traveler testimonial" className="absolute left-0 top-0 h-[350px] w-[72%] rounded-[20px] object-cover shadow-xl" referrerPolicy="no-referrer" />
-            <img src="https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=700&q=80" alt="Traveler testimonial" className="absolute bottom-0 right-0 h-[320px] w-[70%] rounded-[20px] object-cover shadow-xl" referrerPolicy="no-referrer" />
+            <img src={getTravelImage('https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=700&q=80')} alt="Traveler testimonial" className="absolute left-0 top-0 h-[350px] w-[72%] rounded-[20px] object-cover shadow-xl" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+            <img src={getTravelImage('https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=700&q=80')} alt="Traveler testimonial" className="absolute bottom-0 right-0 h-[320px] w-[70%] rounded-[20px] object-cover shadow-xl" referrerPolicy="no-referrer" onError={handleTravelImageError} />
           </div>
           <div>
             <span className="font-serif text-[32px] italic text-[#4DA528]">Travelers say</span>
@@ -1104,7 +1100,7 @@ export default function HomeView({
                           <Star key={i} className={`h-4 w-4 ${i < review.rating ? 'fill-current' : 'text-stone-200'}`} />
                         ))}
                       </div>
-                      {review.imageUrl && <img src={review.imageUrl} alt="Trip photograph" className="h-14 w-14 rounded-full object-cover" referrerPolicy="no-referrer" />}
+                      <img src={getTravelImage(review.imageUrl)} alt="Trip photograph" className="h-14 w-14 rounded-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                     </div>
                   </article>
                 ))}
@@ -1115,7 +1111,7 @@ export default function HomeView({
       </section>
 
       <section className="relative overflow-hidden bg-[#081E2A] py-24 text-white" id="home-banner-contact">
-        <img src="https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=1800&q=80" alt="Adventure route" className="absolute inset-0 h-full w-full object-cover opacity-30" referrerPolicy="no-referrer" />
+        <img src={getTravelImage('https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=1800&q=80')} alt="Adventure route" className="absolute inset-0 h-full w-full object-cover opacity-30" referrerPolicy="no-referrer" onError={handleTravelImageError} />
         <div className="relative mx-auto grid max-w-[1320px] gap-10 px-4 sm:px-6 lg:grid-cols-[1.2fr_0.8fr] lg:px-8">
           <div>
             <span className="font-serif text-[32px] italic text-[#4DA528]">Explore the world</span>
@@ -1130,7 +1126,7 @@ export default function HomeView({
             </div>
           </div>
           <div className="hidden items-end justify-end lg:flex">
-            <img src="https://images.unsplash.com/photo-1593693397690-362cb9666fc2?auto=format&fit=crop&w=650&q=80" alt="Adventure" className="h-[360px] w-[360px] rounded-full object-cover ring-[18px] ring-white/10" referrerPolicy="no-referrer" />
+            <img src={getTravelImage('https://images.unsplash.com/photo-1593693397690-362cb9666fc2?auto=format&fit=crop&w=650&q=80')} alt="Adventure" className="h-[360px] w-[360px] rounded-full object-cover ring-[18px] ring-white/10" referrerPolicy="no-referrer" onError={handleTravelImageError} />
           </div>
         </div>
       </section>
@@ -1161,7 +1157,7 @@ export default function HomeView({
             
             {/* Left: Image */}
             <div className="relative aspect-square md:aspect-auto md:h-[550px] bg-stone-900 flex items-center justify-center">
-              <img src={selectedUgcPost.img} alt="Post visual" className="w-full h-full object-cover" />
+              <img src={getTravelImage(selectedUgcPost.img)} alt="Post visual" className="w-full h-full object-cover" onError={handleTravelImageError} />
               <button 
                 onClick={() => setSelectedUgcPost(null)}
                 className="absolute top-4 left-4 p-2 bg-black/60 hover:bg-black text-white rounded-full transition-colors md:hidden"
@@ -1175,7 +1171,7 @@ export default function HomeView({
               <div className="space-y-4 overflow-y-auto">
                 <div className="flex items-center justify-between border-b border-stone-100 pb-4">
                   <div className="flex items-center gap-3">
-                    <img src={selectedUgcPost.avatar} alt="avatar" className="w-10 h-10 rounded-full border border-stone-200" referrerPolicy="no-referrer" />
+                    <img src={getTravelImage(selectedUgcPost.avatar)} alt="avatar" className="w-10 h-10 rounded-full border border-stone-200" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                     <div>
                       <div className="text-sm font-bold text-stone-850 flex items-center gap-1">
                         <span>{selectedUgcPost.handle}</span>

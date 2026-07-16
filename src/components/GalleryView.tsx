@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Image as ImageIcon, X, ChevronLeft, ChevronRight, Maximize2 } from 'lucide-react';
 import { GalleryImage } from '../types';
+import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 
 interface GalleryViewProps {
   gallery: GalleryImage[];
@@ -82,10 +83,11 @@ export default function GalleryView({ gallery, loading }: GalleryViewProps) {
                 className="relative h-64 rounded-sm overflow-hidden border border-stone-200 shadow-xs group cursor-pointer hover:shadow-md transition-all duration-300"
               >
                 <img
-                  src={item.imageUrl}
+                  src={getTravelImage(item.imageUrl)}
                   alt={item.title || 'Travel Photo'}
                   className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-500"
                   referrerPolicy="no-referrer"
+                  onError={handleTravelImageError}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-stone-950/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 
@@ -135,10 +137,11 @@ export default function GalleryView({ gallery, loading }: GalleryViewProps) {
               onClick={(e) => e.stopPropagation()}
             >
               <img
-                src={filteredGallery[activeImageIdx].imageUrl}
+                src={getTravelImage(filteredGallery[activeImageIdx].imageUrl)}
                 alt={filteredGallery[activeImageIdx].title}
                 className="max-w-full max-h-[70vh] object-contain rounded-sm shadow-2xl"
                 referrerPolicy="no-referrer"
+                onError={handleTravelImageError}
               />
               <div className="text-center text-white space-y-1 px-4">
                 <span className="text-xs font-bold text-[#F4C430] uppercase tracking-widest block">

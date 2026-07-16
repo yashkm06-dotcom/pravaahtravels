@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Search, Filter, Calendar, MapPin, ArrowRight, SlidersHorizontal, RefreshCw, Trash2, Star, Camera, Heart } from 'lucide-react';
 import { TravelPackage, DestinationCategory, formatPrice } from '../types';
 import SkeletonLoader from './SkeletonLoader';
+import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 
 interface PackagesViewProps {
   packages: TravelPackage[];
@@ -241,10 +242,11 @@ export default function PackagesView({
                 {/* Package Image Banner */}
                 <div className="tour-listing-image relative aspect-[1.22/1] overflow-hidden bg-stone-100">
                   <img 
-                    src={pkg.imageUrl} 
+                    src={getTravelImage(pkg.imageUrl)} 
                     alt={pkg.title}
                     className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
                     referrerPolicy="no-referrer"
+                    onError={handleTravelImageError}
                   />
                   <div className="absolute inset-0 bg-linear-to-t from-stone-950/55 via-transparent to-transparent" />
                   <div className="badge-top flex-two absolute left-4 right-4 top-4 z-20 flex items-center justify-between gap-3">

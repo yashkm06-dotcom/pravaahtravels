@@ -1,5 +1,6 @@
 import { Compass, ArrowRight } from 'lucide-react';
 import { DestinationCategory } from '../types';
+import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 
 interface DestinationsViewProps {
   onSelectCategory: (category: DestinationCategory) => void;
@@ -78,10 +79,11 @@ export default function DestinationsView({ onSelectCategory }: DestinationsViewP
               {/* Image banner */}
               <div className="relative h-56 overflow-hidden bg-stone-100">
                 <img 
-                  src={cat.image} 
+                  src={getTravelImage(cat.image)} 
                   alt={cat.title} 
                   className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-500"
                   referrerPolicy="no-referrer"
+                  onError={handleTravelImageError}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-stone-900/60 via-transparent to-transparent" />
                 <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-white">
