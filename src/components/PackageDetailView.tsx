@@ -314,13 +314,14 @@ export default function PackageDetailView({
     pkg.packageBannerUrl || pkg.imageUrl,
     ...(pkg.galleryImages || [])
   ].filter(Boolean);
-  const displayGalleryImages = packageGalleryImages.length > 0 ? packageGalleryImages : [DEFAULT_TRAVEL_IMAGE];
+  const uniquePackageGalleryImages = Array.from(new Set(packageGalleryImages));
+  const displayGalleryImages = uniquePackageGalleryImages.length > 0 ? uniquePackageGalleryImages : [DEFAULT_TRAVEL_IMAGE];
   const packageReviews = Array.isArray((pkg as any).reviews) ? (pkg as any).reviews : [];
   const relatedPackages = Array.isArray((pkg as any).relatedPackages) ? (pkg as any).relatedPackages : [];
 
   return (
     <div id="package-detail-view" className="animate-fade-in overflow-hidden bg-[#fffaf1]">
-      <section className="relative min-h-[640px] overflow-hidden bg-stone-950 pt-28 text-white sm:pt-32">
+      <section className="relative overflow-hidden bg-stone-950 pt-28 text-white sm:pt-32">
         <img
           src={getTravelImage(pkg.packageBannerUrl || pkg.imageUrl)}
           alt={pkg.title}
@@ -332,7 +333,7 @@ export default function PackageDetailView({
         <div className="absolute inset-0 bg-linear-to-t from-stone-950/86 via-transparent to-stone-950/20" />
         <div className="absolute inset-x-0 bottom-0 h-28 bg-linear-to-t from-[#fffaf1] to-transparent" />
 
-        <div className="relative z-10 mx-auto flex min-h-[512px] max-w-7xl flex-col justify-end px-4 pb-24 sm:px-6 lg:px-8">
+        <div className="relative z-10 mx-auto flex min-h-[520px] max-w-[1320px] flex-col justify-end px-4 pb-24 sm:px-6 lg:px-8">
           <div className="mb-8 flex flex-wrap items-center gap-3 text-[12px] font-bold uppercase tracking-[0.14em] text-white/75">
             <button type="button" onClick={onBack} className="inline-flex cursor-pointer items-center gap-2 transition hover:text-[#4DA528]">
               <ArrowLeft className="h-4 w-4" />
@@ -392,7 +393,7 @@ export default function PackageDetailView({
         </div>
       </section>
 
-      <div className="mx-auto max-w-7xl space-y-10 px-4 py-12 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1320px] space-y-10 px-4 py-12 sm:px-6 lg:px-8">
 
         {/* Main Content & Sticky Form Split */}
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
@@ -403,7 +404,7 @@ export default function PackageDetailView({
             {displayGalleryImages.length > 0 && (
               <div className="image-gallery-single rounded-[18px] border border-stone-200 bg-white p-4 shadow-[0_18px_50px_rgba(18,38,32,0.08)]" id="package-gallery">
                 <div className={displayGalleryImages.length === 1 ? 'grid gap-4' : 'grid gap-4 md:grid-cols-3'}>
-                  <div className={`relative h-72 overflow-hidden rounded-[14px] ${displayGalleryImages.length === 1 ? 'md:h-[520px]' : 'md:col-span-2 md:h-96'}`}>
+                  <div className={`relative aspect-[4/3] overflow-hidden rounded-[14px] ${displayGalleryImages.length === 1 ? 'md:aspect-[16/9]' : 'md:col-span-2 md:aspect-[16/10]'}`}>
                     <img
                       src={getTravelImage(displayGalleryImages[0])}
                       alt={`${pkg.title} gallery lead`}
@@ -420,7 +421,7 @@ export default function PackageDetailView({
                   {displayGalleryImages.length > 1 && (
                     <div className="grid grid-cols-2 gap-4 md:grid-cols-1">
                       {displayGalleryImages.slice(1, 3).map((imageUrl, idx) => (
-                      <div key={`${imageUrl}-${idx}`} className="h-34 overflow-hidden rounded-[14px] bg-stone-100 md:h-[184px]">
+                      <div key={`${imageUrl}-${idx}`} className="aspect-[4/3] overflow-hidden rounded-[14px] bg-stone-100 md:aspect-[16/10]">
                         <img
                           src={getTravelImage(imageUrl)}
                           alt={`${pkg.title} gallery ${idx + 1}`}
@@ -624,7 +625,7 @@ export default function PackageDetailView({
             {/* Inclusions & Exclusions */}
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               {/* Inclusions */}
-              <div className="space-y-5 rounded-[2rem] border border-emerald-100 bg-white p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8">
+              <div className="space-y-5 rounded-[18px] border border-emerald-100 bg-white p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8">
                 <h4 className="flex items-center gap-2 text-xl font-semibold text-[#0f766e]">
                   <Check className="h-5 w-5 text-[#0f766e]" />
                   <span>Inclusions</span>
@@ -644,7 +645,7 @@ export default function PackageDetailView({
               </div>
 
               {/* Exclusions */}
-              <div className="space-y-5 rounded-[2rem] border border-rose-100 bg-white p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8">
+              <div className="space-y-5 rounded-[18px] border border-rose-100 bg-white p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8">
                 <h4 className="flex items-center gap-2 text-xl font-semibold text-rose-700">
                   <X className="h-5 w-5 text-rose-600" />
                   <span>Exclusions</span>
@@ -994,7 +995,7 @@ export default function PackageDetailView({
           <div className="bg-[#fcfbf9] border border-stone-250 rounded-lg shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto font-sans flex flex-col">
             
             {/* Modal Header */}
-            <div className="bg-[#008080] text-white p-6 relative shrink-0">
+            <div className="bg-[#4DA528] text-white p-6 relative shrink-0">
               <button
                 onClick={() => setIsBookingModalOpen(false)}
                 className="absolute top-5 right-5 text-white/80 hover:text-white hover:rotate-90 transition-all duration-300 cursor-pointer"
@@ -1002,7 +1003,7 @@ export default function PackageDetailView({
               >
                 <X className="w-5 h-5" />
               </button>
-              <span className="text-[9px] font-bold uppercase tracking-wider text-[#FF7F50] bg-white/10 px-2 py-0.5 rounded-sm">Step-Free Offline Coordination</span>
+              <span className="text-[9px] font-bold uppercase tracking-wider text-[#FF970D] bg-white/10 px-2 py-0.5 rounded-sm">Step-Free Offline Coordination</span>
               <h3 className="text-xl font-serif italic text-white mt-2">Book Your Holiday</h3>
               <p className="text-xs text-stone-100 font-light mt-1">
                 Request custom travel planning for <strong className="font-bold">{pkg.title}</strong>. No payment/deposit is required to book.
@@ -1011,7 +1012,7 @@ export default function PackageDetailView({
 
             {bookingSuccess ? (
               <div className="p-8 text-center space-y-4 animate-fade-in flex-1 flex flex-col justify-center items-center">
-                <div className="w-16 h-16 bg-[#008080]/10 text-[#008080] rounded-full flex items-center justify-center shadow-inner">
+                <div className="w-16 h-16 bg-[#4DA528]/10 text-[#4DA528] rounded-full flex items-center justify-center shadow-inner">
                   <CheckCircle2 className="w-10 h-10" />
                 </div>
                 <h4 className="font-serif italic text-stone-900 text-xl">Booking Request Logged!</h4>
@@ -1029,7 +1030,7 @@ export default function PackageDetailView({
                     setBookingSuccess(false);
                     setIsBookingModalOpen(false);
                   }}
-                  className="px-6 py-2 bg-[#008080] hover:bg-[#006666] text-white text-xs font-bold uppercase tracking-wider rounded transition shadow-sm cursor-pointer"
+                  className="px-6 py-2 bg-[#4DA528] hover:bg-[#3f8f21] text-white text-xs font-bold uppercase tracking-wider rounded transition shadow-sm cursor-pointer"
                 >
                   Return to Details
                 </button>
@@ -1053,7 +1054,7 @@ export default function PackageDetailView({
                       placeholder="E.g. Yash Kumar"
                       value={bookingForm.name}
                       onChange={handleBookingInputChange}
-                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#008080] font-medium shadow-2xs"
+                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#4DA528] font-medium shadow-2xs"
                     />
                   </div>
 
@@ -1066,7 +1067,7 @@ export default function PackageDetailView({
                       placeholder="your@email.com"
                       value={bookingForm.email}
                       onChange={handleBookingInputChange}
-                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#008080] font-medium shadow-2xs"
+                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#4DA528] font-medium shadow-2xs"
                     />
                   </div>
                 </div>
@@ -1082,7 +1083,7 @@ export default function PackageDetailView({
                       placeholder="E.g. +91 98765 43210"
                       value={bookingForm.phone}
                       onChange={handleBookingInputChange}
-                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#008080] font-medium shadow-2xs"
+                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#4DA528] font-medium shadow-2xs"
                     />
                   </div>
 
@@ -1095,7 +1096,7 @@ export default function PackageDetailView({
                       placeholder="WhatsApp contact"
                       value={bookingForm.whatsapp}
                       onChange={handleBookingInputChange}
-                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#008080] font-medium shadow-2xs"
+                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#4DA528] font-medium shadow-2xs"
                     />
                   </div>
                 </div>
@@ -1137,7 +1138,7 @@ export default function PackageDetailView({
                       required
                       value={bookingForm.travelDate}
                       onChange={handleBookingInputChange}
-                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#008080] font-medium shadow-2xs cursor-pointer"
+                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#4DA528] font-medium shadow-2xs cursor-pointer"
                     />
                   </div>
 
@@ -1150,7 +1151,7 @@ export default function PackageDetailView({
                       min="1"
                       value={bookingForm.adults}
                       onChange={handleBookingInputChange}
-                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#008080] font-medium shadow-2xs"
+                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#4DA528] font-medium shadow-2xs"
                     />
                   </div>
 
@@ -1163,7 +1164,7 @@ export default function PackageDetailView({
                       min="0"
                       value={bookingForm.children}
                       onChange={handleBookingInputChange}
-                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#008080] font-medium shadow-2xs"
+                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#4DA528] font-medium shadow-2xs"
                     />
                   </div>
                 </div>
@@ -1178,7 +1179,7 @@ export default function PackageDetailView({
                       placeholder="E.g. Delhi NCR, Chandigarh"
                       value={bookingForm.pickupCity}
                       onChange={handleBookingInputChange}
-                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#008080] font-medium shadow-2xs"
+                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#4DA528] font-medium shadow-2xs"
                     />
                   </div>
 
@@ -1188,7 +1189,7 @@ export default function PackageDetailView({
                       name="budget"
                       value={bookingForm.budget}
                       onChange={handleBookingInputChange}
-                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-[#333333] focus:outline-none focus:border-[#008080] font-medium shadow-2xs cursor-pointer"
+                      className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-[#333333] focus:outline-none focus:border-[#4DA528] font-medium shadow-2xs cursor-pointer"
                     >
                       <option value="Under ₹20,000">Under ₹20,000</option>
                       <option value="₹20,000 - ₹50,000">₹20,000 - ₹50,000</option>
@@ -1208,7 +1209,7 @@ export default function PackageDetailView({
                     placeholder="E.g. Double bed, vegetarian meals, wheelchair assistance..."
                     value={bookingForm.specialRequests}
                     onChange={handleBookingInputChange}
-                    className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#008080] font-medium shadow-2xs"
+                    className="w-full px-3 py-2 bg-white border border-stone-250 rounded text-xs text-stone-850 focus:outline-none focus:border-[#4DA528] font-medium shadow-2xs"
                   />
                 </div>
 
@@ -1224,7 +1225,7 @@ export default function PackageDetailView({
                   <button
                     type="submit"
                     disabled={bookingSubmitting}
-                    className="px-6 py-2 bg-[#008080] hover:bg-[#006666] text-white text-xs font-bold rounded shadow-sm hover:shadow transition disabled:opacity-60 flex items-center gap-1.5 cursor-pointer"
+                    className="px-6 py-2 bg-[#4DA528] hover:bg-[#3f8f21] text-white text-xs font-bold rounded shadow-sm hover:shadow transition disabled:opacity-60 flex items-center gap-1.5 cursor-pointer"
                   >
                     {bookingSubmitting ? (
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

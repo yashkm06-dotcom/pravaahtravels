@@ -12,6 +12,7 @@ import { triggerSystemEmail } from '../lib/emailClient';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { fetchAnalyticsEvents } from '../lib/analytics';
 import { TableSkeletonLoader, CardGridSkeletonLoader } from './SkeletonLoader';
+import { handleTravelImageError } from '../utils/imageFallback';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line
@@ -1935,7 +1936,7 @@ export default function AdminDashboardView({
                   mediaLibraryImages.map((img) => (
                     <div key={img.id} className="group overflow-hidden rounded-[20px] border border-stone-200 bg-white shadow-[0_14px_38px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_55px_rgba(18,38,32,0.14)]">
                       <div className="relative aspect-[4/3] overflow-hidden bg-stone-100">
-                        <img src={img.imageUrl} alt={img.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" loading="lazy" referrerPolicy="no-referrer" />
+                        <img src={img.imageUrl} alt={img.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" loading="lazy" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                         <span className="absolute left-3 top-3 rounded bg-white/95 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-[#4DA528] shadow-sm">{img.category}</span>
                         <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition group-hover:opacity-100">
                           <button type="button" onClick={() => handleMoveGalleryImage(img.id, 'up')} className="rounded bg-white/95 p-1.5 text-stone-700 shadow-sm transition hover:bg-[#4DA528] hover:text-white" title="Move up">

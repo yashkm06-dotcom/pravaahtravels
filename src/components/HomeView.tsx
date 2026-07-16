@@ -133,17 +133,17 @@ export default function HomeView({
 
   const whyChooseUs = [
     {
-      icon: <Compass className="w-6 h-6 text-[#008080]" />,
+      icon: <Compass className="w-6 h-6 text-[#4DA528]" />,
       title: 'Expert Himalayan Curation',
       description: 'Our itineraries are designed by certified mountain guides and travel specialists who know the safest routes, best view points, and local secrets.'
     },
     {
-      icon: <ShieldCheck className="w-6 h-6 text-[#008080]" />,
+      icon: <ShieldCheck className="w-6 h-6 text-[#4DA528]" />,
       title: 'Uncompromised Comfort & Safety',
       description: 'Your safety is our priority. We feature 4x4 private transport, vetted hand-picked premium lodges, and 24/7 on-the-ground support.'
     },
     {
-      icon: <Map className="w-6 h-6 text-[#008080]" />,
+      icon: <Map className="w-6 h-6 text-[#4DA528]" />,
       title: 'A Gentle, Natural Flow',
       description: 'True "Pravaah" means flow. No rushed timings or crowded buses. We focus on slow travel that leaves your soul deeply rejuvenated.'
     }
@@ -368,6 +368,21 @@ export default function HomeView({
   const averageRating = liveReviews.length > 0
     ? (liveReviews.reduce((sum, review) => sum + (Number(review.rating) || 0), 0) / liveReviews.length).toFixed(1)
     : '0.0';
+  const activeOfferPackages = featuredPackages.filter((pkg) => {
+    const price = Number(pkg.price);
+    const offerPrice = Number(pkg.offerPrice);
+    return Number.isFinite(price) && Number.isFinite(offerPrice) && offerPrice > 0 && offerPrice < price;
+  });
+  const offerPackages = activeOfferPackages.length > 0 ? activeOfferPackages : featuredPackages;
+  const bestOfferDiscount = activeOfferPackages.length > 0
+    ? Math.max(
+        ...activeOfferPackages.map((pkg) => {
+          const price = Number(pkg.price);
+          const offerPrice = Number(pkg.offerPrice);
+          return Math.round(((price - offerPrice) / price) * 100);
+        })
+      )
+    : 0;
 
   return (
     <div id="home-view" className="animate-fade-in overflow-hidden bg-white font-sans">
@@ -612,7 +627,7 @@ export default function HomeView({
         </div>
       </section>
 
-      <section className="about-us pb-150 pb-24 pt-20" id="vitour-about">
+      <section className="about-us pb-20 pt-14" id="vitour-about">
         <div className="tf-container mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
           <div className="row pt-35">
             <div className="col-lg-12 flex flex-col gap-5 md:flex-row md:items-center">
@@ -633,7 +648,7 @@ export default function HomeView({
           <div className="row pt-115 mt-20 grid gap-12 lg:grid-cols-2 lg:items-center">
             <div className="col-lg-6">
               <div className="travel-video relative">
-                <img src={getTravelImage(popularDestinations[0].image)} alt={popularDestinations[0].name} className="image-video min-h-[520px] w-full rounded-[24px] object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+                <img src={getTravelImage(popularDestinations[0].image)} alt={popularDestinations[0].name} className="image-video h-[420px] w-full rounded-[24px] object-cover sm:h-[520px]" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                 <div className="video-wrap">
                   <button type="button" onClick={handleLaunchPlanner} className="widget-icon-video widget-videos flex-five z-index3 absolute left-1/2 top-1/2 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#4DA528] text-white shadow-[0_20px_45px_rgba(0,0,0,0.25)] transition hover:bg-[#FF970D]">
                     <Sparkles className="h-8 w-8" />
@@ -691,7 +706,7 @@ export default function HomeView({
         </div>
       </section>
 
-      <section className="tour-package pd-main bg-white py-24" id="featured-packages">
+      <section className="tour-package pd-main bg-white py-20" id="featured-packages">
         <div className="tf-container w-1456 mx-auto max-w-[1456px] px-4 sm:px-6 lg:px-8">
           <div className="row">
             <div className="col-lg-12">
@@ -813,7 +828,7 @@ export default function HomeView({
         </div>
       </section>
 
-      <section className="relative tf-widget-activities pd-main overflow-hidden bg-[#F4F6F8] py-24">
+      <section className="relative tf-widget-activities pd-main overflow-hidden bg-[#F4F6F8] py-20">
         <div className="mask-top absolute left-0 top-0 h-24 w-24 rounded-br-full bg-[#4DA528]/10" />
         <div className="mask-bottom absolute bottom-0 right-0 h-28 w-28 rounded-tl-full bg-[#FF970D]/10" />
         <div className="tf-container relative z-index3 mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
@@ -823,7 +838,7 @@ export default function HomeView({
             </div>
             <div className="col-lg-12">
               <ul className="nav nav-tabs-activities justify-content-center flex flex-wrap justify-center gap-4" id="myTablist" role="tablist">
-                {popularDestinations.concat(popularDestinations.slice(0, 1)).map((dest, idx) => (
+                {popularDestinations.map((dest, idx) => (
                   <li key={`${dest.name}-activity-${idx}`} className="nav-item" role="presentation">
                     <button
                       type="button"
@@ -842,7 +857,7 @@ export default function HomeView({
                   </li>
                 ))}
               </ul>
-              <div className="tab-content mt-44 mt-12" id="myTabContents">
+              <div className="tab-content mt-10" id="myTabContents">
                 <div className="tab-pane fade show active" role="tabpanel" tabIndex={0}>
                   <div className="tabs-activities-content flex flex-col overflow-hidden rounded-[18px] bg-[#081E2A] lg:flex-row">
                     <div className="activities-image lg:w-1/2">
@@ -877,7 +892,7 @@ export default function HomeView({
         </div>
       </section>
 
-      <section className="offer-package pd-main bg-1 relative overflow-hidden bg-white py-24">
+      {featuredPackages.length > 0 && <section className="offer-package pd-main bg-1 relative overflow-hidden bg-white py-20">
         <img src={getTravelImage(popularDestinations[3].image)} alt={popularDestinations[3].name} className="feature-ofer absolute inset-y-0 right-0 hidden h-full w-[34%] object-cover opacity-20 lg:block" referrerPolicy="no-referrer" onError={handleTravelImageError} />
         <div className="tf-container relative z-index3 mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
           <div className="row align-center grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
@@ -886,28 +901,27 @@ export default function HomeView({
                 <div className="mb-50 mb-10">
                   <span className="sub-title-heading text-main mb-15 fadeInUp wow font-serif text-[32px] italic text-[#4DA528]">Explore the world</span>
                   <h2 className="title-heading mb-32 fadeInUp wow mt-4 text-[42px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">Amazing Featured Tour<span className="text-gray font-yes font-serif italic font-medium text-stone-400"> Package</span> the world</h2>
-                  <p className="des-heading fadeInUp wow text-[16px] leading-8 text-stone-600">Featured Pravaah journeys are pulled from the same live package collection and shown in the Vitour offer package layout.</p>
+                  <p className="des-heading fadeInUp wow text-[16px] leading-8 text-stone-600">
+                    {activeOfferPackages.length > 0
+                      ? 'Limited-time offers from the live Pravaah package collection, shown in the Vitour offer package layout.'
+                      : 'Featured Pravaah journeys from the live package collection, shown in the Vitour offer package layout.'}
+                  </p>
                 </div>
-                <div className="inner-content flex-three flex items-center gap-5">
-                  <div className="offer fadeInUp wow flex h-24 w-24 items-center justify-center rounded-full bg-[#4DA528] text-center text-white">
-                    <span className="number text-[28px] font-extrabold leading-none">25 <span className="block text-[13px]">% off</span></span>
+                {activeOfferPackages.length > 0 ? (
+                  <div className="inner-content flex-three flex items-center gap-5">
+                    <div className="offer fadeInUp wow flex h-24 w-24 items-center justify-center rounded-full bg-[#4DA528] text-center text-white">
+                      <span className="number text-[28px] font-extrabold leading-none">{bestOfferDiscount} <span className="block text-[13px]">% off</span></span>
+                    </div>
+                    <p className="font-italic font-serif text-[26px] italic text-stone-950">Discover Great <span className="text-main text-[#4DA528]">Discount</span> Deals Around the World</p>
                   </div>
-                  <p className="font-italic font-serif text-[26px] italic text-stone-950">Discover Great <span className="text-main text-[#4DA528]">Discount</span> Deals Around the World</p>
-                </div>
-                <div className="count-dow-wrap flex-three mb-50 mt-10 flex items-center gap-5">
-                  <div className="title-counters fadeInUp wow">
-                    <span className="font-bold text-stone-950">Hurry Up!</span>
-                    <p className="text-stone-500">Offer Ends in:</p>
+                ) : (
+                  <div className="inner-content flex-three flex items-center gap-5 rounded-[14px] border border-stone-200 bg-[#F7F8F4] p-5">
+                    <div className="offer fadeInUp wow flex h-16 w-16 items-center justify-center rounded-full bg-[#4DA528]/12 text-[#4DA528]">
+                      <Sparkles className="h-7 w-7" />
+                    </div>
+                    <p className="font-italic font-serif text-[24px] italic text-stone-950">Explore hand-picked <span className="text-main text-[#4DA528]">featured</span> journeys</p>
                   </div>
-                  <div className="count-down relative fadeInUp wow grid grid-cols-4 gap-2 text-center">
-                    {['days', 'hours', 'minutes', 'seconds'].map((label) => (
-                      <div key={label} className="rounded bg-[#F4F6F8] px-3 py-2">
-                        <span className="block text-[18px] font-extrabold text-stone-950">00</span>
-                        <span className="text-[10px] uppercase text-stone-500">{label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                )}
                 <div className="btn-wap fadeInUp wow">
                   <button onClick={() => onNavigate('packages')} className="btn-main inline-flex cursor-pointer items-center justify-center gap-3 rounded-[5px] bg-[#4DA528] px-8 py-[18px] text-[15px] font-bold uppercase tracking-[0.05em] text-white transition hover:bg-[#FF970D]">
                     <span className="btn-main-text">Explore More</span>
@@ -920,7 +934,7 @@ export default function HomeView({
               <div className="on-week-swipper-wrap relative">
                 <div className="swiper offer-package-swipper overflow-hidden relative">
                   <div className="swiper-wrapper grid gap-7 md:grid-cols-2">
-                    {featuredPackages.slice(0, 2).map((pkg) => (
+                    {offerPackages.slice(0, 2).map((pkg) => (
                       <div key={`offer-${pkg.id}`} className="swiper-slide">
                         <article className="tour-listing overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)]">
                           <button type="button" onClick={() => onNavigate('package-detail', pkg.id)} className="tour-listing-image relative block h-[260px] w-full cursor-pointer overflow-hidden text-left">
@@ -931,7 +945,10 @@ export default function HomeView({
                             <span className="tag-listing inline-block rounded bg-[#FF970D]/12 px-3 py-1 text-[12px] font-bold text-[#D57400]">{pkg.category}</span>
                             <h3 className="title-tour-list mt-4 text-[22px] font-bold leading-tight text-stone-950">{pkg.title}</h3>
                             <div className="flex-two mt-5 flex items-center justify-between">
-                              <p className="text-[14px] text-stone-500">From <span className="price-sale text-[20px] font-extrabold text-[#4DA528]">{formatPrice(pkg.price)}</span></p>
+                              <p className="text-[14px] text-stone-500">
+                                From <span className="price-sale text-[20px] font-extrabold text-[#4DA528]">{formatPrice(pkg.offerPrice || pkg.price)}</span>
+                                {pkg.offerPrice && <span className="ml-2 text-xs font-semibold text-stone-400 line-through">{formatPrice(pkg.price)}</span>}
+                              </p>
                               <button onClick={() => onNavigate('package-detail', pkg.id)} className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-[#4DA528] hover:text-white">
                                 <Heart className="h-4 w-4" />
                               </button>
@@ -946,42 +963,42 @@ export default function HomeView({
             </div>
           </div>
         </div>
-      </section>
+      </section>}
 
-      <section className="widget-counter relative bg-[#4DA528] py-20 text-white" id="home-statistics">
+      <section className="widget-counter relative bg-[#4DA528] py-14 text-white sm:py-16" id="home-statistics">
         <div className="counter-top absolute left-0 top-0 h-20 w-20 rounded-br-full bg-white/10" />
         <div className="counter-bottom absolute bottom-0 right-0 h-20 w-20 rounded-tl-full bg-white/10" />
         <div className="tf-container relative mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
-          <div className="row mb-50 mb-12 grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
+          <div className="row mb-8 grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
             <div className="col-lg-9 cta-wrap flex-three flex flex-col gap-5 sm:flex-row sm:items-center">
               <div className="image fadeInLeft wow h-20 w-20 overflow-hidden rounded-full border-4 border-white/20">
                 <img src={getTravelImage(popularDestinations[2].image)} alt={popularDestinations[2].name} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
               </div>
               <div className="content">
-                <h2 className="title-call mb-18 fadeInUp wow text-[34px] font-extrabold leading-tight text-white">Ready to adventure and enjoy natural</h2>
+                <h2 className="title-call mb-18 fadeInUp wow text-[30px] font-extrabold leading-tight text-white sm:text-[34px]">Ready to adventure and enjoy natural</h2>
                 <p className="des fadeInUp wow text-white/80">Explore Uttarakhand with guides who respect the mountains.</p>
               </div>
             </div>
             <div className="col-lg-3">
-              <div className="callt-to-action-button text-end fadeInRight wow">
-                <button onClick={() => onNavigate('packages')} className="get-call inline-flex cursor-pointer rounded-[5px] bg-white px-7 py-4 text-[14px] font-bold uppercase text-[#4DA528] transition hover:bg-[#FF970D] hover:text-white">Let,s get started</button>
+              <div className="callt-to-action-button fadeInRight wow lg:text-end">
+                <button onClick={() => onNavigate('packages')} className="get-call inline-flex cursor-pointer rounded-[5px] bg-white px-7 py-4 text-[14px] font-bold uppercase text-[#4DA528] transition hover:bg-[#FF970D] hover:text-white">Let's get started</button>
               </div>
             </div>
           </div>
-          <div className="row mb--20em relative z-index3 grid grid-cols-2 gap-8 lg:grid-cols-4">
+          <div className="row relative z-index3 grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-4">
             {[
               [featuredPackages.length, 'Happy Traveller'],
-              [`${averageRating}`, 'Total Postive Reviews'],
+              [`${averageRating}`, 'Total Positive Reviews'],
               [popularDestinations.length, 'Tour Completed'],
-              [liveReviews.length || 0, 'Awwards Winning'],
+              [liveReviews.length || 0, 'Awards Won'],
             ].map(([value, label]) => (
               <div key={label} className="col-6 col-lg-3 wow fadeInUp animated">
-                <div className="tf-counter center tf-countto text-center">
-                  <div className="icon mb-32 mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-white/15">
+                <div className="tf-counter center tf-countto h-full rounded-[14px] bg-white/10 p-5 text-center ring-1 ring-white/10 sm:p-6">
+                  <div className="icon mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white/15">
                     <PlaneTakeoff className="h-8 w-8" />
                   </div>
-                  <div className="number-counter block text-[44px] font-extrabold leading-none">{value}</div>
-                  <span className="line mx-auto my-4 block h-px w-16 bg-white/45" />
+                  <div className="number-counter block text-[34px] font-extrabold leading-none sm:text-[44px]">{value}</div>
+                  <span className="line mx-auto my-3 block h-px w-16 bg-white/45" />
                   <p className="title-counter text-[16px] font-bold leading-6">{label}</p>
                 </div>
               </div>
@@ -990,7 +1007,7 @@ export default function HomeView({
         </div>
       </section>
 
-      <section className="widget-destination py-24" id="popular-destinations">
+      <section className="widget-destination py-20" id="popular-destinations">
         <div className="tf-container mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
           <div className="row">
             <div className="col-lg-12">
@@ -1000,10 +1017,10 @@ export default function HomeView({
               </div>
             </div>
           </div>
-          <div className="grid-three-destination grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {popularDestinations.concat(popularDestinations.slice(0, 2)).map((dest, idx) => (
-              <div key={`${dest.name}-${idx}`} className="tf-widget-destination wow fadeInUp animated">
-                <button type="button" onClick={() => onSelectCategory(dest.category)} className="destination-imgae group relative block min-h-[360px] w-full cursor-pointer overflow-hidden rounded-[12px] text-left shadow-[0_14px_38px_rgba(0,0,0,0.12)]">
+          <div className="grid-three-destination grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {popularDestinations.map((dest, idx) => (
+              <div key={dest.name} className="tf-widget-destination wow fadeInUp animated h-full">
+                <button type="button" onClick={() => onSelectCategory(dest.category)} className="destination-imgae group relative block aspect-[4/5] w-full cursor-pointer overflow-hidden rounded-[12px] text-left shadow-[0_14px_38px_rgba(0,0,0,0.12)]">
                   <span className="tour absolute left-5 top-5 z-10 rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">{idx + 3} tours</span>
                   <img src={getTravelImage(dest.image)} alt={dest.name} className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                   <span className="absolute inset-0 bg-linear-to-t from-black/74 via-black/18 to-transparent" />
@@ -1023,7 +1040,7 @@ export default function HomeView({
         </div>
       </section>
 
-      <section className="widget-adventure pb-24">
+      <section className="widget-adventure pb-20">
         <div className="tf-container mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
           <div className="row">
             <div className="col-lg-12">
@@ -1059,8 +1076,8 @@ export default function HomeView({
                   <div className="tab-pane fade show active" role="tabpanel" tabIndex={0}>
                     <div className="row grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                       {popularDestinations.map((dest) => (
-                        <div key={`${dest.name}-adventure`} className="col-sm-6 col-lg-3">
-                          <button type="button" onClick={() => onSelectCategory(dest.category)} className="group adventure-image relative block min-h-[300px] w-full cursor-pointer overflow-hidden rounded-[12px] text-left">
+                        <div key={`${dest.name}-adventure`} className="col-sm-6 col-lg-3 h-full">
+                          <button type="button" onClick={() => onSelectCategory(dest.category)} className="group adventure-image relative block aspect-[4/5] w-full cursor-pointer overflow-hidden rounded-[12px] text-left">
                             <img src={getTravelImage(dest.image)} alt={dest.name} className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                             <span className="absolute inset-0 bg-linear-to-t from-black/70 to-transparent" />
                             <span className="tour-ad absolute left-5 top-5 rounded bg-white px-3 py-1 text-[12px] font-bold text-[#4DA528]">(3 Tour)</span>
@@ -1080,7 +1097,7 @@ export default function HomeView({
         </div>
       </section>
 
-      <section className="bg-[#F4F6F8] py-24" id="testimonials">
+      <section className="bg-[#F4F6F8] py-20" id="testimonials">
         <div className="mx-auto grid max-w-[1320px] gap-12 px-4 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:px-8">
           <div className="relative hidden min-h-[520px] md:block">
             <img src={getTravelImage('https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=700&q=80')} alt="Traveler testimonial" className="absolute left-0 top-0 h-[350px] w-[72%] rounded-[20px] object-cover shadow-xl" referrerPolicy="no-referrer" onError={handleTravelImageError} />
@@ -1126,7 +1143,7 @@ export default function HomeView({
         </div>
       </section>
 
-      <section className="relative overflow-hidden bg-[#081E2A] py-24 text-white" id="home-banner-contact">
+      <section className="relative overflow-hidden bg-[#081E2A] py-20 text-white" id="home-banner-contact">
         <img src={getTravelImage('https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=1800&q=80')} alt="Adventure route" className="absolute inset-0 h-full w-full object-cover opacity-30" referrerPolicy="no-referrer" onError={handleTravelImageError} />
         <div className="relative mx-auto grid max-w-[1320px] gap-10 px-4 sm:px-6 lg:grid-cols-[1.2fr_0.8fr] lg:px-8">
           <div>
@@ -1193,7 +1210,7 @@ export default function HomeView({
                         <span>{selectedUgcPost.handle}</span>
                         <span className="w-3.5 h-3.5 bg-sky-500 rounded-full flex items-center justify-center text-[7px] text-white font-bold">✓</span>
                       </div>
-                      <span className="text-[9px] uppercase tracking-widest text-[#008080] font-bold">{selectedUgcPost.location}</span>
+                      <span className="text-[9px] uppercase tracking-widest text-[#4DA528] font-bold">{selectedUgcPost.location}</span>
                     </div>
                   </div>
                   
@@ -1234,7 +1251,7 @@ export default function HomeView({
                     setSelectedUgcPost(null);
                     onNavigate('packages');
                   }}
-                  className="w-full py-3 bg-[#008080] hover:bg-[#006666] text-white font-bold uppercase tracking-widest text-xs rounded transition flex items-center justify-center gap-1.5"
+                  className="w-full py-3 bg-[#4DA528] hover:bg-[#3f8f21] text-white font-bold uppercase tracking-widest text-xs rounded transition flex items-center justify-center gap-1.5"
                 >
                   <Search className="w-4 h-4" />
                   <span>Browse Similar Curated Escapes</span>
@@ -1274,22 +1291,22 @@ export default function HomeView({
             {quizStep <= 4 && (
               <div className="bg-stone-50 border-b border-stone-200 px-6 py-3.5 flex justify-between items-center text-xs text-stone-400">
                 <div className="flex gap-2 items-center">
-                  <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold font-mono text-[10px] ${quizStep === 1 ? 'bg-[#008080] text-white' : 'bg-stone-200 text-stone-600'}`}>1</span>
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold font-mono text-[10px] ${quizStep === 1 ? 'bg-[#4DA528] text-white' : 'bg-stone-200 text-stone-600'}`}>1</span>
                   <span className={quizStep === 1 ? 'text-stone-800 font-bold' : ''}>Focus</span>
                 </div>
                 <div className="w-8 h-px bg-stone-300"></div>
                 <div className="flex gap-2 items-center">
-                  <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold font-mono text-[10px] ${quizStep === 2 ? 'bg-[#008080] text-white' : 'bg-stone-200 text-stone-600'}`}>2</span>
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold font-mono text-[10px] ${quizStep === 2 ? 'bg-[#4DA528] text-white' : 'bg-stone-200 text-stone-600'}`}>2</span>
                   <span className={quizStep === 2 ? 'text-stone-800 font-bold' : ''}>Companions</span>
                 </div>
                 <div className="w-8 h-px bg-stone-300"></div>
                 <div className="flex gap-2 items-center">
-                  <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold font-mono text-[10px] ${quizStep === 3 ? 'bg-[#008080] text-white' : 'bg-stone-200 text-stone-600'}`}>3</span>
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold font-mono text-[10px] ${quizStep === 3 ? 'bg-[#4DA528] text-white' : 'bg-stone-200 text-stone-600'}`}>3</span>
                   <span className={quizStep === 3 ? 'text-stone-800 font-bold' : ''}>Style Vibe</span>
                 </div>
                 <div className="w-8 h-px bg-stone-300"></div>
                 <div className="flex gap-2 items-center">
-                  <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold font-mono text-[10px] ${quizStep === 4 ? 'bg-[#008080] text-white' : 'bg-stone-200 text-stone-600'}`}>4</span>
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold font-mono text-[10px] ${quizStep === 4 ? 'bg-[#4DA528] text-white' : 'bg-stone-200 text-stone-600'}`}>4</span>
                   <span className={quizStep === 4 ? 'text-stone-800 font-bold' : ''}>Duration & Budget</span>
                 </div>
               </div>
@@ -1315,8 +1332,8 @@ export default function HomeView({
                       onClick={() => setQuizAnswers({...quizAnswers, destination: loc})}
                       className={`p-4 text-left border rounded-lg text-xs font-semibold tracking-wide transition shadow-xs cursor-pointer ${
                         quizAnswers.destination === loc 
-                          ? 'border-[#008080] bg-[#008080]/5 text-[#008080]' 
-                          : 'border-stone-200 hover:border-[#008080] bg-[#fbfbfa]'
+                          ? 'border-[#4DA528] bg-[#4DA528]/5 text-[#4DA528]' 
+                          : 'border-stone-200 hover:border-[#4DA528] bg-[#fbfbfa]'
                       }`}
                     >
                       {loc}
@@ -1330,13 +1347,13 @@ export default function HomeView({
                     placeholder="E.g. Spiti Valley Trek, Valley of Flowers, Joshimath..."
                     value={quizAnswers.destination}
                     onChange={(e) => setQuizAnswers({...quizAnswers, destination: e.target.value})}
-                    className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] font-medium"
+                    className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#4DA528] font-medium"
                   />
                 </div>
                 <div className="flex justify-end pt-4 border-t border-stone-100">
                   <button
                     onClick={() => setQuizStep(2)}
-                    className="px-6 py-2.5 bg-[#008080] hover:bg-[#006666] text-white text-xs font-bold uppercase tracking-wider rounded-sm flex items-center gap-1"
+                    className="px-6 py-2.5 bg-[#4DA528] hover:bg-[#3f8f21] text-white text-xs font-bold uppercase tracking-wider rounded-sm flex items-center gap-1"
                   >
                     <span>Continue</span>
                     <ArrowRight className="w-4 h-4" />
@@ -1364,8 +1381,8 @@ export default function HomeView({
                       onClick={() => setQuizAnswers({...quizAnswers, companions: comp})}
                       className={`p-4 text-left border rounded-lg text-xs font-semibold tracking-wide transition shadow-xs cursor-pointer ${
                         quizAnswers.companions === comp 
-                          ? 'border-[#008080] bg-[#008080]/5 text-[#008080]' 
-                          : 'border-stone-200 hover:border-[#008080] bg-[#fbfbfa]'
+                          ? 'border-[#4DA528] bg-[#4DA528]/5 text-[#4DA528]' 
+                          : 'border-stone-200 hover:border-[#4DA528] bg-[#fbfbfa]'
                       }`}
                     >
                       {comp}
@@ -1381,7 +1398,7 @@ export default function HomeView({
                   </button>
                   <button
                     onClick={() => setQuizStep(3)}
-                    className="px-6 py-2.5 bg-[#008080] hover:bg-[#006666] text-white text-xs font-bold uppercase tracking-wider rounded-sm flex items-center gap-1"
+                    className="px-6 py-2.5 bg-[#4DA528] hover:bg-[#3f8f21] text-white text-xs font-bold uppercase tracking-wider rounded-sm flex items-center gap-1"
                   >
                     <span>Continue</span>
                     <ArrowRight className="w-4 h-4" />
@@ -1409,11 +1426,11 @@ export default function HomeView({
                       onClick={() => setQuizAnswers({...quizAnswers, vibe: v.title})}
                       className={`p-4 text-left border rounded-lg transition shadow-xs cursor-pointer flex flex-col gap-1.5 ${
                         quizAnswers.vibe === v.title 
-                          ? 'border-[#008080] bg-[#008080]/5' 
-                          : 'border-stone-200 hover:border-[#008080] bg-[#fbfbfa]'
+                          ? 'border-[#4DA528] bg-[#4DA528]/5' 
+                          : 'border-stone-200 hover:border-[#4DA528] bg-[#fbfbfa]'
                       }`}
                     >
-                      <span className={`text-xs font-bold tracking-wide ${quizAnswers.vibe === v.title ? 'text-[#008080]' : 'text-stone-800'}`}>{v.title}</span>
+                      <span className={`text-xs font-bold tracking-wide ${quizAnswers.vibe === v.title ? 'text-[#4DA528]' : 'text-stone-800'}`}>{v.title}</span>
                       <span className="text-[10px] text-stone-400 font-light">{v.desc}</span>
                     </button>
                   ))}
@@ -1427,7 +1444,7 @@ export default function HomeView({
                   </button>
                   <button
                     onClick={() => setQuizStep(4)}
-                    className="px-6 py-2.5 bg-[#008080] hover:bg-[#006666] text-white text-xs font-bold uppercase tracking-wider rounded-sm flex items-center gap-1"
+                    className="px-6 py-2.5 bg-[#4DA528] hover:bg-[#3f8f21] text-white text-xs font-bold uppercase tracking-wider rounded-sm flex items-center gap-1"
                   >
                     <span>Continue</span>
                     <ArrowRight className="w-4 h-4" />
@@ -1450,7 +1467,7 @@ export default function HomeView({
                     <select
                       value={quizAnswers.duration}
                       onChange={(e) => setQuizAnswers({...quizAnswers, duration: e.target.value})}
-                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] font-medium"
+                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#4DA528] font-medium"
                     >
                       {[3, 4, 5, 6, 7, 8, 9, 10, 12].map(d => (
                         <option key={d} value={d}>{d} Days / {d-1} Nights</option>
@@ -1464,7 +1481,7 @@ export default function HomeView({
                       type="number" 
                       value={quizAnswers.budget}
                       onChange={(e) => setQuizAnswers({...quizAnswers, budget: e.target.value})}
-                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] font-medium font-mono"
+                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#4DA528] font-medium font-mono"
                     />
                   </div>
                 </div>
@@ -1476,7 +1493,7 @@ export default function HomeView({
                     placeholder="E.g. strict pure veg food, no high slopes, helicopter priority booking..."
                     value={quizAnswers.specialRequests}
                     onChange={(e) => setQuizAnswers({...quizAnswers, specialRequests: e.target.value})}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] font-medium resize-none"
+                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#4DA528] font-medium resize-none"
                   />
                 </div>
 
@@ -1490,7 +1507,7 @@ export default function HomeView({
                   <button
                     onClick={handleGenerateAiItinerary}
                     disabled={aiGenerating}
-                    className="px-6 py-2.5 bg-[#FF7F50] hover:bg-[#ff6a33] text-white text-xs font-bold uppercase tracking-wider rounded-sm flex items-center gap-1.5 shadow"
+                    className="px-6 py-2.5 bg-[#FF970D] hover:bg-[#e6850b] text-white text-xs font-bold uppercase tracking-wider rounded-sm flex items-center gap-1.5 shadow"
                   >
                     {aiGenerating ? (
                       <>
@@ -1511,7 +1528,7 @@ export default function HomeView({
             {/* AI LOADING WAITING SCREEN */}
             {aiGenerating && (
               <div className="p-12 text-center flex flex-col items-center justify-center min-h-[400px]">
-                <Sparkles className="w-14 h-14 text-[#008080] animate-pulse mb-4" />
+                <Sparkles className="w-14 h-14 text-[#4DA528] animate-pulse mb-4" />
                 <h4 className="text-lg font-bold text-stone-850">Drafting Bespoke Adventure...</h4>
                 <p className="text-xs text-stone-500 max-w-sm mt-1.5 leading-relaxed">
                   Connecting to Google Gemini API securely. Processing your style inputs, curating daily scenic drives, local culinary secrets, and building a fully customized travel itinerary...
@@ -1591,7 +1608,7 @@ export default function HomeView({
                                   <GripVertical className="w-4 h-4 text-amber-500 shrink-0" />
                                 ) : (
                                   <span className={`w-8 h-8 font-mono text-[9px] font-extrabold rounded flex items-center justify-center shrink-0 border ${
-                                    isOpen ? 'bg-[#008080] text-white border-transparent' : 'bg-[#f8f7f4] text-stone-500'
+                                    isOpen ? 'bg-[#4DA528] text-white border-transparent' : 'bg-[#f8f7f4] text-stone-500'
                                   }`}>
                                     D{dayItem.day}
                                   </span>
@@ -1605,7 +1622,7 @@ export default function HomeView({
                                     type="button"
                                     disabled={index === 0}
                                     onClick={() => moveAiDay(index, 'up')}
-                                    className="p-1 border border-stone-200 bg-white rounded text-stone-500 hover:text-[#008080] disabled:opacity-30 cursor-pointer"
+                                    className="p-1 border border-stone-200 bg-white rounded text-stone-500 hover:text-[#4DA528] disabled:opacity-30 cursor-pointer"
                                   >
                                     <ArrowUp className="w-3 h-3" />
                                   </button>
@@ -1613,14 +1630,14 @@ export default function HomeView({
                                     type="button"
                                     disabled={index === aiResult.itinerary.length - 1}
                                     onClick={() => moveAiDay(index, 'down')}
-                                    className="p-1 border border-stone-200 bg-white rounded text-stone-500 hover:text-[#008080] disabled:opacity-30 cursor-pointer"
+                                    className="p-1 border border-stone-200 bg-white rounded text-stone-500 hover:text-[#4DA528] disabled:opacity-30 cursor-pointer"
                                   >
                                     <ArrowDown className="w-3 h-3" />
                                   </button>
                                 </div>
                               ) : (
                                 <div>
-                                  {isOpen ? <ChevronUp className="w-3.5 h-3.5 text-[#008080]" /> : <ChevronDown className="w-3.5 h-3.5 text-stone-400" />}
+                                  {isOpen ? <ChevronUp className="w-3.5 h-3.5 text-[#4DA528]" /> : <ChevronDown className="w-3.5 h-3.5 text-stone-400" />}
                                 </div>
                               )}
                             </div>
@@ -1639,13 +1656,13 @@ export default function HomeView({
                   {/* Expert local tips and inclusions */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-teal-50/50 border border-teal-100 p-4 rounded-lg space-y-2">
-                      <h5 className="text-xs font-bold text-[#008080] uppercase tracking-wider flex items-center gap-1">
+                      <h5 className="text-xs font-bold text-[#4DA528] uppercase tracking-wider flex items-center gap-1">
                         <Check className="w-4 h-4" /> Customized Inclusions
                       </h5>
                       <ul className="space-y-1.5 text-[11px] text-stone-600 font-light">
                         {aiResult.inclusions?.map((inc: string, idx: number) => (
                           <li key={idx} className="flex gap-1.5 items-start">
-                            <span className="text-[#008080] font-bold shrink-0">✓</span>
+                            <span className="text-[#4DA528] font-bold shrink-0">✓</span>
                             <span>{inc}</span>
                           </li>
                         ))}
@@ -1675,8 +1692,8 @@ export default function HomeView({
                     </div>
 
                     {aiEnquirySuccess ? (
-                      <div className="bg-[#008080]/15 border border-[#008080]/30 rounded-lg p-5 text-center space-y-3">
-                        <div className="w-10 h-10 bg-[#008080] text-white rounded-full flex items-center justify-center mx-auto shadow">
+                      <div className="bg-[#4DA528]/15 border border-[#4DA528]/30 rounded-lg p-5 text-center space-y-3">
+                        <div className="w-10 h-10 bg-[#4DA528] text-white rounded-full flex items-center justify-center mx-auto shadow">
                           <Check className="w-5 h-5" />
                         </div>
                         <h5 className="text-sm font-bold text-stone-800">Booking Enquiry Registered!</h5>
@@ -1695,7 +1712,7 @@ export default function HomeView({
                               placeholder="Yash Sharma"
                               value={aiEnquiryData.name}
                               onChange={(e) => setAiEnquiryData({...aiEnquiryData, name: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] font-medium"
+                              className="w-full px-3 py-2 bg-white border border-stone-200 rounded text-xs focus:outline-none focus:border-[#4DA528] font-medium"
                             />
                           </div>
                           
@@ -1707,7 +1724,7 @@ export default function HomeView({
                               placeholder="E.g. +91 98213..."
                               value={aiEnquiryData.phone}
                               onChange={(e) => setAiEnquiryData({...aiEnquiryData, phone: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] font-medium"
+                              className="w-full px-3 py-2 bg-white border border-stone-200 rounded text-xs focus:outline-none focus:border-[#4DA528] font-medium"
                             />
                           </div>
                         </div>
@@ -1721,7 +1738,7 @@ export default function HomeView({
                               placeholder="you@email.com"
                               value={aiEnquiryData.email}
                               onChange={(e) => setAiEnquiryData({...aiEnquiryData, email: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] font-medium"
+                              className="w-full px-3 py-2 bg-white border border-stone-200 rounded text-xs focus:outline-none focus:border-[#4DA528] font-medium"
                             />
                           </div>
 
@@ -1732,7 +1749,7 @@ export default function HomeView({
                               required 
                               value={aiEnquiryData.travelDate}
                               onChange={(e) => setAiEnquiryData({...aiEnquiryData, travelDate: e.target.value})}
-                              className="w-full px-3 py-2 bg-white border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] font-medium cursor-pointer"
+                              className="w-full px-3 py-2 bg-white border border-stone-200 rounded text-xs focus:outline-none focus:border-[#4DA528] font-medium cursor-pointer"
                             />
                           </div>
                         </div>
@@ -1740,7 +1757,7 @@ export default function HomeView({
                         <button
                           type="submit"
                           disabled={aiEnquirySubmitting}
-                          className="w-full py-3 bg-[#FF7F50] hover:bg-[#ff6a33] text-white text-xs font-bold uppercase tracking-widest rounded flex items-center justify-center gap-1.5 shadow"
+                          className="w-full py-3 bg-[#FF970D] hover:bg-[#e6850b] text-white text-xs font-bold uppercase tracking-widest rounded flex items-center justify-center gap-1.5 shadow"
                         >
                           {aiEnquirySubmitting ? (
                             <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin" />
@@ -1772,7 +1789,7 @@ export default function HomeView({
                 <button
                   type="button"
                   onClick={() => setShowQuizModal(false)}
-                  className="px-5 py-2 bg-[#008080] hover:bg-[#006666] text-white text-xs font-bold uppercase tracking-wider rounded shadow"
+                  className="px-5 py-2 bg-[#4DA528] hover:bg-[#3f8f21] text-white text-xs font-bold uppercase tracking-wider rounded shadow"
                 >
                   Exit AI Planner
                 </button>

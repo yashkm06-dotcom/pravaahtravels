@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CalendarDays, Compass, Mail, Menu, Phone, Search, ShieldAlert, UserCircle, X } from 'lucide-react';
 import { WebsiteCMSSettings } from '../types';
+import { handleTravelImageError } from '../utils/imageFallback';
 
 interface HeaderProps {
   currentView: string;
@@ -21,6 +22,16 @@ export default function Header({
 }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+  const isValidSocialUrl = (url?: string) => {
+    if (!url) return false;
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
+
   const navItems = [
     { label: 'Home', view: 'home' },
     { label: 'Destinations', view: 'destinations' },
@@ -34,11 +45,24 @@ export default function Header({
     setIsMenuOpen(false);
   };
 
+  const currentDateLabel = new Intl.DateTimeFormat('en-IN', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date());
+
   const logoMark = websiteCMS.logoUrl ? (
-    <img src={websiteCMS.logoUrl} alt="Pravaah Travels logo" className="h-full w-full object-contain" referrerPolicy="no-referrer" />
+    <img src={websiteCMS.logoUrl} alt="Pravaah Travels logo" className="h-full w-full object-contain" referrerPolicy="no-referrer" onError={handleTravelImageError} />
   ) : (
     <Compass className="h-7 w-7" />
   );
+
+  const socialDots = [
+    { href: websiteCMS.socialFacebook, label: 'Facebook', className: 'bg-[#4DA528]' },
+    { href: websiteCMS.socialInstagram, label: 'Instagram', className: 'bg-[#FF970D]' },
+    { href: websiteCMS.socialLinkedIn, label: 'LinkedIn', className: 'bg-stone-900' },
+  ].filter((item) => isValidSocialUrl(item.href));
 
   const dashboardButton = isAdminLoggedIn ? (
     <>
@@ -86,7 +110,7 @@ export default function Header({
           <ul className="flex items-center gap-8">
             <li className="flex items-center gap-2">
               <CalendarDays className="h-4 w-4 text-[#4DA528]" />
-              <span>Thursday, June 10, 2026</span>
+              <span>{currentDateLabel}</span>
             </li>
             <li className="flex items-center gap-2">
               <Mail className="h-4 w-4 text-[#4DA528]" />
@@ -103,10 +127,10 @@ export default function Header({
               <span>Booking Now</span>
             </button>
             <div className="flex items-center gap-3 text-stone-500">
-              <span>Follow Us :</span>
-              <a href={websiteCMS.socialFacebook || '#'} className="h-2 w-2 rounded-full bg-[#4DA528]" aria-label="Facebook" />
-              <a href={websiteCMS.socialInstagram || '#'} className="h-2 w-2 rounded-full bg-[#FF970D]" aria-label="Instagram" />
-              <a href={websiteCMS.socialLinkedIn || '#'} className="h-2 w-2 rounded-full bg-stone-900" aria-label="LinkedIn" />
+              {socialDots.length > 0 && <span>Follow Us :</span>}
+              {socialDots.map((item) => (
+                <a key={item.label} href={item.href} target="_blank" rel="noopener noreferrer" className={`h-2 w-2 rounded-full ${item.className}`} aria-label={item.label} />
+              ))}
             </div>
           </div>
         </div>

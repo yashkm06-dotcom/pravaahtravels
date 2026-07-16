@@ -15,8 +15,16 @@ export default function GalleryView({ gallery, loading }: GalleryViewProps) {
   const categories = ['All', 'Pilgrimage', 'Treks', 'Adventure', 'Himachal', 'Ladakh', 'Uttarakhand'];
 
   const filteredGallery = useMemo(() => {
-    if (selectedCategory === 'All') return gallery;
-    return gallery.filter((item) => item.category === selectedCategory);
+    const categoryItems = selectedCategory === 'All'
+      ? gallery
+      : gallery.filter((item) => item.category === selectedCategory);
+    const seenImages = new Set<string>();
+    return categoryItems.filter((item) => {
+      if (!item.imageUrl) return true;
+      if (seenImages.has(item.imageUrl)) return false;
+      seenImages.add(item.imageUrl);
+      return true;
+    });
   }, [gallery, selectedCategory]);
 
   const handlePrev = (e: React.MouseEvent) => {
@@ -32,17 +40,17 @@ export default function GalleryView({ gallery, loading }: GalleryViewProps) {
   };
 
   return (
-    <div id="gallery-view" className="animate-fade-in bg-[#f8f7f4] py-16">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
+    <div id="gallery-view" className="animate-fade-in bg-[#F7F8F4] py-20">
+      <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8 space-y-12">
         
         {/* Title Header */}
         <div className="text-center max-w-3xl mx-auto space-y-3">
-          <span className="text-xs font-bold text-[#008080] tracking-[0.2em] uppercase">Visual Journeys</span>
-          <h2 className="text-3xl sm:text-4xl font-serif font-normal text-[#333333] tracking-tight">
+          <span className="text-xs font-extrabold text-[#4DA528] tracking-[0.2em] uppercase">Visual Journeys</span>
+          <h2 className="text-[38px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">
             Our Experiential Gallery
           </h2>
-          <div className="w-16 h-0.5 bg-[#F4C430] mx-auto mt-3" />
-          <p className="text-stone-500 text-xs sm:text-sm font-light max-w-xl mx-auto">
+          <div className="w-16 h-0.5 bg-[#FF970D] mx-auto mt-3" />
+          <p className="text-stone-500 text-sm sm:text-base leading-7 max-w-xl mx-auto">
             A picture is worth a thousand memories. Click any image to launch our high-definition lightbox.
           </p>
         </div>
@@ -55,8 +63,8 @@ export default function GalleryView({ gallery, loading }: GalleryViewProps) {
               onClick={() => setSelectedCategory(cat)}
               className={`px-4 py-2 text-[10px] font-bold uppercase tracking-wider transition-all border cursor-pointer ${
                 selectedCategory === cat
-                  ? 'bg-[#008080] text-white border-[#008080] shadow-sm'
-                  : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'
+                  ? 'bg-[#4DA528] text-white border-[#4DA528] shadow-sm'
+                  : 'bg-white text-stone-600 border-stone-200 hover:border-[#4DA528] hover:text-[#4DA528]'
               }`}
             >
               {cat}
@@ -67,10 +75,10 @@ export default function GalleryView({ gallery, loading }: GalleryViewProps) {
         {/* Gallery Grid */}
         {loading ? (
           <div className="flex justify-center py-24">
-            <div className="w-10 h-10 border-2 border-[#008080] border-t-transparent rounded-full animate-spin" />
+            <div className="w-10 h-10 border-2 border-[#4DA528] border-t-transparent rounded-full animate-spin" />
           </div>
         ) : filteredGallery.length === 0 ? (
-          <div className="text-center py-16 bg-white border border-stone-200 rounded p-8 space-y-3">
+          <div className="text-center py-16 bg-white border border-stone-200 rounded-[12px] p-8 space-y-3">
             <ImageIcon className="w-8 h-8 text-stone-300 mx-auto" />
             <p className="text-stone-400 text-xs font-light">No images have been uploaded to this category yet.</p>
           </div>
@@ -80,7 +88,7 @@ export default function GalleryView({ gallery, loading }: GalleryViewProps) {
               <div
                 key={item.id}
                 onClick={() => setActiveImageIdx(idx)}
-                className="relative h-64 rounded-sm overflow-hidden border border-stone-200 shadow-xs group cursor-pointer hover:shadow-md transition-all duration-300"
+                className="relative aspect-[4/3] overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(18,38,32,0.08)] group cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(18,38,32,0.14)]"
               >
                 <img
                   src={getTravelImage(item.imageUrl)}
@@ -97,7 +105,7 @@ export default function GalleryView({ gallery, loading }: GalleryViewProps) {
                     <span className="text-[9px] font-bold text-[#F4C430] uppercase tracking-widest block">
                       {item.category}
                     </span>
-                    <h4 className="text-sm font-serif italic line-clamp-1">{item.title || 'Untitled Journey'}</h4>
+                    <h4 className="text-sm font-bold line-clamp-1">{item.title || 'Untitled Journey'}</h4>
                   </div>
                   <div className="p-2 bg-white/20 backdrop-blur-xs border border-white/20 rounded-sm text-white">
                     <Maximize2 className="w-3.5 h-3.5" />

@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db, collection, getDocs, query, orderBy, deleteDoc, doc, getDoc } from './lib/firebase';
-import { checkAndSeedDatabase } from './lib/seedHelper';
-import { SEED_PACKAGES, SEED_GALLERY } from './lib/seedData';
+import { SEED_GALLERY } from './lib/seedData';
 import { MessageCircle, Sparkles, Compass } from 'lucide-react';
 import { TravelPackage, Enquiry, GalleryImage, DestinationCategory, WebsiteCMSSettings, DEFAULT_WEBSITE_CMS } from './types';
 
@@ -166,15 +165,8 @@ export default function App() {
 
   const fetchAllData = useCallback(async () => {
     setLoadingData(true);
-    
-    // 1. Auto-seed if first time booting
-    try {
-      await checkAndSeedDatabase();
-    } catch (err) {
-      console.warn('Database seeding check bypassed or failed:', err);
-    }
 
-    // 2. Fetch Packages
+    // 1. Fetch Packages
     let fetchedPackages: TravelPackage[] = [];
     const packagesColName = 'packages';
     try {
@@ -186,22 +178,15 @@ export default function App() {
         ...docSnap.data(),
       })) as TravelPackage[];
     } catch (err: any) {
-      console.warn('Error fetching packages from Firestore, falling back to local pre-seeded data:', err);
+      console.warn('Error fetching packages from Firestore:', err);
       if (err.message?.includes('permission') || err.code === 'permission-denied') {
         handleFirestoreError(err, OperationType.GET, packagesColName);
       }
     }
 
-    // Fallback to local packages if database is empty or still seeding
-    if (fetchedPackages.length === 0) {
-      fetchedPackages = SEED_PACKAGES.map((pkg, idx) => ({
-        id: `seed-pkg-${idx}`,
-        ...pkg,
-      })) as unknown as TravelPackage[];
-    }
     setPackages(fetchedPackages);
 
-    // 3. Fetch Gallery
+    // 2. Fetch Gallery
     let fetchedGallery: GalleryImage[] = [];
     const galleryColName = 'gallery';
     try {
@@ -515,6 +500,23 @@ export default function App() {
             isAdminLoggedIn={isAdminLoggedIn}
             onDeletePackage={handleDeletePackage}
           />
+        )}
+
+        {currentView === 'package-detail' && !loadingData && !activeSelectedPackage && (
+          <div className="flex min-h-[520px] items-center justify-center bg-white px-4 py-20 text-center">
+            <div className="max-w-md">
+              <Compass className="mx-auto h-12 w-12 text-[#4DA528]" />
+              <h1 className="mt-5 text-3xl font-extrabold text-stone-950">Package not found</h1>
+              <p className="mt-3 text-sm leading-7 text-stone-500">This package may have been removed or unpublished.</p>
+              <button
+                type="button"
+                onClick={() => handleNavigate('packages')}
+                className="mt-6 rounded-[5px] bg-[#4DA528] px-6 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
+              >
+                Browse Packages
+              </button>
+            </div>
+          </div>
         )}
 
         {currentView === 'gallery' && (

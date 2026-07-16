@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Star, MapPin, Check, MessageSquare, X, Sparkles, Filter
+  Star, MapPin, MessageSquare, X, Sparkles, Filter
 } from 'lucide-react';
 import { db, auth, collection, getDocs, query, orderBy } from '../lib/firebase';
 import { Review } from '../types';
@@ -92,30 +92,29 @@ export default function VerifiedReviews({ onNavigate }: VerifiedReviewsProps) {
   });
 
   return (
-    <div className="bg-[#fbfbfa] min-h-screen py-12" id="verified-reviews-root">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="bg-[#F7F8F4] py-20" id="verified-reviews-root">
+      <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
         
         {/* Decorative Top header */}
-        <div className="text-center max-w-3xl mx-auto mb-16 space-y-4" id="reviews-header">
-          <span className="text-[10px] bg-[#008080]/10 text-[#008080] font-extrabold uppercase tracking-widest px-3.5 py-1.5 rounded-full inline-flex items-center gap-1.5">
+        <div className="text-center max-w-3xl mx-auto mb-12 space-y-4" id="reviews-header">
+          <span className="text-[10px] bg-[#4DA528]/10 text-[#4DA528] font-extrabold uppercase tracking-widest px-3.5 py-1.5 rounded-full inline-flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5" />
             <span>Verified Traveler Reviews</span>
           </span>
-          <h2 className="text-3xl sm:text-5xl font-serif font-light text-stone-900 leading-tight">
-            Traveler Logs & <br />
-            <span className="italic text-[#008080] font-normal font-serif">Verified Experiences</span>
+          <h2 className="text-[38px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">
+            Traveler Logs & Verified Experiences
           </h2>
-          <div className="w-16 h-0.5 bg-[#F4C430] mx-auto" />
-          <p className="text-stone-500 text-xs sm:text-sm leading-relaxed font-light">
+          <div className="w-16 h-0.5 bg-[#FF970D] mx-auto" />
+          <p className="text-stone-500 text-sm sm:text-base leading-7">
             Read raw reviews, real trip photography, and star ratings verified straight from active mountain itineraries in Uttarakhand and Himachal Pradesh.
           </p>
         </div>
 
         {/* CTA banner for submitting review inside profile */}
-        <div className="bg-gradient-to-r from-emerald-950 to-teal-900 text-white rounded-xl p-6 sm:p-8 mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6 border border-emerald-800 shadow-lg animate-fade-in">
+        <div className="bg-[#081E2A] text-white rounded-[12px] p-6 sm:p-8 mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6 border border-white/10 shadow-lg animate-fade-in">
           <div className="space-y-1.5">
-            <span className="text-[10px] uppercase tracking-widest font-extrabold text-teal-400">Exclusively for Pravaah Travelers</span>
-            <h4 className="text-lg sm:text-xl font-serif font-light">Have you traversed Uttarakhand or Himachal Pradesh with us?</h4>
+            <span className="text-[10px] uppercase tracking-widest font-extrabold text-[#4DA528]">Exclusively for Pravaah Travelers</span>
+            <h4 className="text-lg sm:text-xl font-extrabold">Have you traversed Uttarakhand or Himachal Pradesh with us?</h4>
             <p className="text-xs text-teal-200/85 max-w-2xl font-light leading-relaxed">
               To guarantee 100% authenticity, review submission has been moved directly inside the Customer Portal. Simply log in, navigate to the "Write a Review" tab, and share your experience with other pilgrims!
             </p>
@@ -123,7 +122,7 @@ export default function VerifiedReviews({ onNavigate }: VerifiedReviewsProps) {
           <button
             type="button"
             onClick={() => onNavigate?.('portal')}
-            className="px-6 py-3 bg-[#008080] hover:bg-[#006666] text-white text-[10px] font-bold uppercase tracking-widest rounded-lg shadow-md hover:shadow-lg shrink-0 transition-all cursor-pointer border border-[#006666]"
+            className="px-6 py-3 bg-[#4DA528] hover:bg-[#FF970D] text-white text-[10px] font-bold uppercase tracking-widest rounded-[5px] shadow-md hover:shadow-lg shrink-0 transition-all cursor-pointer"
           >
             Go to Customer Portal
           </button>
@@ -133,9 +132,9 @@ export default function VerifiedReviews({ onNavigate }: VerifiedReviewsProps) {
         <div className="space-y-6" id="reviews-feed-panel">
           
           {/* Filters Row */}
-          <div className="bg-white border border-stone-200 rounded-xl p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3.5 shadow-xs">
+          <div className="bg-white border border-stone-200 rounded-[12px] p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3.5 shadow-xs">
             <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-[#008080]" />
+              <Filter className="w-4 h-4 text-[#4DA528]" />
               <span className="text-[10px] font-bold uppercase tracking-wider text-stone-700">Filter traveler logs</span>
             </div>
 
@@ -144,7 +143,7 @@ export default function VerifiedReviews({ onNavigate }: VerifiedReviewsProps) {
               <select
                 value={selectedRatingFilter}
                 onChange={(e) => setSelectedRatingFilter(e.target.value)}
-                className="px-3 py-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] font-medium"
+                className="px-3 py-2 bg-stone-50 border border-stone-200 rounded-[10px] text-xs focus:outline-none focus:border-[#4DA528] font-medium"
               >
                 <option value="all">All Stars</option>
                 <option value="5">5 Stars only</option>
@@ -158,19 +157,19 @@ export default function VerifiedReviews({ onNavigate }: VerifiedReviewsProps) {
                 placeholder="Search destination..."
                 value={selectedDestFilter === 'all' ? '' : selectedDestFilter}
                 onChange={(e) => setSelectedDestFilter(e.target.value || 'all')}
-                className="px-3 py-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] placeholder-stone-400 font-medium"
+                className="px-3 py-2 bg-stone-50 border border-stone-200 rounded-[10px] text-xs focus:outline-none focus:border-[#4DA528] placeholder-stone-400 font-medium"
               />
             </div>
           </div>
 
           {/* Loading/Listing Status */}
           {isLoading ? (
-            <div className="bg-white border border-stone-200 rounded-xl p-12 text-center flex flex-col items-center justify-center space-y-4" id="review-loading-card">
-              <div className="w-10 h-10 border-2 border-[#008080] border-t-transparent rounded-full animate-spin" />
+            <div className="bg-white border border-stone-200 rounded-[12px] p-12 text-center flex flex-col items-center justify-center space-y-4" id="review-loading-card">
+              <div className="w-10 h-10 border-2 border-[#4DA528] border-t-transparent rounded-full animate-spin" />
               <p className="text-xs text-stone-500 font-light font-sans">Retrieving verified logs from Firestore database...</p>
             </div>
           ) : filteredReviews.length === 0 ? (
-            <div className="bg-white border border-stone-200 rounded-xl p-12 text-center flex flex-col items-center justify-center space-y-3" id="review-empty-card">
+            <div className="bg-white border border-stone-200 rounded-[12px] p-12 text-center flex flex-col items-center justify-center space-y-3" id="review-empty-card">
               <MessageSquare className="w-10 h-10 text-stone-300" />
               <h4 className="text-sm font-bold text-stone-700">No logs match your filters</h4>
               <p className="text-xs text-stone-400 font-light max-w-sm leading-normal">
@@ -181,7 +180,7 @@ export default function VerifiedReviews({ onNavigate }: VerifiedReviewsProps) {
                   setSelectedRatingFilter('all');
                   setSelectedDestFilter('all');
                 }}
-                className="px-4 py-2 border border-stone-200 text-stone-600 hover:bg-stone-50 text-[10px] font-bold uppercase tracking-wider rounded"
+                className="px-4 py-2 border border-stone-200 text-stone-600 hover:border-[#4DA528] hover:text-[#4DA528] text-[10px] font-bold uppercase tracking-wider rounded-[5px]"
               >
                 Clear Filters
               </button>
@@ -191,12 +190,12 @@ export default function VerifiedReviews({ onNavigate }: VerifiedReviewsProps) {
               {filteredReviews.map((review) => (
                 <div 
                   key={review.id}
-                  className="bg-white border border-stone-200 rounded-xl p-6 shadow-sm hover:border-[#008080]/50 transition-all flex flex-col justify-between group h-full"
+                  className="bg-white border border-stone-200 rounded-[12px] p-6 shadow-sm hover:border-[#4DA528]/50 transition-all flex flex-col justify-between group h-full"
                 >
                   <div className="space-y-4">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <div className="font-serif italic text-[#008080] font-bold text-base flex items-center gap-1.5">
+                        <div className="text-[#4DA528] font-bold text-base flex items-center gap-1.5">
                           <span>{review.name}</span>
                           {review.verified && (
                             <span className="w-3.5 h-3.5 bg-emerald-500 text-white rounded-full flex items-center justify-center text-[7.5px] font-extrabold" title="Verified Customer">✓</span>
@@ -229,13 +228,13 @@ export default function VerifiedReviews({ onNavigate }: VerifiedReviewsProps) {
                   {/* Display image attachment if present */}
                   {review.imageUrl && (
                     <div className="relative mt-4 group cursor-zoom-in" onClick={() => setExpandedImage(review.imageUrl || null)}>
-                      <div className="absolute inset-0 bg-black/10 rounded-lg group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                      <div className="absolute inset-0 bg-black/10 rounded-[10px] group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                         <span className="bg-white/95 backdrop-blur-xs px-2.5 py-1 text-[9px] text-stone-850 font-bold uppercase tracking-wider rounded-full shadow border border-stone-200">Expand Photo</span>
                       </div>
                       <img 
                         src={review.imageUrl} 
                         alt={`${review.name}'s trip`} 
-                        className="w-full aspect-video rounded-lg object-cover border border-stone-200 shadow-inner max-h-56" 
+                        className="w-full aspect-video rounded-[10px] object-cover border border-stone-200 shadow-inner" 
                         referrerPolicy="no-referrer"
                       />
                     </div>
@@ -243,10 +242,10 @@ export default function VerifiedReviews({ onNavigate }: VerifiedReviewsProps) {
 
                   {/* Display admin reply if present */}
                   {review.reply && (
-                    <div className="mt-4 bg-[#fbfaf8] border-l-2 border-[#008080] p-3 rounded-r-lg shadow-3xs text-xs font-sans">
+                    <div className="mt-4 bg-[#fbfaf8] border-l-2 border-[#4DA528] p-3 rounded-r-lg shadow-3xs text-xs font-sans">
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="font-bold text-[#008080] uppercase tracking-wider text-[9px] flex items-center gap-1">
-                          <MessageSquare className="w-3 h-3 text-[#008080]" />
+                        <span className="font-bold text-[#4DA528] uppercase tracking-wider text-[9px] flex items-center gap-1">
+                          <MessageSquare className="w-3 h-3 text-[#4DA528]" />
                           <span>Pravaah Travels Reply</span>
                         </span>
                         {review.replyAt && (

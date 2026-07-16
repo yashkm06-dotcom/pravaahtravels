@@ -53,17 +53,17 @@ export default function DestinationsView({ onSelectCategory }: DestinationsViewP
   ];
 
   return (
-    <div id="destinations-view" className="animate-fade-in bg-[#f8f7f4] py-16">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
+    <div id="destinations-view" className="animate-fade-in bg-[#F7F8F4] py-20">
+      <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8 space-y-12">
         
         {/* Title Header */}
         <div className="text-center max-w-3xl mx-auto space-y-3">
-          <span className="text-xs font-bold text-[#008080] tracking-[0.2em] uppercase">Travel Styles</span>
-          <h2 className="text-3xl sm:text-4xl font-serif font-normal text-[#333333] tracking-tight">
+          <span className="text-xs font-extrabold text-[#4DA528] tracking-[0.2em] uppercase">Travel Styles</span>
+          <h2 className="text-[38px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">
             Discover by Destination Category
           </h2>
-          <div className="w-16 h-0.5 bg-[#F4C430] mx-auto mt-3" />
-          <p className="text-stone-500 text-xs sm:text-sm font-light max-w-xl mx-auto">
+          <div className="w-16 h-0.5 bg-[#FF970D] mx-auto mt-3" />
+          <p className="text-stone-500 text-sm sm:text-base leading-7 max-w-xl mx-auto">
             Choose your preferred travel mood. Click any card to instantly view all matching premium holiday packages.
           </p>
         </div>
@@ -74,10 +74,10 @@ export default function DestinationsView({ onSelectCategory }: DestinationsViewP
             <div
               key={cat.id}
               onClick={() => onSelectCategory(cat.id)}
-              className="bg-white rounded overflow-hidden border border-stone-200 hover:shadow-xl transition-all duration-300 flex flex-col justify-between cursor-pointer group"
+              className="group flex h-full cursor-pointer flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(18,38,32,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(18,38,32,0.14)]"
             >
               {/* Image banner */}
-              <div className="relative h-56 overflow-hidden bg-stone-100">
+              <div className="relative aspect-[4/3] overflow-hidden bg-stone-100">
                 <img 
                   src={getTravelImage(cat.image)} 
                   alt={cat.title} 
@@ -87,7 +87,7 @@ export default function DestinationsView({ onSelectCategory }: DestinationsViewP
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-stone-900/60 via-transparent to-transparent" />
                 <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-white">
-                  <span className="text-[10px] font-bold text-white uppercase tracking-wider bg-[#008080] px-3 py-1 shadow-sm">
+                  <span className="rounded-[5px] bg-[#4DA528] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
                     {cat.count}
                   </span>
                 </div>
@@ -96,15 +96,15 @@ export default function DestinationsView({ onSelectCategory }: DestinationsViewP
               {/* Text Area */}
               <div className="p-6 flex-1 flex flex-col justify-between space-y-4">
                 <div className="space-y-2">
-                  <h3 className="text-lg font-serif italic text-[#333333] group-hover:text-[#008080] transition-colors">
+                  <h3 className="text-[22px] font-bold leading-tight text-stone-950 transition-colors group-hover:text-[#4DA528]">
                     {cat.title}
                   </h3>
-                  <p className="text-stone-500 text-xs sm:text-sm leading-relaxed line-clamp-3 font-light">
+                  <p className="line-clamp-3 text-sm leading-7 text-stone-600">
                     {cat.description}
                   </p>
                 </div>
 
-                <div className="pt-4 border-t border-stone-100 flex items-center justify-between text-[#008080] font-bold text-[11px] uppercase tracking-wider">
+                <div className="pt-4 border-t border-stone-100 flex items-center justify-between text-[#4DA528] font-bold text-[11px] uppercase tracking-wider">
                   <span>Explore matching packages</span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </div>

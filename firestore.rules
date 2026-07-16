@@ -70,5 +70,11 @@ service cloud.firestore {
       allow create: if true; // Allow client analytics instrumentation
       allow read, update, delete: if isAdmin();
     }
+
+    // 8. Website CMS Settings
+    match /siteSettings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
   }
 }

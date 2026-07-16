@@ -1,5 +1,6 @@
 import { ArrowRight, Check, Compass, Mail, MapPin, Phone, Send, Shield } from 'lucide-react';
 import { GalleryImage, WebsiteCMSSettings } from '../types';
+import { handleTravelImageError } from '../utils/imageFallback';
 
 interface FooterProps {
   onNavigate: (view: string, packageId?: string | null) => void;
@@ -9,6 +10,15 @@ interface FooterProps {
 
 export default function Footer({ onNavigate, websiteCMS, gallery }: FooterProps) {
   const currentYear = new Date().getFullYear();
+  const isValidUrl = (url?: string) => {
+    if (!url) return false;
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
   const fallbackFooterGallery = [
     'https://images.unsplash.com/photo-1626830503244-3d2ac0493ae0?auto=format&fit=crop&w=240&q=80',
     'https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=240&q=80',
@@ -17,21 +27,24 @@ export default function Footer({ onNavigate, websiteCMS, gallery }: FooterProps)
     'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=240&q=80',
     'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=240&q=80',
   ];
-  const footerGallery = gallery.length > 0 ? gallery.slice(0, 6).map((item) => item.imageUrl) : fallbackFooterGallery;
+  const uniqueGalleryUrls = Array.from(
+    new Set(gallery.map((item) => item.imageUrl).filter((src): src is string => Boolean(src)))
+  );
+  const footerGallery = (uniqueGalleryUrls.length > 0 ? uniqueGalleryUrls : fallbackFooterGallery).slice(0, 6);
   const socialLinks = [
     ['f', websiteCMS.socialFacebook],
     ['x', websiteCMS.socialX],
     ['in', websiteCMS.socialLinkedIn],
     ['ig', websiteCMS.socialInstagram],
-  ];
+  ].filter(([, href]) => isValidUrl(href));
   const logoMark = websiteCMS.logoUrl ? (
-    <img src={websiteCMS.logoUrl} alt="Pravaah Travels logo" className="h-full w-full object-contain" referrerPolicy="no-referrer" />
+    <img src={websiteCMS.logoUrl} alt="Pravaah Travels logo" className="h-full w-full object-contain" referrerPolicy="no-referrer" onError={handleTravelImageError} />
   ) : (
     <Compass className="h-7 w-7" />
   );
 
   return (
-    <footer className="relative bg-[#081E2A] pt-28 text-white" id="main-footer">
+    <footer className="relative bg-[#081E2A] pt-24 text-white" id="main-footer">
       <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-12 border-b border-white/10 pb-16 lg:grid-cols-[1.1fr_0.7fr_0.9fr_1fr]">
           <div className="space-y-7">
@@ -103,6 +116,7 @@ export default function Footer({ onNavigate, websiteCMS, gallery }: FooterProps)
                     alt={`Travel gallery ${idx + 1}`}
                     className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
                     referrerPolicy="no-referrer"
+                    onError={handleTravelImageError}
                   />
                 </button>
               ))}
@@ -114,33 +128,35 @@ export default function Footer({ onNavigate, websiteCMS, gallery }: FooterProps)
             <form
               onSubmit={(e) => e.preventDefault()}
               className="space-y-5"
+              aria-disabled="true"
             >
-              <div className="flex overflow-hidden rounded-md bg-white">
+              <div className="flex overflow-hidden rounded-md bg-white/70">
                 <input
                   type="email"
                   placeholder="Enter Email Address"
+                  disabled
                   className="min-w-0 flex-1 px-5 py-4 text-sm font-medium text-stone-900 outline-none"
                 />
-                <button type="submit" className="flex w-14 items-center justify-center bg-[#4DA528] text-white transition hover:bg-[#FF970D]">
+                <button type="submit" disabled className="flex w-14 cursor-not-allowed items-center justify-center bg-white/20 text-white/50">
                   <Send className="h-4 w-4" />
                 </button>
               </div>
               <div className="flex items-center gap-3 text-[13px] text-white/70">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#4DA528] text-white">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/15 text-white/70">
                   <Check className="h-3 w-3" />
                 </span>
-                <p>I agree to all your terms and policies</p>
+                <p>Newsletter signup is currently unavailable.</p>
               </div>
             </form>
-            <ul className="mt-8 flex gap-3">
+            {socialLinks.length > 0 && <ul className="mt-8 flex gap-3">
               {socialLinks.map(([item, href]) => (
                 <li key={item}>
-                  <a href={href || '#'} className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 text-[12px] font-bold uppercase text-white/70 transition hover:border-[#4DA528] hover:bg-[#4DA528] hover:text-white">
+                  <a href={href} target="_blank" rel="noopener noreferrer" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 text-[12px] font-bold uppercase text-white/70 transition hover:border-[#4DA528] hover:bg-[#4DA528] hover:text-white">
                     {item}
                   </a>
                 </li>
               ))}
-            </ul>
+            </ul>}
           </div>
         </div>
 
