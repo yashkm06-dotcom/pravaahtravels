@@ -1,8 +1,8 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   User, Calendar, Lock, Shield, Sparkles, CheckCircle, CreditCard, 
   Plus, Trash2, ChevronDown, MapPin, LogOut, RefreshCw, 
-  Check, X, Info, AlertCircle, Compass, Star,
+  FileText, Key, Check, X, Info, AlertCircle, Compass, Star, Eye,
   CloudSun, AlertTriangle, Thermometer, Briefcase, Map, Heart
 } from 'lucide-react';
 import { 
@@ -16,7 +16,7 @@ import {
   isSignInWithEmailLink,
   signInWithEmailLink
 } from 'firebase/auth';
-import { auth, db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, getDoc, setDoc } from '../lib/firebase';
+import { auth, db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy, getDoc, setDoc } from '../lib/firebase';
 import { formatPrice } from '../types';
 import { triggerSystemEmail } from '../lib/emailClient';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
@@ -78,6 +78,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
   const [authLoading, setAuthLoading] = useState(false);
 
   // Email Link (Passwordless) Auth states
+  const [emailLinkSentTo, setEmailLinkSentTo] = useState('');
   const [isVerifyingLink, setIsVerifyingLink] = useState(false);
   const [needEmailConfirmation, setNeedEmailConfirmation] = useState(false);
   const [confirmEmail, setConfirmEmail] = useState('');
@@ -104,6 +105,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
   const [showNewBookingModal, setShowNewBookingModal] = useState(false);
   const [newBookingDest, setNewBookingDest] = useState('');
   const [newBookingDate, setNewBookingDate] = useState('');
+  const [newBookingTravelers, setNewBookingTravelers] = useState(1);
   const [newBookingBudget, setNewBookingBudget] = useState(50000);
   const [newBookingRequests, setNewBookingRequests] = useState('');
   const [bookingSubmitting, setBookingSubmitting] = useState(false);
@@ -133,15 +135,6 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
   const [paymentExpiry, setPaymentExpiry] = useState('');
   const [paymentCvv, setPaymentCvv] = useState('');
   const [paymentSuccess, setPaymentSuccess] = useState(false);
-  const paymentResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (paymentResetTimeoutRef.current) {
-        clearTimeout(paymentResetTimeoutRef.current);
-      }
-    };
-  }, []);
 
   // Private Vault Data
   const [vaultDocs, setVaultDocs] = useState<any[]>([]);
@@ -307,34 +300,26 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
       return;
     }
 
-    const controller = new AbortController();
-
     const fetchWeather = async () => {
       setWeatherLoading(true);
       setWeatherError('');
       try {
         console.log(`[CLIENT] Fetching real-time travel alerts for: ${nextTrip.destination}`);
-        const response = await fetch(`/api/weather-alerts?destination=${encodeURIComponent(nextTrip.destination)}`, {
-          signal: controller.signal,
-        });
+        const response = await fetch(`/api/weather-alerts?destination=${encodeURIComponent(nextTrip.destination)}`);
         if (!response.ok) {
           throw new Error('Could not retrieve regional weather.');
         }
         const data = await response.json();
-        if (controller.signal.aborted) return;
         setWeatherAlert(data);
       } catch (err: any) {
-        if (controller.signal.aborted) return;
         console.warn('Error fetching travel weather:', err);
         setWeatherError(err.message || 'Failed to load live travel alerts.');
       } finally {
-        if (controller.signal.aborted) return;
         setWeatherLoading(false);
       }
     };
 
     fetchWeather();
-    return () => controller.abort();
   }, [nextTrip?.destination]);
 
   // Check for email sign-in link on mount
@@ -405,6 +390,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
     try {
       await sendSignInLinkToEmail(auth, email.trim(), actionCodeSettings);
       window.sessionStorage.setItem('emailForSignIn', email.trim());
+      setEmailLinkSentTo(email.trim());
       setAuthSuccess(`A passwordless sign-in link has been sent to ${email.trim()}. Click the link in your email to authenticate securely.`);
     } catch (err: any) {
       console.error('Passwordless send error:', err);
@@ -590,7 +576,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
     };
 
     try {
-      await addDoc(collection(db, 'bookings'), bookingData);
+      const docRef = await addDoc(collection(db, 'bookings'), bookingData);
 
       // Trigger automatic transactional emails
       triggerSystemEmail('booking-received', bookingData.customerEmail, {
@@ -627,6 +613,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
       setShowNewBookingModal(false);
       setNewBookingDest('');
       setNewBookingDate('');
+      setNewBookingTravelers(1);
       setNewBookingRequests('');
       setNewBookingPhone('');
       setNewBookingWhatsApp('');
@@ -680,10 +667,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
       });
 
       setPaymentSuccess(true);
-      if (paymentResetTimeoutRef.current) {
-        clearTimeout(paymentResetTimeoutRef.current);
-      }
-      paymentResetTimeoutRef.current = setTimeout(() => {
+      setTimeout(() => {
         setPayingBooking(null);
         setPaymentSuccess(false);
         setPaymentCardNum('');
@@ -2339,7 +2323,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
             </div>
           ) : (
             <div className="relative ml-4 space-y-6 border-l-2 border-[#4DA528]/30 py-2 pl-6">
-              {bookings.filter(b => b.status === 'Confirmed').map((trip) => (
+              {bookings.filter(b => b.status === 'Confirmed').map((trip, idx) => (
                 <div key={trip.id} className="relative max-w-4xl overflow-hidden rounded-[18px] border border-stone-200 bg-white shadow-[0_14px_38px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_55px_rgba(18,38,32,0.14)]">
                   {/* Timeline point */}
                   <div className="absolute -left-[31px] top-8 z-10 h-3 w-3 rounded-full border-2 border-white bg-[#4DA528] shadow-xs" />

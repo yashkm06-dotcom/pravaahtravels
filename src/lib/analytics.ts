@@ -1,4 +1,4 @@
-import { db, collection, addDoc, getDocs, query, where, limit } from './firebase';
+import { db, collection, addDoc, getDocs, query, limit } from './firebase';
 
 // Helper to get or create a session ID
 function getSessionId(): string {

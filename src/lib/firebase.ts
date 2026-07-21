@@ -1,7 +1,7 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
-import { 
+import {
   getFirestore,
   collection,
   getDocs,
@@ -17,21 +17,28 @@ import {
   setDoc,
   writeBatch
 } from 'firebase/firestore';
+
 import firebaseConfig from '../../firebase-applet-config.json';
 
-// Initialize Firebase App
-export const app = initializeApp(firebaseConfig);
+// Prevent duplicate Firebase initialization
+export const app =
+  getApps().length === 0
+    ? initializeApp(firebaseConfig)
+    : getApp();
 
-// Initialize Firebase Auth
+// Firebase Auth
 export const auth = getAuth(app);
 
-// Initialize Firebase Storage
+// Firebase Storage
 export const storage = getStorage(app);
 
-// Use custom firestore database ID from the config (ai-studio-pravaahtravels-e139cba2-4b0b-4550-a190-1ca3520d6d45)
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || undefined);
+// Firestore
+export const db = getFirestore(
+  app,
+  firebaseConfig.firestoreDatabaseId
+);
 
-// Export standard firestore methods directly so components use them natively
+// Export Firestore helpers
 export {
   collection,
   getDocs,

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Search, Filter, Calendar, MapPin, ArrowRight, SlidersHorizontal, RefreshCw, Trash2, Star, Camera, Heart } from 'lucide-react';
-import { TravelPackage, DestinationCategory, formatPrice } from '../types';
+import { TravelPackage, formatPrice } from '../types';
 import SkeletonLoader from './SkeletonLoader';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 
@@ -34,15 +34,6 @@ export default function PackagesView({
       setSelectedCategory(prefilledCategory);
     }
   }, [prefilledCategory]);
-
-  // Extract categories dynamically
-  const categories = useMemo(() => {
-    const list = new Set(packages.map((p) => p.category));
-    return ['All', ...Array.from(list)];
-  }, [packages]);
-
-  // Durations simple categorization
-  const durationOptions = ['All', 'Short (1-4 Days)', 'Medium (5-7 Days)', 'Long (8+ Days)'];
 
   // Apply filters
   const filteredPackages = useMemo(() => {

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Compass, ShieldCheck, Mail, Lock, LogIn, UserPlus, Shield, User, Sparkles, Chrome, Github } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Compass, ShieldCheck, Mail, Lock, LogIn, UserPlus, User, Chrome, Github } from 'lucide-react';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, GithubAuthProvider } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -16,6 +16,27 @@ export default function AdminLoginView({ onLoginSuccess }: AdminLoginViewProps) 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const scheduleLoginSuccess = (isAdmin: boolean, delayMs: number, clearLoading = false) => {
+    if (redirectTimeoutRef.current) {
+      clearTimeout(redirectTimeoutRef.current);
+    }
+    redirectTimeoutRef.current = setTimeout(() => {
+      if (clearLoading) {
+        setLoading(false);
+      }
+      onLoginSuccess(isAdmin);
+    }, delayMs);
+  };
 
   const checkIsAdmin = (emailAddress: string) => {
     const cleanEmail = emailAddress.trim().toLowerCase();
@@ -50,9 +71,7 @@ export default function AdminLoginView({ onLoginSuccess }: AdminLoginViewProps) 
             ? 'Administrator registered successfully! Directing to Operator Panel...'
             : 'Traveler account registered successfully! Entering Traveler Portal...'
         );
-        setTimeout(() => {
-          onLoginSuccess(isAdmin);
-        }, 1200);
+        scheduleLoginSuccess(isAdmin, 1200);
       } else {
         // Logging in existing user
         await signInWithEmailAndPassword(auth, emailVal, password);
@@ -61,9 +80,7 @@ export default function AdminLoginView({ onLoginSuccess }: AdminLoginViewProps) 
             ? 'Administrator verified! Entering Operator Panel...'
             : 'Welcome back! Opening your Travel Dashboard...'
         );
-        setTimeout(() => {
-          onLoginSuccess(isAdmin);
-        }, 1000);
+        scheduleLoginSuccess(isAdmin, 1000);
       }
     } catch (err: any) {
       console.error('Unified Auth Error:', err);
@@ -104,10 +121,7 @@ export default function AdminLoginView({ onLoginSuccess }: AdminLoginViewProps) 
           : 'Securely authenticated! Redirecting to your Travel Dashboard...'
       );
 
-      setTimeout(() => {
-        setLoading(false);
-        onLoginSuccess(isAdmin);
-      }, 1000);
+      scheduleLoginSuccess(isAdmin, 1000, true);
     } catch (err: any) {
       console.error('Social login failed:', err);
       setErrorMsg(err.message || String(err));

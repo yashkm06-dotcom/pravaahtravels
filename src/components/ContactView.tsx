@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Send, Mail, Phone, MapPin, Check, HelpCircle, Compass, Clock } from 'lucide-react';
+import { Send, Mail, Phone, MapPin, Check, Compass, Clock } from 'lucide-react';
 import { db, collection, addDoc } from '../lib/firebase';
 import { Enquiry } from '../types';
 

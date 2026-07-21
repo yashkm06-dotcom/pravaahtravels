@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Compass, LayoutDashboard, FileText, Package, Image as ImageIcon, 
-  Plus, Edit2, Trash2, Check, X, Search, Filter, Download, 
+  Plus, Edit2, Trash2, X, Search, Download, 
   Calendar, DollarSign, Users, LogOut, Globe, Eye, ChevronDown, ChevronUp,
-  Upload, CheckCircle, Clock, AlertCircle, Sparkles, Phone, Mail, MessageSquare, Share2, UserPlus, Clipboard, CheckCircle2, Award, ExternalLink, Star, LineChart as LineChartIcon, RefreshCw,
-  Menu, Bell, Settings, Palette, Home, Megaphone, Images, PanelLeftClose, PanelLeftOpen, SlidersHorizontal
+  Upload, CheckCircle, Clock, Phone, Mail, MessageSquare, Clipboard, ExternalLink, Star, LineChart as LineChartIcon, RefreshCw,
+  Menu, Bell, Settings, Palette, Home, Megaphone, Images, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 import { TravelPackage, Enquiry, GalleryImage, DestinationCategory, EnquiryStatus, formatPrice, WebsiteCMSSettings, DEFAULT_WEBSITE_CMS } from '../types';
 import { db, storage, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, setDoc, writeBatch } from '../lib/firebase';
@@ -218,17 +218,6 @@ export default function AdminDashboardView({
     } catch (err) {
       console.error('Update booking status failed:', err);
       alert('Failed to update booking status.');
-    }
-  };
-
-  const handleUpdateBookingPayment = async (bookingId: string, paymentStatus: string) => {
-    try {
-      const ref = doc(db, 'bookings', bookingId);
-      await updateDoc(ref, { paymentStatus });
-      await fetchAllBookings();
-    } catch (err) {
-      console.error('Update payment status failed:', err);
-      alert('Failed to update payment status.');
     }
   };
 
@@ -1265,12 +1254,13 @@ export default function AdminDashboardView({
       }, { merge: true });
       await onRefreshData();
       alert('Website CMS settings saved successfully.');
-    } catch (err) {
-      console.error('Error saving website CMS settings:', err);
-      alert('Failed to save website CMS settings.');
-    } finally {
-      setCmsSaving(false);
-    }
+    } catch (err: any) {
+  console.error("CMS SAVE ERROR:", err);
+  console.error("Code:", err.code);
+  console.error("Message:", err.message);
+
+  alert(`Error Code: ${err.code}\n\n${err.message}`);
+}
   };
 
   const handleCmsImageUpload = async (

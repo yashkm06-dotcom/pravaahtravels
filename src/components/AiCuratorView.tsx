@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { 
-  Sparkles, Compass, MapPin, Users, Heart, ShieldCheck, Star, 
+  Sparkles, Compass, Users, Star, 
   ArrowRight, ArrowLeft, Send, Check, AlertCircle, RefreshCw,
-  Clock, HelpCircle, GripVertical, ArrowUp, ArrowDown, ChevronUp, ChevronDown, CheckCircle, Info
+  GripVertical, ArrowUp, ArrowDown, ChevronUp, ChevronDown, CheckCircle
 } from 'lucide-react';
 import { db, collection, addDoc } from '../lib/firebase';
 import InteractiveRouteMap from './InteractiveRouteMap';
@@ -12,7 +12,7 @@ interface AiCuratorViewProps {
   onNavigate: (view: string, packageId?: string | null) => void;
 }
 
-export default function AiCuratorView({ onNavigateToHome, onNavigate }: AiCuratorViewProps) {
+export default function AiCuratorView({ onNavigateToHome }: AiCuratorViewProps) {
   // Wizard flow states
   const [step, setStep] = useState(1);
   const [destination, setDestination] = useState('');

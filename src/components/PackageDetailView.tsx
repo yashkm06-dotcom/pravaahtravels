@@ -195,7 +195,7 @@ export default function PackageDetailView({
     setDraggedIndex(index);
   };
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
   };
 
@@ -536,7 +536,7 @@ export default function PackageDetailView({
                         key={dayItem.day}
                         draggable={isCustomizing}
                         onDragStart={() => handleDragStart(index)}
-                        onDragOver={(e) => handleDragOver(e, index)}
+                        onDragOver={handleDragOver}
                         onDrop={() => handleDrop(index)}
                         className={`relative ml-12 rounded-[14px] border transition-all duration-300 sm:ml-16 ${
                           isCustomizing 

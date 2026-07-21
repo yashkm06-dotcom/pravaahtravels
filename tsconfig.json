@@ -22,5 +22,11 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    "CustomerPortalView-original.tsx",
+    "CustomerPortalView-original.bak.tsx",
+    "dist",
+    "node_modules"
+  ]
 }

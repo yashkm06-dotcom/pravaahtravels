@@ -1,4 +1,4 @@
-import { MapPin, Compass, ArrowRight, ShieldCheck, Clock, Navigation } from 'lucide-react';
+import { Compass, Clock, Navigation } from 'lucide-react';
 
 interface ItineraryDay {
   day: number;
@@ -17,7 +17,6 @@ interface InteractiveRouteMapProps {
 export default function InteractiveRouteMap({
   itinerary,
   destination,
-  category = 'General',
   activeDay,
   onDayClick
 }: InteractiveRouteMapProps) {
@@ -54,8 +53,6 @@ export default function InteractiveRouteMap({
     let spotType: 'hotel' | 'sightseeing' | 'activity' | 'view' = 'sightseeing';
 
     const titleLower = dayItem.title.toLowerCase();
-    const descLower = dayItem.description.toLowerCase();
-
     if (titleLower.includes('arrival') || titleLower.includes('reach') || titleLower.includes('check')) {
       spotLabel = 'Hotel Check-in';
       spotType = 'hotel';
@@ -164,7 +161,7 @@ export default function InteractiveRouteMap({
           </defs>
 
           {/* Draw connecting roads */}
-          {connections.map((conn, idx) => (
+          {connections.map((conn) => (
             <g key={conn.id}>
               {/* Thick dark under-path */}
               <line 

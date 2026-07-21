@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Star, MapPin, MessageSquare, X, Sparkles, Filter
 } from 'lucide-react';
-import { db, auth, collection, getDocs, query, orderBy } from '../lib/firebase';
+import { db, collection, getDocs, query, orderBy } from '../lib/firebase';
 import { Review } from '../types';
 
 interface VerifiedReviewsProps {

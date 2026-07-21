@@ -1,4 +1,4 @@
-import { Compass, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { DestinationCategory } from '../types';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 
