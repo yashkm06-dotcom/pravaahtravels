@@ -22,4 +22,5 @@ jobs:
 
       - run: npm install -g firebase-tools
 
-run: firebase deploy --project zealous-theory-q09p9 --only hosting --token "${{ secrets.FIREBASE_TOKEN }}"
+- run: firebase use zealous-theory-q09p9
+- run: firebase deploy --only hosting --token "${{ secrets.FIREBASE_TOKEN }}"
