@@ -4,6 +4,7 @@ import { getStorage } from 'firebase/storage';
 import {
   getFirestore,
   collection,
+  collectionGroup,
   getDocs,
   addDoc,
   updateDoc,
@@ -15,7 +16,9 @@ import {
   limit,
   getDoc,
   setDoc,
-  writeBatch
+  writeBatch,
+  serverTimestamp,
+  onSnapshot
 } from 'firebase/firestore';
 
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -41,6 +44,7 @@ export const db = getFirestore(
 // Export Firestore helpers
 export {
   collection,
+  collectionGroup,
   getDocs,
   addDoc,
   updateDoc,
@@ -52,5 +56,7 @@ export {
   limit,
   getDoc,
   setDoc,
-  writeBatch
+  writeBatch,
+  serverTimestamp,
+  onSnapshot
 };

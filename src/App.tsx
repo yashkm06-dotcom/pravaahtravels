@@ -1,26 +1,45 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth, db, collection, getDocs, query, orderBy, deleteDoc, doc, getDoc } from './lib/firebase';
+import { auth, db, collection, getDocs, query, orderBy, deleteDoc, doc, getDoc, onSnapshot, where, addDoc } from './lib/firebase';
 import { SEED_GALLERY } from './lib/seedData';
 import { MessageCircle, Sparkles, Compass } from 'lucide-react';
-import { TravelPackage, Enquiry, GalleryImage, DestinationCategory, WebsiteCMSSettings, DEFAULT_WEBSITE_CMS } from './types';
+import { TravelPackage, Enquiry, GalleryImage, DestinationCategory, WebsiteCMSSettings, DEFAULT_WEBSITE_CMS, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem } from './types';
 
 // Component imports
 import Header from './components/Header';
 import Footer from './components/Footer';
-import HomeView from './components/HomeView';
-import AboutView from './components/AboutView';
-import PackagesView from './components/PackagesView';
-import PackageDetailView from './components/PackageDetailView';
-import DestinationsView from './components/DestinationsView';
-import GalleryView from './components/GalleryView';
-import ContactView from './components/ContactView';
-import AdminLoginView from './components/AdminLoginView';
-import AdminDashboardView from './components/AdminDashboardView';
-import CustomerPortalView from './components/CustomerPortalView';
-import AiCuratorView from './components/AiCuratorView';
-import VerifiedReviews from './components/VerifiedReviews';
+import LoginModal from './components/LoginModal';
 import SEO from './components/SEO';
+
+const HomeView = lazy(() => import('./components/HomeView'));
+const AboutView = lazy(() => import('./components/AboutView'));
+const PackagesView = lazy(() => import('./components/PackagesView'));
+const PackageDetailView = lazy(() => import('./components/PackageDetailView'));
+const DestinationsView = lazy(() => import('./components/DestinationsView'));
+const GalleryView = lazy(() => import('./components/GalleryView'));
+const ContactView = lazy(() => import('./components/ContactView'));
+const AdminDashboardView = lazy(() => import('./components/AdminDashboardView'));
+const CustomerPortalView = lazy(() => import('./components/CustomerPortalView'));
+const AiCuratorView = lazy(() => import('./components/AiCuratorView'));
+const VerifiedReviews = lazy(() => import('./components/VerifiedReviews'));
+
+const RouteViewFallback = () => (
+  <div className="flex min-h-[60vh] items-center justify-center bg-[#fffaf1] px-4 py-16">
+    <div className="w-full max-w-5xl rounded-[24px] border border-stone-200 bg-white p-6 shadow-[0_24px_70px_rgba(18,38,32,0.08)] sm:p-8">
+      <div className="animate-pulse space-y-4">
+        <div className="h-4 w-24 rounded-full bg-stone-200" />
+        <div className="h-8 w-2/3 rounded bg-stone-200" />
+        <div className="h-4 w-full rounded bg-stone-100" />
+        <div className="h-4 w-5/6 rounded bg-stone-100" />
+        <div className="grid gap-4 pt-4 md:grid-cols-3">
+          {[1, 2, 3].map((item) => (
+            <div key={item} className="h-48 rounded-[16px] bg-stone-100" />
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+);
 
 interface RouteState {
   view: string;
@@ -70,10 +89,17 @@ export default function App() {
   const [currentView, setCurrentView] = useState<string>(() => {
     return getRouteStateFromUrl().view;
   });
+  const [savedPackagesRefreshKey, setSavedPackagesRefreshKey] = useState(0);
+  const [wishlistPackages, setWishlistPackages] = useState<any[]>([]);
+  const [wishlistToast, setWishlistToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [pendingWishlistPackage, setPendingWishlistPackage] = useState<TravelPackage | null>(null);
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(() => {
     return getRouteStateFromUrl().packageId;
   });
   const [prefilledCategory, setPrefilledCategory] = useState<string>('All');
+  const [selectedPackageLocation, setSelectedPackageLocation] = useState<string>('All');
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [pendingPostLoginView, setPendingPostLoginView] = useState<string | null>(null);
 
   // Firebase auth state
   const [currentUser, setCurrentUser] = useState<any>(auth.currentUser);
@@ -108,6 +134,10 @@ export default function App() {
   const [packages, setPackages] = useState<TravelPackage[]>([]);
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [gallery, setGallery] = useState<GalleryImage[]>([]);
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [activityItems, setActivityItems] = useState<ActivityChildItem[]>([]);
+  const [activityRecommendations, setActivityRecommendations] = useState<ActivityRecommendation[]>([]);
+  const [featuredCategories, setFeaturedCategories] = useState<FeaturedCategoryItem[]>([]);
   const [websiteCMS, setWebsiteCMS] = useState<WebsiteCMSSettings>(DEFAULT_WEBSITE_CMS);
 
   // Loading states
@@ -166,80 +196,73 @@ export default function App() {
   const fetchAllData = useCallback(async () => {
     setLoadingData(true);
 
-    // 1. Fetch Packages
-    let fetchedPackages: TravelPackage[] = [];
-    const packagesColName = 'packages';
-    try {
-      const packagesCol = collection(db, packagesColName);
-      const packagesQuery = query(packagesCol, orderBy('createdAt', 'desc'));
-      const packagesSnapshot = await getDocs(packagesQuery);
-      fetchedPackages = packagesSnapshot.docs.map((docSnap) => ({
+    const fetchAllCollections = async () => {
+      const [packagesSnapshot, gallerySnapshot, cmsSnap, activitiesSnapshot, activityItemsSnapshot, activityRecommendationsSnapshot, featuredCategoriesSnapshot] = await Promise.all([
+        getDocs(query(collection(db, 'packages'), orderBy('createdAt', 'desc'))),
+        getDocs(query(collection(db, 'gallery'), orderBy('createdAt', 'desc'))),
+        getDoc(doc(db, 'siteSettings', 'main')),
+        getDocs(query(collection(db, 'activities'), orderBy('order', 'asc'))),
+        getDocs(query(collection(db, 'activityItems'), orderBy('order', 'asc'))),
+        getDocs(query(collection(db, 'activityRecommendations'), orderBy('order', 'asc'))),
+        getDocs(query(collection(db, 'featuredCategories'), orderBy('order', 'asc'))),
+      ]);
+
+      const fetchedPackages = packagesSnapshot.docs.map((docSnap) => ({
         id: docSnap.id,
         ...docSnap.data(),
+        location: docSnap.data().location || 'Uttarakhand',
       })) as TravelPackage[];
-    } catch (err: any) {
-      console.warn('Error fetching packages from Firestore:', err);
-      if (err.message?.includes('permission') || err.code === 'permission-denied') {
-        handleFirestoreError(err, OperationType.GET, packagesColName);
-      }
-    }
+      setPackages(fetchedPackages);
 
-    setPackages(fetchedPackages);
-
-    // 2. Fetch Gallery
-    let fetchedGallery: GalleryImage[] = [];
-    const galleryColName = 'gallery';
-    try {
-      const galleryCol = collection(db, galleryColName);
-      const galleryQuery = query(galleryCol, orderBy('createdAt', 'desc'));
-      const gallerySnapshot = await getDocs(galleryQuery);
-      fetchedGallery = gallerySnapshot.docs.map((docSnap) => ({
+      let fetchedGallery: GalleryImage[] = gallerySnapshot.docs.map((docSnap) => ({
         id: docSnap.id,
         ...docSnap.data(),
       })) as GalleryImage[];
-    } catch (err: any) {
-      console.warn('Error fetching gallery from Firestore, falling back to local pre-seeded data:', err);
-      if (err.message?.includes('permission') || err.code === 'permission-denied') {
-        handleFirestoreError(err, OperationType.GET, galleryColName);
+      if (fetchedGallery.length === 0) {
+        fetchedGallery = SEED_GALLERY.map((img, idx) => ({
+          id: `seed-gallery-${idx}`,
+          order: idx,
+          ...img,
+        })) as unknown as GalleryImage[];
       }
-    }
+      fetchedGallery.sort((a, b) => {
+        const aOrder = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER;
+        const bOrder = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      });
+      setGallery(fetchedGallery);
 
-    // Fallback to local gallery if database is empty or still seeding
-    if (fetchedGallery.length === 0) {
-      fetchedGallery = SEED_GALLERY.map((img, idx) => ({
-        id: `seed-gallery-${idx}`,
-        order: idx,
-        ...img,
-      })) as unknown as GalleryImage[];
-    }
-    fetchedGallery.sort((a, b) => {
-      const aOrder = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER;
-      const bOrder = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER;
-      if (aOrder !== bOrder) return aOrder - bOrder;
-      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-    });
-    setGallery(fetchedGallery);
-
-    // 4. Fetch Website CMS settings
-    try {
-      const cmsSnap = await getDoc(doc(db, 'siteSettings', 'main'));
       if (cmsSnap.exists()) {
-        setWebsiteCMS({
-          ...DEFAULT_WEBSITE_CMS,
-          ...cmsSnap.data(),
-        } as WebsiteCMSSettings);
+        setWebsiteCMS({ ...DEFAULT_WEBSITE_CMS, ...cmsSnap.data() } as WebsiteCMSSettings);
       } else {
         setWebsiteCMS(DEFAULT_WEBSITE_CMS);
       }
+
+      const fetchedActivities = activitiesSnapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as ActivityItem[];
+      setActivities(fetchedActivities.filter((item) => item.enabled !== false));
+
+      const fetchedActivityItems = activityItemsSnapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as ActivityChildItem[];
+      setActivityItems(fetchedActivityItems.filter((item) => item.enabled !== false));
+
+      const fetchedActivityRecommendations = activityRecommendationsSnapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as ActivityRecommendation[];
+      setActivityRecommendations(fetchedActivityRecommendations.filter((item) => item.enabled !== false));
+
+      const fetchedFeaturedCategories = featuredCategoriesSnapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as FeaturedCategoryItem[];
+      setFeaturedCategories(fetchedFeaturedCategories.filter((item) => item.enabled !== false));
+    };
+
+    try {
+      await fetchAllCollections();
     } catch (err: any) {
-      console.warn('Error fetching website CMS settings, using defaults:', err);
+      console.warn('Error fetching application data from Firestore:', err);
       if (err.message?.includes('permission') || err.code === 'permission-denied') {
-        handleFirestoreError(err, OperationType.GET, 'siteSettings/main');
+        handleFirestoreError(err, OperationType.GET, 'app-data');
       }
-      setWebsiteCMS(DEFAULT_WEBSITE_CMS);
     }
 
-    // 5. Fetch Enquiries (Only if admin is logged in, else security rules blocks it)
+
+    // 7. Fetch Enquiries (Only if admin is logged in, else security rules blocks it)
     const enquiriesColName = 'enquiries';
     try {
       const currentAuthUser = auth.currentUser;
@@ -301,6 +324,37 @@ export default function App() {
     return () => unsubscribe();
   }, [fetchAllData]);
 
+  useEffect(() => {
+    if (!currentUser?.uid) {
+      setWishlistPackages([]);
+      return;
+    }
+
+    const wishlistQuery = query(
+      collection(db, 'users', currentUser.uid, 'private'),
+      where('type', '==', 'saved_package')
+    );
+
+    const unsubscribe = onSnapshot(wishlistQuery, (snapshot) => {
+      const nextWishlist = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }));
+      setWishlistPackages(nextWishlist);
+    }, (error) => {
+      console.error('Wishlist listener error:', error);
+      setWishlistToast({ type: 'error', message: 'Unable to sync Wishlist right now.' });
+    });
+
+    return () => unsubscribe();
+  }, [currentUser?.uid]);
+
+  useEffect(() => {
+    if (!wishlistToast) return;
+    const timeout = window.setTimeout(() => setWishlistToast(null), 2200);
+    return () => window.clearTimeout(timeout);
+  }, [wishlistToast]);
+
   // ----------------------------------------------------
   // URL ROUTING SYNCHRONIZER & POPSTATE LISTENER
   // ----------------------------------------------------
@@ -326,20 +380,91 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!loginModalOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        handleCloseLoginModal();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [loginModalOpen]);
+
   // ----------------------------------------------------
   // ACTIONS / HANDLERS
   // ----------------------------------------------------
+  const handlePackageSaved = useCallback(() => {
+    setSavedPackagesRefreshKey((prev) => prev + 1);
+  }, []);
+
+  const handleToggleWishlist = useCallback(async (pkg: TravelPackage) => {
+    if (!pkg?.id) return;
+
+    const activeUser = currentUser || auth.currentUser;
+    if (!activeUser) {
+      setPendingWishlistPackage(pkg);
+      setPendingPostLoginView(currentView);
+      setLoginModalOpen(true);
+      return;
+    }
+
+    const existingWishlistItem = wishlistPackages.find((item: any) => String(item.packageId) === String(pkg.id));
+
+    try {
+      if (existingWishlistItem) {
+        await deleteDoc(doc(db, 'users', activeUser.uid, 'private', existingWishlistItem.id));
+        setWishlistToast({ type: 'success', message: 'Removed from Wishlist' });
+      } else {
+        await addDoc(collection(db, 'users', activeUser.uid, 'private'), {
+          type: 'saved_package',
+          packageId: pkg.id,
+          title: pkg.title,
+          destination: pkg.destination,
+          imageUrl: pkg.imageUrl || '',
+          duration: pkg.duration,
+          price: pkg.price || 0,
+          category: pkg.category,
+          createdAt: new Date().toISOString(),
+        });
+        setWishlistToast({ type: 'success', message: 'Package added to Wishlist ❤️' });
+      }
+      setSavedPackagesRefreshKey((prev) => prev + 1);
+    } catch (error: any) {
+      console.error('Error updating wishlist:', error);
+      setWishlistToast({ type: 'error', message: 'Unable to update Wishlist right now.' });
+    }
+  }, [currentUser, currentView, wishlistPackages]);
+
+  const handleCloseLoginModal = () => {
+    setLoginModalOpen(false);
+    setPendingPostLoginView(null);
+    if (currentView === 'admin-login') {
+      setCurrentView('home');
+    }
+  };
+
   const handleNavigate = (view: string, packageId: string | null = null) => {
     // Scroll to top
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     if (view === 'admin-dashboard' && !isAdminLoggedIn) {
-      setCurrentView('admin-login');
+      setPendingPostLoginView('admin-dashboard');
+      setLoginModalOpen(true);
       return;
     }
 
     if (view === 'portal' && !currentUser) {
-      setCurrentView('admin-login');
+      setPendingPostLoginView('portal');
+      setLoginModalOpen(true);
+      return;
+    }
+
+    if (view === 'admin-login') {
+      setPendingPostLoginView(null);
+      setLoginModalOpen(true);
       return;
     }
 
@@ -349,6 +474,12 @@ export default function App() {
 
   const handleSelectCategory = (category: DestinationCategory) => {
     setPrefilledCategory(category);
+    setCurrentView('packages');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleSearchByLocation = (location: string) => {
+    setSelectedPackageLocation(location);
     setCurrentView('packages');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -388,10 +519,16 @@ export default function App() {
     return packages.filter((p) => p.featured && p.active);
   }, [packages]);
 
+  const wishlistPackageIds = useMemo(() => {
+    return wishlistPackages.map((item: any) => String(item.packageId));
+  }, [wishlistPackages]);
+
   const activeSelectedPackage = useMemo(() => {
     if (!selectedPackageId) return null;
     return packages.find((p) => p.id === selectedPackageId) || null;
   }, [packages, selectedPackageId]);
+
+  const showLoginModal = loginModalOpen || currentView === 'admin-login';
 
   // Generate dynamic WhatsApp contact url containing page context
   const getWhatsAppUrl = () => {
@@ -464,114 +601,169 @@ export default function App() {
 
       {/* Main viewport block */}
       <main className="flex-1">
-        {currentView === 'home' && (
-          <HomeView
-            featuredPackages={featuredPackages}
-            onNavigate={handleNavigate}
-            loading={loadingData}
-            isAdminLoggedIn={isAdminLoggedIn}
-            onDeletePackage={handleDeletePackage}
-            onSelectCategory={handleSelectCategory}
-            websiteCMS={websiteCMS}
-          />
-        )}
+        <Suspense fallback={<RouteViewFallback />}>
+          {currentView === 'home' && (
+            <HomeView
+              featuredPackages={featuredPackages}
+              onNavigate={handleNavigate}
+              loading={loadingData}
+              isAdminLoggedIn={isAdminLoggedIn}
+              onDeletePackage={handleDeletePackage}
+              onSelectCategory={handleSelectCategory}
+              onSearchByLocation={handleSearchByLocation}
+              websiteCMS={websiteCMS}
+              activities={activities}
+              activityItems={activityItems}
+              activityRecommendations={activityRecommendations}
+              featuredCategories={featuredCategories}
+              packages={packages}
+              wishlistPackageIds={wishlistPackageIds}
+              onToggleWishlist={handleToggleWishlist}
+            />
+          )}
 
-        {currentView === 'destinations' && (
-          <DestinationsView onSelectCategory={handleSelectCategory} />
-        )}
+          {currentView === 'destinations' && (
+            <DestinationsView onSelectCategory={handleSelectCategory} />
+          )}
 
-        {currentView === 'packages' && (
-          <PackagesView
-            packages={packages}
-            onNavigate={handleNavigate}
-            loading={loadingData}
-            isAdminLoggedIn={isAdminLoggedIn}
-            onDeletePackage={handleDeletePackage}
-            prefilledCategory={prefilledCategory}
-            onResetPrefilledCategory={() => setPrefilledCategory('All')}
-          />
-        )}
+          {currentView === 'packages' && (
+            <PackagesView
+              packages={packages}
+              onNavigate={handleNavigate}
+              loading={loadingData}
+              isAdminLoggedIn={isAdminLoggedIn}
+              onDeletePackage={handleDeletePackage}
+              prefilledCategory={prefilledCategory}
+              selectedLocationFilter={selectedPackageLocation}
+              onResetPrefilledCategory={() => setPrefilledCategory('All')}
+              onPackageSaved={handlePackageSaved}
+              wishlistPackageIds={wishlistPackageIds}
+              onToggleWishlist={handleToggleWishlist}
+            />
+          )}
 
-        {currentView === 'package-detail' && activeSelectedPackage && (
-          <PackageDetailView
-            pkg={activeSelectedPackage}
-            onBack={() => handleNavigate('packages')}
-            onEnquirySuccess={fetchAllData}
-            isAdminLoggedIn={isAdminLoggedIn}
-            onDeletePackage={handleDeletePackage}
-          />
-        )}
+          {currentView === 'package-detail' && activeSelectedPackage && (
+            <PackageDetailView
+              pkg={activeSelectedPackage}
+              onBack={() => handleNavigate('packages')}
+              onEnquirySuccess={fetchAllData}
+              isAdminLoggedIn={isAdminLoggedIn}
+              onDeletePackage={handleDeletePackage}
+              onPackageSaved={handlePackageSaved}
+              wishlistPackageIds={wishlistPackageIds}
+              onToggleWishlist={handleToggleWishlist}
+              onNavigate={handleNavigate}
+            />
+          )}
 
-        {currentView === 'package-detail' && !loadingData && !activeSelectedPackage && (
-          <div className="flex min-h-[520px] items-center justify-center bg-white px-4 py-20 text-center">
-            <div className="max-w-md">
-              <Compass className="mx-auto h-12 w-12 text-[#4DA528]" />
-              <h1 className="mt-5 text-3xl font-extrabold text-stone-950">Package not found</h1>
-              <p className="mt-3 text-sm leading-7 text-stone-500">This package may have been removed or unpublished.</p>
-              <button
-                type="button"
-                onClick={() => handleNavigate('packages')}
-                className="mt-6 rounded-[5px] bg-[#4DA528] px-6 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
-              >
-                Browse Packages
-              </button>
+          {currentView === 'package-detail' && !loadingData && !activeSelectedPackage && (
+            <div className="flex min-h-[520px] items-center justify-center bg-white px-4 py-20 text-center">
+              <div className="max-w-md">
+                <Compass className="mx-auto h-12 w-12 text-[#4DA528]" />
+                <h1 className="mt-5 text-3xl font-extrabold text-stone-950">Package not found</h1>
+                <p className="mt-3 text-sm leading-7 text-stone-500">This package may have been removed or unpublished.</p>
+                <button
+                  type="button"
+                  onClick={() => handleNavigate('packages')}
+                  className="mt-6 rounded-[5px] bg-[#4DA528] px-6 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
+                >
+                  Browse Packages
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {currentView === 'gallery' && (
-          <GalleryView gallery={gallery} loading={loadingData} />
-        )}
+          {currentView === 'gallery' && (
+            <GalleryView gallery={gallery} loading={loadingData} />
+          )}
 
-        {currentView === 'reviews' && (
-          <VerifiedReviews onNavigate={handleNavigate} />
-        )}
+          {currentView === 'reviews' && (
+            <VerifiedReviews onNavigate={handleNavigate} />
+          )}
 
-        {currentView === 'about' && <AboutView />}
+          {currentView === 'about' && <AboutView />}
 
-        {currentView === 'ai-curator' && (
-          <AiCuratorView 
-            onNavigateToHome={() => handleNavigate('home')} 
-            onNavigate={handleNavigate}
-          />
-        )}
+          {currentView === 'ai-curator' && (
+            <AiCuratorView 
+              onNavigateToHome={() => handleNavigate('home')} 
+              onNavigate={handleNavigate}
+            />
+          )}
 
-        {currentView === 'contact' && (
-          <ContactView onEnquirySuccess={fetchAllData} />
-        )}
+          {currentView === 'contact' && (
+            <ContactView onEnquirySuccess={fetchAllData} />
+          )}
 
-        {currentView === 'portal' && (
-          <CustomerPortalView 
-            onLogout={handleAdminLogout} 
-            onNavigateToHome={() => handleNavigate('home')} 
-          />
-        )}
+          {currentView === 'portal' && (
+            <CustomerPortalView 
+              onLogout={handleAdminLogout} 
+              onNavigateToHome={() => handleNavigate('home')} 
+              onNavigate={handleNavigate}
+              onNavigateToPackages={() => handleNavigate('packages')}
+              savedPackagesRefreshKey={savedPackagesRefreshKey}
+            />
+          )}
 
-        {currentView === 'admin-login' && (
-          <AdminLoginView
-            onLoginSuccess={(isAdmin) => {
-              if (isAdmin) {
-                handleNavigate('admin-dashboard');
-              } else {
-                handleNavigate('portal');
-              }
-            }}
-          />
-        )}
-
-        {currentView === 'admin-dashboard' && (
-          <AdminDashboardView
-            packages={packages}
-            enquiries={enquiries}
-            gallery={gallery}
-            adminEmail={adminEmail}
-            onLogout={handleAdminLogout}
-            onNavigatePublic={() => handleNavigate('home')}
-            onRefreshData={fetchAllData}
-            websiteCMS={websiteCMS}
-          />
-        )}
+          {currentView === 'admin-dashboard' && (
+            <AdminDashboardView
+              packages={packages}
+              enquiries={enquiries}
+              gallery={gallery}
+              activities={activities}
+              adminEmail={adminEmail}
+              onLogout={handleAdminLogout}
+              onNavigatePublic={() => handleNavigate('home')}
+              onRefreshData={fetchAllData}
+              websiteCMS={websiteCMS}
+            />
+          )}
+        </Suspense>
       </main>
+
+      {wishlistToast && (
+        <div className={`fixed bottom-6 left-1/2 z-[80] -translate-x-1/2 rounded-full px-4 py-3 text-sm font-semibold shadow-lg backdrop-blur ${wishlistToast.type === 'error' ? 'bg-rose-600 text-white' : 'bg-[#081E2A] text-white'}`}>
+          {wishlistToast.message}
+        </div>
+      )}
+
+      {showLoginModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/70 px-4 py-6 backdrop-blur-sm"
+          onClick={handleCloseLoginModal}
+        >
+          <div className="relative w-full max-w-md" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              onClick={handleCloseLoginModal}
+              className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 shadow-sm transition hover:bg-stone-50 hover:text-stone-900"
+              aria-label="Close login dialog"
+            >
+              ×
+            </button>
+            <LoginModal
+              onLoginSuccess={(isAdmin) => {
+                setLoginModalOpen(false);
+                if (isAdmin) {
+                  setCurrentView('admin-dashboard');
+                } else {
+                  const targetView = pendingPostLoginView || 'portal';
+                  setCurrentView(targetView);
+                  setSelectedPackageId(targetView === 'package-detail' ? selectedPackageId : null);
+                  if (pendingWishlistPackage) {
+                    window.setTimeout(() => {
+                      if (auth.currentUser) {
+                        void handleToggleWishlist(pendingWishlistPackage);
+                      }
+                    }, 80);
+                  }
+                }
+                setPendingPostLoginView(null);
+                setPendingWishlistPackage(null);
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Hide footer on full-screen admin dashboard */}
       {currentView !== 'admin-dashboard' && (

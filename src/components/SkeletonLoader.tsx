@@ -76,3 +76,52 @@ export function CardGridSkeletonLoader({ count = 3 }: { count?: number }) {
   );
 }
 
+export function SkeletonCard({ className = '' }: { className?: string }) {
+  return (
+    <div className={`animate-pulse rounded-[18px] border border-stone-200 bg-white p-5 shadow-sm ${className}`.trim()}>
+      <div className="h-40 rounded-[14px] bg-stone-200" />
+      <div className="mt-4 space-y-3">
+        <div className="h-3 w-1/4 rounded bg-stone-200" />
+        <div className="h-5 w-3/4 rounded bg-stone-200" />
+        <div className="h-3 w-5/6 rounded bg-stone-100" />
+      </div>
+    </div>
+  );
+}
+
+export function SkeletonPackage({ className = '' }: { className?: string }) {
+  return (
+    <div className={`animate-pulse overflow-hidden rounded-[16px] border border-stone-200 bg-white shadow-sm ${className}`.trim()}>
+      <div className="h-56 bg-stone-200" />
+      <div className="space-y-3 p-6">
+        <div className="h-3 w-1/3 rounded bg-stone-200" />
+        <div className="h-6 w-3/4 rounded bg-stone-200" />
+        <div className="h-3 w-full rounded bg-stone-100" />
+        <div className="h-3 w-2/3 rounded bg-stone-100" />
+      </div>
+    </div>
+  );
+}
+
+export function SkeletonDashboardCard({ className = '' }: { className?: string }) {
+  return (
+    <div className={`animate-pulse rounded-[18px] border border-stone-200 bg-white p-5 shadow-sm ${className}`.trim()}>
+      <div className="h-3 w-1/3 rounded bg-stone-200" />
+      <div className="mt-4 h-8 w-2/3 rounded bg-stone-200" />
+      <div className="mt-3 h-3 w-1/2 rounded bg-stone-100" />
+    </div>
+  );
+}
+
+export function SkeletonBookingCard({ className = '' }: { className?: string }) {
+  return (
+    <div className={`animate-pulse rounded-[20px] border border-stone-200 bg-white p-5 shadow-sm ${className}`.trim()}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="h-3 w-20 rounded bg-stone-200" />
+        <div className="h-7 w-20 rounded-full bg-stone-200" />
+      </div>
+      <div className="mt-4 h-24 rounded-[14px] bg-stone-100" />
+    </div>
+  );
+}
+

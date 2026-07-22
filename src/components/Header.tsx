@@ -68,9 +68,9 @@ export default function Header({
     <>
       <button
         onClick={() => handleNavClick('admin-dashboard')}
-        className="cursor-pointer bg-[#4DA528] px-5 py-3 text-[12px] font-bold uppercase tracking-[0.08em] text-white transition hover:bg-[#FF970D]"
+        className="cursor-pointer bg-[#4DA528] px-5 py-3 text-[12px] font-bold uppercase tracking-[0.08em] text-white transition hover:bg-[#FF970D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
       >
-        Admin Panel
+        Admin Dashboard
       </button>
       <button
         onClick={onAdminLogout}
@@ -85,7 +85,7 @@ export default function Header({
         onClick={() => handleNavClick('portal')}
         className="cursor-pointer bg-[#4DA528] px-5 py-3 text-[12px] font-bold uppercase tracking-[0.08em] text-white transition hover:bg-[#FF970D]"
       >
-        My Dashboard
+        My Account
       </button>
       <button
         onClick={onAdminLogout}
@@ -99,7 +99,7 @@ export default function Header({
       onClick={() => handleNavClick('admin-login')}
       className="cursor-pointer bg-[#4DA528] px-5 py-3 text-[12px] font-bold uppercase tracking-[0.08em] text-white transition hover:bg-[#FF970D]"
     >
-      Login / Signup
+      Login
     </button>
   );
 
@@ -138,7 +138,7 @@ export default function Header({
 
       <div className="relative overflow-hidden">
         <div className="pointer-events-none absolute left-0 top-0 hidden h-full w-48 rounded-r-full bg-[#4DA528]/10 lg:block" />
-        <div className="mx-auto flex h-[92px] max-w-[1530px] items-center justify-between gap-8 px-4 sm:px-6 lg:px-8 xl:pl-[120px]">
+        <div className="mx-auto flex h-[88px] max-w-[1530px] items-center justify-between gap-3 px-4 sm:h-[92px] sm:px-6 lg:px-8 xl:pl-[120px]">
           <button
             type="button"
             onClick={() => handleNavClick('home')}
@@ -149,8 +149,8 @@ export default function Header({
               {logoMark}
             </span>
             <span className="text-left">
-              <span className="block text-2xl font-extrabold leading-none text-stone-950">Pravaah</span>
-              <span className="mt-1 block text-[11px] font-bold uppercase tracking-[0.24em] text-[#4DA528]">Travels</span>
+              <span className="block text-[18px] font-extrabold leading-none text-stone-950 sm:text-2xl">Pravaah</span>
+              <span className="mt-1 block text-[10px] font-bold uppercase tracking-[0.24em] text-[#4DA528] sm:text-[11px]">Travels</span>
             </span>
           </button>
 
@@ -193,8 +193,9 @@ export default function Header({
             )}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="rounded-full border border-stone-200 bg-white p-2 text-stone-800 shadow-sm"
+              className="rounded-full border border-stone-200 bg-white p-2 text-stone-800 shadow-sm transition hover:border-[#4DA528] hover:text-[#4DA528] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/35 focus-visible:ring-offset-2"
               id="mobile-menu-btn"
+              aria-label={isMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
             >
               {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>
@@ -224,7 +225,7 @@ export default function Header({
                   onClick={() => handleNavClick('admin-dashboard')}
                   className="w-full bg-[#4DA528] py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
                 >
-                  Go to Admin Dashboard
+                  Admin Dashboard
                 </button>
                 <button
                   onClick={() => {
@@ -242,7 +243,7 @@ export default function Header({
                   onClick={() => handleNavClick('portal')}
                   className="w-full bg-[#4DA528] py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
                 >
-                  Go to My Dashboard
+                  My Account
                 </button>
                 <button
                   onClick={() => {
@@ -259,7 +260,7 @@ export default function Header({
                 onClick={() => handleNavClick('admin-login')}
                 className="w-full bg-[#4DA528] py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
               >
-                Login / Signup
+                Login
               </button>
             )}
           </div>

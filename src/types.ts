@@ -12,16 +12,32 @@ export type DestinationCategory =
   | 'Ladakh'
   | 'Uttarakhand';
 
+export const PACKAGE_LOCATIONS = [
+  'Uttarakhand',
+  'Himachal Pradesh',
+  'Ladakh',
+  'Kashmir',
+  'Nepal',
+  'Bhutan',
+  'International Trips',
+] as const;
+
+export type PackageLocation = (typeof PACKAGE_LOCATIONS)[number];
+
 export interface TravelPackage {
   id: string;
   title: string;
   destination: string;
+  location: PackageLocation | string;
+  bookingType?: string;
+  maxGuests?: number;
   category: DestinationCategory;
   duration: string; // e.g., "5 Days / 4 Nights"
   price: number;
   offerPrice?: number;
   pickup?: string;
   packageCode?: string;
+  activityId?: string;
   seoTitle?: string;
   seoDescription?: string;
   shortDescription: string;
@@ -31,6 +47,7 @@ export interface TravelPackage {
   inclusions: string[];
   exclusions: string[];
   thingsToCarry?: string[];
+  departureDates?: string[];
   faqs?: { question: string; answer: string }[];
   policies?: string[];
   imageUrl: string; // primary image/banner thumbnail
@@ -67,6 +84,79 @@ export interface GalleryImage {
   album?: string; // New: Album grouping support
   imageUrl: string;
   order?: number;
+  createdAt: string;
+}
+
+export interface CustomerProfile {
+  id: string;
+  displayName?: string;
+  name?: string;
+  email: string;
+  phone?: string;
+  whatsapp?: string;
+  preferredDestinations?: string;
+  photoURL?: string;
+  provider?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ActivityItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  imageUrl: string;
+  category: DestinationCategory;
+  location?: string;
+  enabled: boolean;
+  order: number;
+  createdAt: string;
+}
+
+export interface ActivityChildItem {
+  id: string;
+  activityId: string;
+  title: string;
+  subtitle?: string;
+  description: string;
+  thumbnailUrl?: string;
+  startingPrice: number;
+  linkedPackageId?: string;
+  enabled: boolean;
+  order: number;
+  createdAt: string;
+}
+
+export interface ActivityRecommendation {
+  id: string;
+  activityId: string;
+  title: string;
+  subtitle?: string;
+  description: string;
+  thumbnailUrl?: string;
+  linkedPackageId?: string;
+  enabled: boolean;
+  order: number;
+  createdAt: string;
+  price?: number;
+  duration?: string;
+  location?: string;
+  badge?: string;
+  rating?: number;
+}
+
+export interface FeaturedCategoryItem {
+  id: string;
+  title: string;
+  slug: string;
+  description: string;
+  imageUrl: string;
+  category?: DestinationCategory;
+  location?: string;
+  packageIds?: string[];
+  enabled: boolean;
+  order: number;
   createdAt: string;
 }
 
@@ -111,7 +201,7 @@ export const DEFAULT_WEBSITE_CMS: WebsiteCMSSettings = {
   seoKeywords: 'Pravaah Travels, Himalayan tours, Uttarakhand travel, Himachal packages, Kedarnath yatra, luxury travel India',
 };
 
-export type BookingStatus = 'Pending' | 'Confirmed' | 'Completed' | 'Cancelled';
+export type BookingStatus = 'Pending' | 'Contacted' | 'Confirmed' | 'Completed' | 'Cancelled';
 export type PaymentStatus = 'Unpaid' | 'Paid' | 'Refunded';
 
 export interface CustomerBooking {

@@ -1,0 +1,17 @@
+{
+  "name": "Pravaah Travels",
+  "short_name": "Pravaah",
+  "description": "Premium Himalayan holiday experiences and bookings.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fffaf1",
+  "theme_color": "#4DA528",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

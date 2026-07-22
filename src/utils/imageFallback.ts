@@ -5,7 +5,11 @@ export const DEFAULT_TRAVEL_IMAGE = vitourTravelPlaceholder;
 
 export const getTravelImage = (imageUrl?: string | null) => {
   const trimmedUrl = typeof imageUrl === 'string' ? imageUrl.trim() : '';
-  return trimmedUrl || DEFAULT_TRAVEL_IMAGE;
+  if (!trimmedUrl) return DEFAULT_TRAVEL_IMAGE;
+  if (/^https?:\/\//i.test(trimmedUrl)) {
+    return trimmedUrl;
+  }
+  return trimmedUrl;
 };
 
 export const handleTravelImageError = (event: React.SyntheticEvent<HTMLImageElement>) => {

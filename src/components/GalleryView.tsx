@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Image as ImageIcon, X, ChevronLeft, ChevronRight, Maximize2 } from 'lucide-react';
 import { GalleryImage } from '../types';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
+import { SkeletonCard } from './SkeletonLoader';
 
 interface GalleryViewProps {
   gallery: GalleryImage[];
@@ -74,8 +75,10 @@ export default function GalleryView({ gallery, loading }: GalleryViewProps) {
 
         {/* Gallery Grid */}
         {loading ? (
-          <div className="flex justify-center py-24">
-            <div className="w-10 h-10 border-2 border-[#4DA528] border-t-transparent rounded-full animate-spin" />
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <SkeletonCard key={idx} className="h-full" />
+            ))}
           </div>
         ) : filteredGallery.length === 0 ? (
           <div className="text-center py-16 bg-white border border-stone-200 rounded-[12px] p-8 space-y-3">
@@ -95,6 +98,8 @@ export default function GalleryView({ gallery, loading }: GalleryViewProps) {
                   alt={item.title || 'Travel Photo'}
                   className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-500"
                   referrerPolicy="no-referrer"
+                  loading="lazy"
+                  decoding="async"
                   onError={handleTravelImageError}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-stone-950/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />

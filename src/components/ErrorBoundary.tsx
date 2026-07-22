@@ -40,9 +40,9 @@ export default class ErrorBoundary extends React.Component<Props, State> {
             </div>
             
             <div className="space-y-2">
-              <h1 className="text-xl font-serif font-bold text-stone-850">Something went wrong</h1>
-              <p className="text-xs text-stone-500 leading-relaxed">
-                An unexpected system error occurred while rendering this mountain view. Don't worry, your data and bookings are completely safe.
+              <h1 className="text-xl font-serif font-bold text-stone-900">Something went wrong</h1>
+              <p className="text-xs leading-relaxed text-stone-600">
+                An unexpected system error occurred while rendering this mountain view. Your data and bookings remain safe.
               </p>
             </div>
 

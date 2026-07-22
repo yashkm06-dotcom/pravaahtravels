@@ -1,13 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Global Safety Net default deny
-    match /{document=**} {
-      allow read, write: if false;
-    }
 
-    // Secure authentication and authorization helpers
     function isSignedIn() {
       return request.auth != null;
     }
@@ -24,57 +18,97 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // 1. Packages Collection
-    match /packages/{packageId} {
-      allow read: if true;
-      allow write: if isAdmin();
+    function isBookingOwner(resourceData) {
+      return isSignedIn() && (
+        resourceData.userId == request.auth.uid ||
+        resourceData.customerEmail == request.auth.token.email
+      );
     }
 
-    // 2. Enquiries Collection
+    // Global safety net.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /packages/{packageId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
     match /enquiries/{enquiryId} {
-      allow create: if true; // Any visitor can submit an inquiry
+      allow create: if true;
       allow read, update, delete: if isAdmin();
     }
 
-    // 3. Gallery Collection
     match /gallery/{imageId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
-    // 4. Reviews Collection
     match /reviews/{reviewId} {
       allow read: if true;
       allow create: if isSignedIn();
       allow update, delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
     }
 
-    // 5. Bookings Collection
     match /bookings/{bookingId} {
-      allow read, update: if isAdmin() || (isSignedIn() && (resource.data.customerEmail == request.auth.token.email || resource.data.userId == request.auth.uid));
-      allow create: if isSignedIn();
+      allow create: if isSignedIn() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.customerEmail == request.auth.token.email;
+      allow read, update: if isAdmin() || isBookingOwner(resource.data);
       allow delete: if isAdmin();
     }
 
-    // 6. Users Collection (Profile and saved packages sub-collections)
     match /users/{userId} {
       allow read, write: if isOwner(userId) || isAdmin();
-      
+
       match /private/{docId} {
         allow read, write: if isOwner(userId) || isAdmin();
       }
     }
 
-    // 7. Analytics Events Collection (Production logging)
     match /analytics_events/{eventId} {
-      allow create: if true; // Allow client analytics instrumentation
+      allow create: if true;
       allow read, update, delete: if isAdmin();
     }
 
-    // 8. Website CMS Settings
     match /siteSettings/{settingId} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    match /activities/{activityId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /activityItems/{activityItemId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /activityRecommendations/{recommendationId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /featuredCategories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /blogs/{blogId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /sent_emails/{emailId} {
+      allow read, write: if isAdmin();
     }
   }
 }

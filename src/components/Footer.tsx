@@ -46,7 +46,7 @@ export default function Footer({ onNavigate, websiteCMS, gallery }: FooterProps)
   return (
     <footer className="relative bg-[#081E2A] pt-24 text-white" id="main-footer">
       <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 gap-12 border-b border-white/10 pb-16 lg:grid-cols-[1.1fr_0.7fr_0.9fr_1fr]">
+        <div className="grid grid-cols-1 gap-12 border-b border-white/10 pb-16 sm:grid-cols-2 lg:grid-cols-[1.1fr_0.7fr_0.9fr_1fr]">
           <div className="space-y-7">
             <button
               type="button"
@@ -92,7 +92,7 @@ export default function Footer({ onNavigate, websiteCMS, gallery }: FooterProps)
                 ['Customer Portal', 'portal'],
               ].map(([label, view]) => (
                 <li key={view}>
-                  <button onClick={() => onNavigate(view)} className="group flex cursor-pointer items-center gap-2 transition hover:text-[#4DA528]">
+                  <button onClick={() => onNavigate(view)} className="group flex cursor-pointer items-center gap-2 transition hover:text-[#4DA528] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[#081E2A]">
                     <ArrowRight className="h-3.5 w-3.5 opacity-0 transition group-hover:opacity-100" />
                     <span>{label}</span>
                   </button>
@@ -103,7 +103,7 @@ export default function Footer({ onNavigate, websiteCMS, gallery }: FooterProps)
 
           <div>
             <h5 className="mb-8 text-[20px] font-bold">Gallery</h5>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {footerGallery.map((src, idx) => (
                 <button
                   key={src}
@@ -130,14 +130,14 @@ export default function Footer({ onNavigate, websiteCMS, gallery }: FooterProps)
               className="space-y-5"
               aria-disabled="true"
             >
-              <div className="flex overflow-hidden rounded-md bg-white/70">
+              <div className="flex flex-col gap-2 rounded-md bg-white/70 sm:flex-row sm:overflow-hidden">
                 <input
                   type="email"
                   placeholder="Enter Email Address"
                   disabled
                   className="min-w-0 flex-1 px-5 py-4 text-sm font-medium text-stone-900 outline-none"
                 />
-                <button type="submit" disabled className="flex w-14 cursor-not-allowed items-center justify-center bg-white/20 text-white/50">
+                <button type="submit" disabled className="flex h-12 w-full cursor-not-allowed items-center justify-center bg-white/20 text-white/50 sm:w-14">
                   <Send className="h-4 w-4" />
                 </button>
               </div>
@@ -151,7 +151,7 @@ export default function Footer({ onNavigate, websiteCMS, gallery }: FooterProps)
             {socialLinks.length > 0 && <ul className="mt-8 flex gap-3">
               {socialLinks.map(([item, href]) => (
                 <li key={item}>
-                  <a href={href} target="_blank" rel="noopener noreferrer" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 text-[12px] font-bold uppercase text-white/70 transition hover:border-[#4DA528] hover:bg-[#4DA528] hover:text-white">
+                  <a href={href} target="_blank" rel="noopener noreferrer" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 text-[12px] font-bold uppercase text-white/70 transition hover:border-[#4DA528] hover:bg-[#4DA528] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#081E2A]">
                     {item}
                   </a>
                 </li>
@@ -163,7 +163,7 @@ export default function Footer({ onNavigate, websiteCMS, gallery }: FooterProps)
         <div className="flex flex-col items-center justify-between gap-5 py-8 text-[14px] text-white/62 md:flex-row">
           <p>Copyright © {currentYear} by <span className="text-[#4DA528]">Pravaah Travels.</span> All Rights Reserved</p>
           <div className="flex flex-wrap items-center justify-center gap-5">
-            <button onClick={() => onNavigate('admin-login')} className="flex cursor-pointer items-center gap-2 transition hover:text-[#4DA528]">
+            <button onClick={() => onNavigate('admin-dashboard')} className="flex cursor-pointer items-center gap-2 transition hover:text-[#4DA528]">
               <Shield className="h-4 w-4" />
               <span>Admin Gateway</span>
             </button>

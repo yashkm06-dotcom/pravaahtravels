@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Send, Mail, Phone, MapPin, Check, Compass, Clock } from 'lucide-react';
+import { Send, Mail, Phone, MapPin, Check, Compass, Clock, AlertCircle } from 'lucide-react';
 import { db, collection, addDoc } from '../lib/firebase';
 import { Enquiry } from '../types';
 
@@ -131,8 +131,9 @@ export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
                 </h3>
 
                 {errorMsg && (
-                  <div className="bg-rose-50 border border-rose-100 text-rose-700 p-3 rounded text-xs font-semibold">
-                    {errorMsg}
+                  <div role="alert" className="flex items-start gap-2 rounded-[14px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700 shadow-sm">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{errorMsg}</span>
                   </div>
                 )}
 
@@ -206,7 +207,7 @@ export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
                       required
                       value={formData.travelDate}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-[#F7F8F4] border border-stone-200 rounded-[12px] text-sm text-stone-800 focus:outline-none focus:border-[#4DA528] font-medium cursor-pointer"
+                      className="w-full px-4 py-3 bg-[#F7F8F4] border border-stone-200 rounded-[12px] text-sm text-stone-800 font-medium transition focus:border-[#4DA528] focus:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/20 cursor-pointer"
                     />
                   </div>
 
@@ -258,7 +259,7 @@ export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full rounded-[5px] py-4 bg-[#4DA528] hover:bg-[#FF970D] text-white font-bold uppercase tracking-wider text-xs transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full rounded-[5px] py-4 bg-[#4DA528] hover:bg-[#FF970D] text-white font-bold uppercase tracking-wider text-xs transition-all duration-200 shadow-[0_10px_24px_rgba(77,165,40,0.16)] hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f7f8f4] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {submitting ? (
                     <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin" />

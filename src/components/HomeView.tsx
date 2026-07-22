@@ -1,14 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { 
   ArrowRight, Star, Heart, Compass, ShieldCheck, Map, 
-  PlaneTakeoff, Trash2, Search, Sparkles, AlertCircle, Quote,
-  Sliders, GripVertical, ArrowUp, ArrowDown, X, Users, Clock, MessageSquare, Check, Send,
+  PlaneTakeoff, Trash2, Search, Sparkles, AlertCircle,
+  X, GripVertical, ArrowUp, ArrowDown, Users, Clock, Check, Send,
   ChevronUp, ChevronDown
 } from 'lucide-react';
-import { TravelPackage, formatPrice, DestinationCategory, WebsiteCMSSettings } from '../types';
+import { TravelPackage, formatPrice, DestinationCategory, WebsiteCMSSettings, PACKAGE_LOCATIONS, PackageLocation, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem } from '../types';
 import InteractiveRouteMap from './InteractiveRouteMap';
-import { db, collection, addDoc, getDocs, query, orderBy, limit } from '../lib/firebase';
+import { db, collection, addDoc } from '../lib/firebase';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
+import { SkeletonCard } from './SkeletonLoader';
+import aboutImageVideo from '../assets/about-section/about-us/image-video.png?url';
+import enjoyImage from '../assets/about-section/page/enjoy.png';
+import founderNameImage from '../assets/about-section/page/name.png';
+import avatar10 from '../assets/about-section/avatars/10.jpg';
 
 interface HomeViewProps {
   featuredPackages: TravelPackage[];
@@ -17,8 +22,263 @@ interface HomeViewProps {
   isAdminLoggedIn?: boolean;
   onDeletePackage?: (id: string) => void;
   onSelectCategory: (category: DestinationCategory) => void;
+  onSearchByLocation?: (location: string) => void;
   websiteCMS: WebsiteCMSSettings;
+  wishlistPackageIds?: string[];
+  onToggleWishlist?: (pkg: TravelPackage) => void;
+  activities?: ActivityItem[];
+  activityItems?: ActivityChildItem[];
+  activityRecommendations?: ActivityRecommendation[];
+  featuredCategories?: FeaturedCategoryItem[];
+  packages?: TravelPackage[];
 }
+
+type ActivityDestination = {
+  id: string;
+  name: string;
+  type: string;
+  image: string;
+  category: DestinationCategory;
+  description?: string;
+  location?: string;
+};
+
+type PackageCardProps = {
+  pkg: TravelPackage;
+  index: number;
+  isWishlisted: boolean;
+  onNavigate: (view: string, packageId?: string | null) => void;
+  onToggleWishlist?: (pkg: TravelPackage) => void;
+  onDeletePackage?: (id: string) => void;
+  isAdminLoggedIn?: boolean;
+};
+
+const PackageCard = React.memo(function PackageCard({
+  pkg,
+  index,
+  isWishlisted,
+  onNavigate,
+  onToggleWishlist,
+  onDeletePackage,
+  isAdminLoggedIn = false,
+}: PackageCardProps) {
+  const hasOffer = Boolean(pkg.offerPrice && pkg.offerPrice < pkg.price);
+  const offerPrice = pkg.offerPrice || pkg.price;
+  const discountPercent = hasOffer ? Math.round(((pkg.price - (pkg.offerPrice || pkg.price)) / pkg.price) * 100) : 0;
+  const rating = pkg.category === 'Treks' ? 4.8 : pkg.category === 'Adventure' ? 4.7 : 4.9;
+  const difficulty = pkg.category === 'Treks' ? 'Moderate' : pkg.category === 'Adventure' ? 'Thrilling' : 'Easy';
+  const locationLabel = pkg.location || pkg.destination;
+
+  const handleOpen = () => onNavigate('package-detail', pkg.id);
+
+  return (
+    <article className="group wow fadeInUp animated h-full overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-[0_18px_42px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_24px_56px_rgba(15,23,42,0.12)]" data-wow-delay={`${(index + 1) / 10}s`}>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={handleOpen}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            handleOpen();
+          }
+        }}
+        className="relative block h-[270px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left"
+      >
+        <img
+          src={getTravelImage(pkg.imageUrl)}
+          alt={pkg.title}
+          className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+          referrerPolicy="no-referrer"
+          loading="lazy"
+          decoding="async"
+          onError={handleTravelImageError}
+        />
+        <div className="absolute inset-0 bg-linear-to-t from-stone-950/35 via-transparent to-transparent" />
+        <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+          <span className="rounded-full bg-[#4DA528] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-white">
+            {hasOffer ? 'Limited Offer' : 'Featured'}
+          </span>
+          {hasOffer ? (
+            <span className="rounded-full bg-white/90 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-stone-700">
+              -{discountPercent}%
+            </span>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleWishlist?.(pkg);
+          }}
+          className="absolute right-4 top-4 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/90 text-rose-500 shadow-lg transition duration-200 hover:scale-110"
+          title={isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
+          aria-label={isWishlisted ? 'Remove package from wishlist' : 'Add package to wishlist'}
+        >
+          <Heart className={`h-4 w-4 transition ${isWishlisted ? 'fill-rose-600 text-rose-600' : 'text-rose-500'}`} />
+        </button>
+        {isAdminLoggedIn && onDeletePackage && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDeletePackage(pkg.id);
+            }}
+            className="absolute bottom-4 right-4 z-20 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-red-600 text-white shadow-md transition hover:bg-red-700"
+            title="Delete Package"
+            aria-label="Delete package"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+      <div className="flex flex-1 flex-col p-6">
+        <div className="flex items-start justify-between gap-3">
+          <span className="rounded-full bg-[#FF970D]/12 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#D57400]">
+            {pkg.category}
+          </span>
+          <div className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-semibold text-amber-700">
+            <Star className="h-3.5 w-3.5 fill-current" />
+            {rating.toFixed(1)}
+          </div>
+        </div>
+        <div className="mt-4 flex items-center gap-2 text-[14px] font-medium text-stone-500">
+          <Map className="h-4 w-4 text-[#4DA528]" />
+          <span className="truncate">{locationLabel}</span>
+        </div>
+        <h3 className="mt-4 text-[20px] font-bold leading-tight text-stone-950">
+          <button onClick={handleOpen} className="text-left transition hover:text-[#4DA528]">
+            {pkg.title}
+          </button>
+        </h3>
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-stone-600">
+          <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1">
+            <Clock className="h-4 w-4 text-[#4DA528]" />
+            {pkg.duration}
+          </span>
+          <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1">
+            <Users className="h-4 w-4 text-[#4DA528]" />
+            {difficulty}
+          </span>
+        </div>
+        <p className="mt-4 line-clamp-3 text-sm leading-6 text-stone-600">
+          {pkg.shortDescription || pkg.destination}
+        </p>
+        <div className="mt-6 flex flex-col gap-4 border-t border-stone-100 pt-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-stone-500">Starting from</p>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="text-[22px] font-extrabold text-[#4DA528]">{formatPrice(offerPrice)}</span>
+              {hasOffer ? <span className="text-sm text-stone-400 line-through">{formatPrice(pkg.price)}</span> : null}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 sm:min-w-[144px]">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleOpen();
+              }}
+              className="inline-flex items-center justify-center rounded-full bg-[#4DA528] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3a8d1f]"
+            >
+              Book Now
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleOpen();
+              }}
+              className="inline-flex items-center justify-center rounded-full border border-stone-200 bg-white px-4 py-3 text-sm font-semibold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
+            >
+              View Details
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+});
+
+type RecommendationCardProps = {
+  recommendation: ActivityRecommendation;
+  linkedPackage?: TravelPackage;
+  onNavigate: (view: string, packageId?: string | null) => void;
+  index: number;
+};
+
+const RecommendationCard = React.memo(function RecommendationCard({ recommendation, linkedPackage, onNavigate, index }: RecommendationCardProps) {
+  const imageUrl = recommendation.thumbnailUrl || linkedPackage?.imageUrl || 'https://images.unsplash.com/photo-1516685304081-de7947d419d3?auto=format&fit=crop&w=800&q=80';
+  const price = recommendation.price ?? linkedPackage?.offerPrice ?? linkedPackage?.price;
+  const rating = recommendation.rating ?? 4.8;
+  const duration = recommendation.duration || linkedPackage?.duration || 'Flexible';
+  const locationLabel = recommendation.location || linkedPackage?.destination || 'Uttarakhand';
+  const badge = recommendation.badge || linkedPackage?.category || 'Recommended';
+
+  const handleOpen = () => {
+    if (linkedPackage) {
+      onNavigate('package-detail', linkedPackage.id);
+      return;
+    }
+    onNavigate('packages');
+  };
+
+  return (
+    <article className="group wow fadeInUp animated overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-[0_16px_36px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_22px_48px_rgba(15,23,42,0.12)]" data-wow-delay={`${(index + 1) / 10}s`}>
+      <div className="relative h-[220px] overflow-hidden">
+        <img
+          src={getTravelImage(imageUrl)}
+          alt={recommendation.title}
+          className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+          referrerPolicy="no-referrer"
+          loading="lazy"
+          decoding="async"
+          width="800"
+          height="560"
+          onError={handleTravelImageError}
+        />
+        <div className="absolute inset-0 bg-linear-to-t from-stone-950/25 via-transparent to-transparent" />
+        <span className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-stone-800">
+          {badge}
+        </span>
+      </div>
+      <div className="p-6">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#4DA528]">Recommended</span>
+          <div className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-semibold text-amber-700">
+            <Star className="h-3.5 w-3.5 fill-current" />
+            {rating.toFixed(1)}
+          </div>
+        </div>
+        <h3 className="mt-4 text-[20px] font-bold leading-tight text-stone-950">{recommendation.title}</h3>
+        <p className="mt-3 line-clamp-3 text-sm leading-6 text-stone-600">{recommendation.description}</p>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1 text-sm text-stone-600">
+            <Map className="h-4 w-4 text-[#4DA528]" />
+            {locationLabel}
+          </span>
+          <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1 text-sm text-stone-600">
+            <Clock className="h-4 w-4 text-[#4DA528]" />
+            {duration}
+          </span>
+        </div>
+        <div className="mt-6 flex items-center justify-between gap-4 border-t border-stone-100 pt-5">
+          <div>
+            <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-stone-500">From</p>
+            <p className="mt-1 text-[20px] font-extrabold text-[#4DA528]">{price ? formatPrice(price) : 'On request'}</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleOpen}
+            className="inline-flex items-center justify-center rounded-full bg-[#4DA528] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3a8d1f]"
+          >
+            {linkedPackage ? 'View package' : 'Explore'}
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+});
 
 export default function HomeView({
   featuredPackages,
@@ -27,79 +287,30 @@ export default function HomeView({
   isAdminLoggedIn = false,
   onDeletePackage,
   onSelectCategory,
+  onSearchByLocation,
   websiteCMS,
+  wishlistPackageIds = [],
+  onToggleWishlist,
+  activities = [],
+  activityItems = [],
+  activityRecommendations = [],
+  featuredCategories = [],
+  packages: packageList = [],
 }: HomeViewProps) {
   // Wizard Planner State
   const [plannerCategory, setPlannerCategory] = useState<DestinationCategory>('Pilgrimage');
   const [plannerStyle, setPlannerStyle] = useState<string>('Bespoke Luxury');
   const [plannerDuration, setPlannerDuration] = useState<string>('Medium (5-7 Days)');
-
-  // Dynamic live reviews
-  const [liveReviews, setLiveReviews] = useState<any[]>([]);
-  const [loadingReviews, setLoadingReviews] = useState(true);
-
-  useEffect(() => {
-    const fetchLiveReviews = async () => {
-      try {
-        const q = query(
-          collection(db, 'reviews'),
-          orderBy('createdAt', 'desc'),
-          limit(20)
-        );
-        const querySnapshot = await getDocs(q);
-        const reviewsList: any[] = [];
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          const status = data.status || 'Approved';
-          if (status === 'Approved') {
-            reviewsList.push({ id: doc.id, ...data });
-          }
-        });
-        setLiveReviews(reviewsList.slice(0, 4));
-      } catch (err) {
-        console.error('Error fetching homepage reviews:', err);
-        // Fallback reviews
-        setLiveReviews([
-          {
-            id: 'fb-1',
-            name: 'Anjali Deshmukh',
-            rating: 5,
-            comment: 'The Kedarnath Do Dham journey with Pravaah Travels was spiritually transforming and meticulously executed. Our senior-friendly schedule had perfect buffer stops, pure veg meals, and clean medical kits. Rajesh Sharma coordinated everything beautifully.',
-            destination: 'Kedarnath (Sacred Valleys)',
-            imageUrl: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&q=80&w=800',
-            verified: true,
-            createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-          },
-          {
-            id: 'fb-2',
-            name: 'Rohan Mehra',
-            rating: 5,
-            comment: 'Thrill of rafting in Rishikesh combined with elite yoga instruction was mindblowing. The riverside alpine camp was clean, safe, and of absolute premium class. Highly recommend Pravaah for active high-altitude excursions!',
-            destination: 'Rishikesh (Ganga Valley)',
-            imageUrl: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&q=80&w=800',
-            verified: true,
-            createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
-          },
-          {
-            id: 'fb-3',
-            name: 'Vikram & Shalini Malhotra',
-            rating: 4,
-            comment: 'Superb honeymoon stay in a boutique cottage overlooking the Manali valley. Very romantic, private, and we got a premium luxury 4x4 SUV at our service. Highly helpful drivers on the steep mountain curves.',
-            destination: 'Manali & Solang valley',
-            imageUrl: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&q=80&w=800',
-            verified: true,
-            createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
-          }
-        ]);
-      } finally {
-        setLoadingReviews(false);
-      }
-    };
-    fetchLiveReviews();
-  }, []);
-
-  // UGC Interactive lightbox state
-  const [selectedUgcPost, setSelectedUgcPost] = useState<any | null>(null);
+  const [plannerLocation, setPlannerLocation] = useState<PackageLocation | string>('Uttarakhand');
+  const [activeLocationFilter, setActiveLocationFilter] = useState<string>('All');
+  const [plannerGuests, setPlannerGuests] = useState<string>('2');
+  const [plannerActivity, setPlannerActivity] = useState<string>('Pilgrimage');
+  const [activeActivityId, setActiveActivityId] = useState<string>('');
+  const [activeFeaturedSlug, setActiveFeaturedSlug] = useState<string>('');
+  const [priceRange, setPriceRange] = useState<[number, number]>([15000, 50000]);
+  const priceMin = 5000;
+  const priceMax = 120000;
+  const locationOptions = PACKAGE_LOCATIONS;
 
   // AI-Powered Personalized Quiz State
   const [showQuizModal, setShowQuizModal] = useState(false);
@@ -130,6 +341,8 @@ export default function HomeView({
   });
   const [aiEnquirySubmitting, setAiEnquirySubmitting] = useState(false);
   const [aiEnquirySuccess, setAiEnquirySuccess] = useState(false);
+  const [featuredIndex, setFeaturedIndex] = useState(0);
+  const [packagesVisible, setPackagesVisible] = useState(true);
 
   const whyChooseUs = [
     {
@@ -149,71 +362,96 @@ export default function HomeView({
     }
   ];
 
-  const popularDestinations = [
-    {
-      name: 'Uttarakhand Pilgrimages',
-      type: 'Spiritual Yatras & Darshan',
-      image: 'https://images.unsplash.com/photo-1626830503244-3d2ac0493ae0?auto=format&fit=crop&w=600&q=80',
-      category: 'Pilgrimage' as DestinationCategory,
-    },
-    {
-      name: 'Himalayan Treks',
-      type: 'Unexplored Peak Trails',
-      image: 'https://images.unsplash.com/photo-1544085311-11a028465b03?auto=format&fit=crop&w=600&q=80',
-      category: 'Treks' as DestinationCategory,
-    },
-    {
-      name: 'Rishikesh Rafting',
-      type: 'Adrenaline & Bungee Jumps',
-      image: 'https://images.unsplash.com/photo-1593693397690-362cb9666fc2?auto=format&fit=crop&w=600&q=80',
-      category: 'Adventure' as DestinationCategory,
-    },
-    {
-      name: 'Himachal & Ladakh Desert',
-      type: 'High Passes & Monasteries',
-      image: 'https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=600&q=80',
-      category: 'Ladakh' as DestinationCategory,
-    }
-  ];
+  const popularDestinations = useMemo<ActivityDestination[]>(() => {
+    const fallbacks: ActivityDestination[] = [
+      {
+        id: 'activity-uttarakhand-pilgrimages',
+        name: 'Uttarakhand Pilgrimages',
+        type: 'Spiritual Yatras & Darshan',
+        image: 'https://images.unsplash.com/photo-1626830503244-3d2ac0493ae0?auto=format&fit=crop&w=600&q=80',
+        category: 'Pilgrimage' as DestinationCategory,
+        location: 'Uttarakhand',
+        description: 'Sacred yatra packages across the Garhwal and Kumaon regions.',
+      },
+      {
+        id: 'activity-himalayan-treks',
+        name: 'Himalayan Treks',
+        type: 'Unexplored Peak Trails',
+        image: 'https://images.unsplash.com/photo-1544085311-11a028465b03?auto=format&fit=crop&w=600&q=80',
+        category: 'Treks' as DestinationCategory,
+        location: 'Uttarakhand',
+        description: 'High-altitude treks and mountain trail adventures.',
+      },
+      {
+        id: 'activity-rishikesh-rafting',
+        name: 'Rishikesh Rafting',
+        type: 'Adrenaline & Bungee Jumps',
+        image: 'https://images.unsplash.com/photo-1593693397690-362cb9666fc2?auto=format&fit=crop&w=600&q=80',
+        category: 'Adventure' as DestinationCategory,
+        location: 'Uttarakhand',
+        description: 'River rafting, bungee jumping, and active outdoor thrills.',
+      },
+      {
+        id: 'activity-himachal-ladakh-desert',
+        name: 'Himachal & Ladakh Desert',
+        type: 'High Passes & Monasteries',
+        image: 'https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=600&q=80',
+        category: 'Ladakh' as DestinationCategory,
+        location: 'Ladakh',
+        description: 'Cultural desert circuits and high-altitude panorama.',
+      }
+    ];
 
-  const ugcPosts = [
-    {
-      id: 'ugc-1',
-      handle: '@aditya_treks',
-      location: 'Kedarnath Peak Viewpoint',
-      img: 'https://images.unsplash.com/photo-1626830503244-3d2ac0493ae0?auto=format&fit=crop&w=600&q=80',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80',
-      likes: '1.2k',
-      comments: '142',
-      caption: 'Staring at the majestic peaks behind Kedarnath Temple at 6:00 AM. Stiff winds, organic tea, and absolute bliss! Pravaah managed our VIP passes so seamlessly.',
-      rating: 5,
-      date: '2 days ago'
-    },
-    {
-      id: 'ugc-2',
-      handle: '@ hiking_anya',
-      location: 'Rishikesh River Camp',
-      img: 'https://images.unsplash.com/photo-1593693397690-362cb9666fc2?auto=format&fit=crop&w=600&q=80',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80',
-      likes: '942',
-      comments: '88',
-      caption: 'After a thrilling 16km raft ride down the wild Ganges, we checked into this incredible luxury Swiss tent camp. Hot showers and organic bonfire dinner! ⛺🌊',
-      rating: 5,
-      date: '5 days ago'
-    },
-    {
-      id: 'ugc-3',
-      handle: '@sharma_escapes',
-      location: 'Rohtang Pass Passages',
-      img: 'https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=600&q=80',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80',
-      likes: '2.4k',
-      comments: '310',
-      caption: 'Pure flow (Pravaah) at 13,000 feet. No hurried tourist buses, slow mountain tracks, hand-picked stops. Truly designed for peace of mind. Check them out!',
-      rating: 5,
-      date: '1 week ago'
+    return activities.length > 0
+      ? activities.map((activity) => ({
+          id: activity.id,
+          name: activity.title,
+          type: activity.subtitle,
+          image: activity.imageUrl,
+          category: activity.category,
+          description: activity.description,
+          location: activity.location,
+        }))
+      : fallbacks;
+  }, [activities]);
+
+  const featuredCategoryCards = useMemo(() => {
+    if (featuredCategories.length > 0) {
+      return featuredCategories.map((item) => ({
+        id: item.id,
+        title: item.title,
+        description: item.description,
+        image: item.imageUrl,
+        category: item.category,
+        location: item.location,
+        packageIds: item.packageIds || [],
+        slug: item.slug,
+      }));
     }
-  ];
+
+    return [
+      {
+        id: 'pilgrimage',
+        title: 'Pilgrimage Escapes',
+        description: 'Sacred valleys, temple towns, and curated spiritual comfort.',
+        image: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&q=80&w=600',
+        category: 'Pilgrimage' as DestinationCategory,
+        location: 'Uttarakhand',
+        packageIds: [],
+        slug: 'pilgrimage-escapes',
+      },
+      {
+        id: 'treks',
+        title: 'Trek & Trails',
+        description: 'High-altitude adventures with premium logistics support.',
+        image: 'https://images.unsplash.com/photo-1544717297-fa95b6ee9643?auto=format&fit=crop&q=80&w=600',
+        category: 'Treks' as DestinationCategory,
+        location: 'Uttarakhand',
+        packageIds: [],
+        slug: 'trek-trails',
+      },
+    ];
+  }, [featuredCategories]);
 
   const handleLaunchPlanner = () => {
     // Open the interactive wizard quiz modal
@@ -221,6 +459,22 @@ export default function HomeView({
     setQuizStep(1);
     setAiResult(null);
     setAiError('');
+  };
+
+  const handleSearchSubmit = () => {
+    const searchFilters = {
+      location: plannerLocation,
+      bookingType: plannerStyle,
+      tourDuration: plannerDuration,
+      guests: plannerGuests,
+      priceRange,
+      activity: plannerActivity
+    };
+
+    setActiveLocationFilter(String(plannerLocation));
+    onSearchByLocation?.(String(plannerLocation));
+    onSelectCategory(plannerCategory);
+    return searchFilters;
   };
 
   const handleHeroCtaClick = () => {
@@ -359,21 +613,138 @@ export default function HomeView({
       setAiEnquirySuccess(true);
     } catch (err) {
       console.error(err);
-      alert('Failed to register enquiry. Please check connection.');
+      alert('We could not submit your trip request right now. Please check your connection and try again.');
     } finally {
       setAiEnquirySubmitting(false);
     }
   };
 
-  const averageRating = liveReviews.length > 0
-    ? (liveReviews.reduce((sum, review) => sum + (Number(review.rating) || 0), 0) / liveReviews.length).toFixed(1)
-    : '0.0';
-  const activeOfferPackages = featuredPackages.filter((pkg) => {
+  const enabledActivities = useMemo(() => {
+    return activities
+      .filter((activity) => activity.enabled !== false)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }, [activities]);
+
+  const activityTabs = enabledActivities;
+
+  const filteredActivityPackages = useMemo(() => {
+    if (!activeActivityId) return [];
+    return packageList.filter((pkg) => pkg.activityId === activeActivityId);
+  }, [packageList, activeActivityId]);
+
+  const filteredActivityItems = useMemo(() => {
+    if (!activeActivityId) return [];
+    return activityItems
+      .filter((item) => item.activityId === activeActivityId)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }, [activityItems, activeActivityId]);
+
+  const filteredActivityRecommendations = useMemo(() => {
+    if (!activeActivityId) return [];
+    return activityRecommendations
+      .filter((item) => item.activityId === activeActivityId)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }, [activityRecommendations, activeActivityId]);
+
+  const activityTransitionTimeout = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!activeActivityId && activityTabs.length > 0) {
+      setActiveActivityId(activityTabs[0].id);
+    }
+  }, [activityTabs, activeActivityId]);
+
+  useEffect(() => {
+    return () => {
+      if (activityTransitionTimeout.current) {
+        window.clearTimeout(activityTransitionTimeout.current);
+      }
+    };
+  }, []);
+
+  const activeFeaturedCategory = featuredCategoryCards.find((item) => item.slug === activeFeaturedSlug) || featuredCategoryCards[0] || null;
+
+  const itemActivityTitle = (activityId: string) => activities.find((activity) => activity.id === activityId)?.title || 'Activity';
+
+  useEffect(() => {
+    if (!activeFeaturedSlug && featuredCategoryCards.length > 0) {
+      setActiveFeaturedSlug(featuredCategoryCards[0].slug);
+    }
+  }, [featuredCategoryCards, activeFeaturedSlug]);
+
+  const scrollToFeaturedPackages = () => {
+    document.getElementById('featured-packages')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleActivityClick = (activityId: string) => {
+    if (activityId === activeActivityId) return;
+
+    setPackagesVisible(false);
+    if (activityTransitionTimeout.current) {
+      window.clearTimeout(activityTransitionTimeout.current);
+    }
+
+    activityTransitionTimeout.current = window.setTimeout(() => {
+      setActiveActivityId(activityId);
+      setPackagesVisible(true);
+      activityTransitionTimeout.current = null;
+    }, 300);
+  };
+
+  const handleFeaturedCategoryClick = (slug: string) => {
+    setActiveFeaturedSlug(slug);
+    scrollToFeaturedPackages();
+  };
+
+  const handlePlannerCategorySelect = (category: DestinationCategory) => {
+    setPlannerCategory(category);
+    const relatedFeatured = featuredCategoryCards.find((item) => item.category === category);
+    if (relatedFeatured) {
+      setActiveFeaturedSlug(relatedFeatured.slug);
+    } else if (featuredCategoryCards.length > 0) {
+      setActiveFeaturedSlug(featuredCategoryCards[0].slug);
+    }
+  };
+
+  const filteredCategoryPackages = useMemo(() => {
+    const packagesSource = packageList || [];
+    const linkedPackageIds = activeFeaturedCategory?.packageIds || [];
+
+    if (linkedPackageIds.length > 0) {
+      return packagesSource.filter((pkg) => linkedPackageIds.includes(pkg.id));
+    }
+
+    return packagesSource.filter((pkg) => {
+      const matchesFeaturedCategory = activeFeaturedCategory
+        ? (activeFeaturedCategory.category && pkg.category === activeFeaturedCategory.category)
+          || (activeFeaturedCategory.location && (pkg.location?.toLowerCase().includes(activeFeaturedCategory.location.toLowerCase()) || pkg.destination?.toLowerCase().includes(activeFeaturedCategory.location.toLowerCase())))
+        : false;
+
+      const matchesPlannerCategory = plannerCategory ? pkg.category === plannerCategory : false;
+      return matchesFeaturedCategory || matchesPlannerCategory;
+    });
+  }, [packageList, activeFeaturedCategory, plannerCategory]);
+
+  const activeOfferPackages = filteredCategoryPackages.filter((pkg) => {
     const price = Number(pkg.price);
     const offerPrice = Number(pkg.offerPrice);
     return Number.isFinite(price) && Number.isFinite(offerPrice) && offerPrice > 0 && offerPrice < price;
   });
-  const offerPackages = activeOfferPackages.length > 0 ? activeOfferPackages : featuredPackages;
+  const offerPackages = activeOfferPackages.length > 0 ? activeOfferPackages : filteredCategoryPackages;
+
+  const featuredCarouselPackages = useMemo(() => {
+    const visible = filteredCategoryPackages.slice(0, 6);
+    if (visible.length === 0) return [];
+    return visible.slice(featuredIndex, featuredIndex + 3);
+  }, [featuredIndex, filteredCategoryPackages]);
+
+  const handlePrevFeatured = () => {
+    setFeaturedIndex((prev) => (prev === 0 ? Math.max(0, filteredCategoryPackages.length - 3) : prev - 1));
+  };
+
+  const handleNextFeatured = () => {
+    setFeaturedIndex((prev) => (prev + 1 >= filteredCategoryPackages.length - 2 ? 0 : prev + 1));
+  };
   const bestOfferDiscount = activeOfferPackages.length > 0
     ? Math.max(
         ...activeOfferPackages.map((pkg) => {
@@ -395,6 +766,8 @@ export default function HomeView({
             alt="Himalayan mountain backdrop"
             className="absolute inset-0 h-full w-full object-cover object-center opacity-88"
             referrerPolicy="no-referrer"
+            loading="lazy"
+            decoding="async"
             onError={handleTravelImageError}
           />
           <div className="absolute inset-0 bg-linear-to-r from-[#081E2A]/74 via-[#081E2A]/16 to-[#081E2A]/4" />
@@ -408,6 +781,8 @@ export default function HomeView({
               alt="Traveler enjoying mountain route"
               className="h-full w-full object-cover object-center"
               referrerPolicy="no-referrer"
+              loading="lazy"
+              decoding="async"
               onError={handleTravelImageError}
             />
             <div className="absolute inset-0 bg-linear-to-t from-[#081E2A]/28 via-transparent to-white/10" />
@@ -442,7 +817,7 @@ export default function HomeView({
         <div className="absolute inset-0 bg-linear-to-r from-[#081E2A] via-[#081E2A]/88 to-[#081E2A]/32 lg:hidden" />
         <div className="absolute inset-x-0 bottom-0 h-56 bg-linear-to-t from-white via-white/50 to-transparent" />
 
-        <div className="relative z-10 mx-auto grid min-h-[760px] max-w-[1320px] grid-cols-1 items-center px-4 py-20 sm:px-6 lg:min-h-[820px] lg:grid-cols-[58%_42%] lg:px-8">
+        <div className="relative z-10 mx-auto grid min-h-[680px] max-w-[1320px] grid-cols-1 items-center px-4 py-16 sm:min-h-[760px] sm:px-6 sm:py-20 lg:min-h-[820px] lg:grid-cols-[58%_42%] lg:px-8">
           <div className="max-w-[790px] pt-4 lg:pt-0">
             <span className="mb-5 block font-serif text-[34px] italic leading-none text-[#4DA528] sm:text-[46px]">
               Explore the world
@@ -457,14 +832,14 @@ export default function HomeView({
             <div className="mt-11 flex flex-col items-start gap-5 sm:flex-row sm:items-center">
               <button
                 onClick={handleHeroCtaClick}
-                className="group inline-flex cursor-pointer items-center justify-center gap-3 rounded-[5px] bg-[#4DA528] px-8 py-[18px] text-[15px] font-semibold uppercase tracking-[0.05em] text-white transition hover:bg-[#FF970D]"
+                className="group inline-flex w-full cursor-pointer items-center justify-center gap-3 rounded-[5px] bg-[#4DA528] px-8 py-[18px] text-[15px] font-semibold uppercase tracking-[0.05em] text-white shadow-[0_14px_32px_rgba(77,165,40,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#FF970D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffaf1] sm:w-auto"
               >
                 <span className="translate-x-[15px] transition group-hover:translate-x-0">{websiteCMS.heroCtaText}</span>
                 <ArrowRight className="h-4 w-4 -translate-x-[15px] opacity-0 transition group-hover:translate-x-0 group-hover:opacity-100" />
               </button>
               <button
                 onClick={() => onNavigate('about')}
-                className="inline-flex cursor-pointer items-center justify-center gap-3 rounded-[5px] px-1 py-[18px] text-[15px] font-semibold text-white transition hover:text-[#4DA528]"
+                className="inline-flex cursor-pointer items-center justify-center gap-3 rounded-[5px] px-1 py-[18px] text-[15px] font-semibold text-white transition hover:text-[#4DA528] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
               >
                 <span>Who we are</span>
                 <ArrowRight className="h-4 w-4" />
@@ -480,7 +855,7 @@ export default function HomeView({
             id="search-form-slider"
             onSubmit={(e) => {
               e.preventDefault();
-              onSelectCategory(plannerCategory);
+              handleSearchSubmit();
             }}
           >
             <div className="wd-search flex flex-col overflow-hidden rounded-[7px] border border-stone-200 bg-white lg:flex-row">
@@ -489,18 +864,17 @@ export default function HomeView({
                   <Search className="h-5 w-5" />
                 </span>
                 <span className="search-bar-group block min-w-0 flex-1">
-                  <span className="mb-2 block text-[13px] font-bold text-stone-500">Destination</span>
+                  <span className="mb-2 block text-[13px] font-bold text-stone-500">Location</span>
                   <select
-                    value={plannerCategory}
-                    onChange={(e) => setPlannerCategory(e.target.value as DestinationCategory)}
+                    value={plannerLocation}
+                    onChange={(e) => setPlannerLocation(e.target.value)}
                     className="nice-select current w-full appearance-none bg-transparent text-[17px] font-extrabold text-stone-950 outline-none"
                   >
-                    <option value="Pilgrimage">Pilgrimage</option>
-                    <option value="Treks">Treks</option>
-                    <option value="Adventure">Adventure</option>
-                    <option value="Himachal">Himachal</option>
-                    <option value="Ladakh">Ladakh</option>
-                    <option value="Uttarakhand">Uttarakhand</option>
+                    {locationOptions.map((location) => (
+                      <option key={location} value={location}>
+                        {location}
+                      </option>
+                    ))}
                   </select>
                 </span>
               </label>
@@ -550,9 +924,10 @@ export default function HomeView({
                   <label className="mb-2 block text-[13px] font-bold text-stone-500" htmlFor="home-search-guests">Guests</label>
                   <input
                     id="home-search-guests"
-                    type="text"
-                    value="0"
-                    readOnly
+                    type="number"
+                    min="1"
+                    value={plannerGuests}
+                    onChange={(e) => setPlannerGuests(e.target.value)}
                     className="w-full bg-transparent text-[17px] font-extrabold text-stone-950 outline-none"
                   />
                 </div>
@@ -567,133 +942,84 @@ export default function HomeView({
               </button>
             </div>
 
-            <div className="wd-search-form grid gap-5 border-x border-b border-stone-200 bg-[#F7F8F4] px-5 py-5 md:grid-cols-[1.4fr_1fr_1fr] lg:px-7">
-              <div className="group-price">
-                <div className="mb-3 flex items-center gap-2 text-[13px] font-bold text-stone-500">
-                  <Sliders className="h-4 w-4 text-[#4DA528]" />
-                  Price Range
-                </div>
-                <div className="widget-price">
-                  <div className="relative h-1.5 rounded-full bg-stone-200" id="slider-range">
-                    <span className="absolute left-[15%] right-[20%] top-0 h-full rounded-full bg-[#4DA528]" />
-                    <span className="absolute left-[15%] top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-white bg-[#4DA528] shadow" />
-                    <span className="absolute right-[20%] top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-white bg-[#4DA528] shadow" />
-                  </div>
-                  <div className="slider-labels mt-3 flex justify-between text-[13px] font-semibold text-stone-500">
-                    <div>
-                      <input type="hidden" name="min-value" value="" readOnly />
-                      <span id="slider-range-value1">Flexible</span>
-                    </div>
-                    <div>
-                      <input type="hidden" name="max-value" value="" readOnly />
-                      <span id="slider-range-value2">Premium</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <label className="search-bar-group">
-                <span className="mb-3 block text-[13px] font-bold text-stone-500">Activities</span>
-                <select
-                  value={plannerStyle}
-                  onChange={(e) => setPlannerStyle(e.target.value)}
-                  className="nice-select current w-full rounded-[5px] border border-stone-200 bg-white px-4 py-3 text-[15px] font-bold text-stone-950 outline-none"
-                >
-                  <option value="Bespoke Luxury">Bespoke Luxury</option>
-                  <option value="Family Comfort">Family Comfort</option>
-                  <option value="Sacred Slow Travel">Sacred Slow Travel</option>
-                  <option value="Adventure Led">Adventure Led</option>
-                </select>
-              </label>
-
-              <label className="search-bar-group">
-                <span className="mb-3 block text-[13px] font-bold text-stone-500">Destination</span>
-                <select
-                  value={plannerCategory}
-                  onChange={(e) => setPlannerCategory(e.target.value as DestinationCategory)}
-                  className="nice-select current w-full rounded-[5px] border border-stone-200 bg-white px-4 py-3 text-[15px] font-bold text-stone-950 outline-none"
-                >
-                  <option value="Pilgrimage">Pilgrimage</option>
-                  <option value="Treks">Treks</option>
-                  <option value="Adventure">Adventure</option>
-                  <option value="Himachal">Himachal</option>
-                  <option value="Ladakh">Ladakh</option>
-                  <option value="Uttarakhand">Uttarakhand</option>
-                </select>
-              </label>
-            </div>
           </form>
         </div>
       </section>
 
-      <section className="about-us pb-10 pt-6 sm:pb-12 sm:pt-8" id="vitour-about">
+      <section className="about-us pb-24 pt-10 sm:pb-28 sm:pt-12 lg:pb-36" id="vitour-about">
         <div className="tf-container mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-5 md:flex-row md:items-center">
-              <div className="image-list flex-three flex -space-x-4">
-                {ugcPosts.map((post) => (
-                  <button key={post.id} type="button" onClick={() => setSelectedUgcPost(post)} className="item h-14 w-14 overflow-hidden rounded-full border-4 border-white shadow-md">
-                    <img src={getTravelImage(post.avatar)} alt={post.handle} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
-                  </button>
-                ))}
-                <div className="icon item flex-five flex h-14 w-14 items-center justify-center rounded-full border-4 border-white bg-[#4DA528] text-white shadow-md">
-                  <Users className="h-6 w-6" />
-                </div>
-              </div>
-              <p className="client fadeInUp wow text-[18px] font-semibold text-stone-800">Explore the Unseen Parts Of uttrakhand</p>
-          </div>
-
-          <div className="mt-10 grid gap-12 lg:grid-cols-2 lg:items-center">
+          <div className="mt-0 grid gap-12 lg:grid-cols-2 lg:items-center lg:pt-8">
             <div>
               <div className="travel-video relative">
-                <img src={getTravelImage(popularDestinations[0].image)} alt={popularDestinations[0].name} className="image-video h-[420px] w-full rounded-[24px] object-cover sm:h-[520px]" referrerPolicy="no-referrer" onError={handleTravelImageError} />
-                <div className="video-wrap">
-                  <button type="button" onClick={handleLaunchPlanner} className="widget-icon-video widget-videos flex-five z-index3 absolute left-1/2 top-1/2 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#4DA528] text-white shadow-[0_20px_45px_rgba(0,0,0,0.25)] transition hover:bg-[#FF970D]">
-                    <Sparkles className="h-8 w-8" />
-                  </button>
-                </div>
-                <div className="mask-video tf-anime-rorate absolute -right-6 top-10 hidden h-24 w-24 rounded-full border-[18px] border-[#4DA528]/20 sm:block" />
-                <div className="mask-enjoy absolute -bottom-8 right-8 hidden rounded-[18px] bg-white p-5 shadow-[0_18px_45px_rgba(0,0,0,0.14)] sm:block">
-                  <span className="font-serif text-3xl italic text-[#4DA528]">enjoy</span>
-                  <p className="mt-1 text-xs font-bold uppercase tracking-[0.2em] text-stone-500">Natural Flow</p>
-                </div>
+                <img src={aboutImageVideo} alt="Adventure experience" className="image-video h-[420px] w-full rounded-[24px] object-cover shadow-[0_20px_48px_rgba(18,38,32,0.12)] sm:h-[520px]" />
+                <img src={enjoyImage} alt="" className="mask-enjoy absolute -bottom-8 right-8 hidden rounded-[18px] bg-transparent p-5 shadow-[0_0px_0px_rgba(0,0,0,0.14)] sm:block" />
               </div>
             </div>
             <div>
               <div className="inner-content-about">
-                <span className="sub-title-heading text-main mb-15 fadeInUp wow block font-serif text-[32px] italic text-[#4DA528]">Explore the Unseen Part Of uttrakhand With us</span>
+                <span className="sub-title-heading text-main mb-15 fadeInUp wow block font-serif text-[32px] italic text-[#4DA528]">Explore the world</span>
                 <h2 className="title-heading mb-18 fadeInUp wow mt-5 text-[42px] font-extrabold leading-[1.12] text-stone-950 sm:text-[56px]">
                   Great opportunity for <span className="text-gray font-yes font-serif italic font-medium text-stone-400">adventure</span> & travels
                 </h2>
                 <p className="des-heading fadeInUp wow mt-6 max-w-xl text-[16px] leading-8 text-stone-600">
-                  Welcome to Pravaah Travels. We build reliable, premium, human-paced journeys across sacred valleys, riverside camps, mountain roads, and high-altitude retreats.
+                Adventure begins where ordinary ends. Explore hidden valleys, majestic mountains, sacred temples, thrilling bike expeditions, and unforgettable road trips with Pravaah Travels. Every itinerary is carefully planned to give you the perfect balance of comfort, excitement, and authentic local experiences.
                 </p>
                 <div className="fadeInUp wow mt-9 grid gap-5 sm:grid-cols-2">
-                  {whyChooseUs.slice(0, 2).map((item) => (
-                    <div key={item.title}>
-                      <div className="icon-box-style3 border border-stone-200 bg-white p-6 shadow-[0_12px_30px_rgba(0,0,0,0.05)]">
-                        <div className="icon flex-three mb-5 text-[#4DA528]">{item.icon}</div>
-                        <h6 className="title mb-10 text-[18px] font-bold text-stone-950">{item.title}</h6>
-                        <p className="des text-[14px] leading-7 text-stone-600">{item.description}</p>
+                  <div>
+                    <div className="icon-box-style3 border border-stone-200 bg-white p-6 shadow-[0_12px_30px_rgba(0,0,0,0.05)]">
+                      <div className="icon flex-three mb-5 text-[#4DA528]">
+                        <svg width="51" height="51" viewBox="0 0 51 51" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-12 w-12">
+                          <g clipPath="url(#clip0_40_471)">
+                            <path d="M37.5511 9.06618C37.5511 5.77106 34.8703 3.09027 31.5752 3.09027C28.2801 3.09027 25.5993 5.77106 25.5993 9.06618C25.5993 12.3613 28.2801 15.0421 31.5752 15.0421C34.8703 15.0421 37.5511 12.3613 37.5511 9.06618ZM31.5752 12.0541C29.9277 12.0541 28.5873 10.7137 28.5873 9.06618C28.5873 7.41862 29.9277 6.07823 31.5752 6.07823C33.2228 6.07823 34.5632 7.41862 34.5632 9.06618C34.5632 10.7137 33.2228 12.0541 31.5752 12.0541Z" fill="currentColor" />
+                            <path d="M50.2947 10.8487C49.0667 8.96556 46.5591 8.33461 44.586 9.41226L34.279 15.0416C33.3084 15.0416 16.1894 15.0416 15.1914 15.0416V1.49617C15.1914 0.671101 14.5225 0.00219727 13.6974 0.00219727H1.49398C0.668903 0.00219727 0 0.671101 0 1.49617V10.5596C0 11.3847 0.668903 12.0536 1.49398 12.0536H12.2033V49.5026C12.2033 50.3277 12.8722 50.9966 13.6973 50.9966C14.5224 50.9966 15.1913 50.3277 15.1913 49.5026V24.0054H24.1551V46.5147C24.1551 50.399 28.7646 52.4156 31.625 49.8526C34.4825 52.4131 39.0949 50.4048 39.0949 46.5147V23.3212L49.0299 16.8488C51.038 15.5407 51.6042 12.8565 50.2947 10.8487ZM2.98795 9.06556V2.99005H12.2033V9.06556H2.98795ZM34.613 48.0086C33.7892 48.0086 33.119 47.3384 33.119 46.5146C33.119 45.3559 33.119 38.5353 33.119 37.4511C33.119 36.626 32.4501 35.9571 31.625 35.9571C30.7999 35.9571 30.131 36.626 30.131 37.4511V46.5146C30.131 47.3384 29.4608 48.0086 28.637 48.0086C27.8133 48.0086 27.1431 47.3384 27.1431 46.5146V32.9692H36.1069V46.5146C36.1069 47.3384 35.4367 48.0086 34.613 48.0086ZM47.399 14.3452L36.7854 21.2596C36.3622 21.5354 36.1069 22.0063 36.1069 22.5114V29.9812H27.1431V22.5114C27.1431 21.6863 26.4742 21.0174 25.6491 21.0174H15.1913V18.0294C35.5362 17.9654 34.7563 18.1854 35.3764 17.8467L46.0182 12.0346C46.6312 11.6997 47.4104 11.8957 47.7919 12.4809C48.1988 13.1046 48.0231 13.9387 47.399 14.3452Z" fill="currentColor" />
+                          </g>
+                          <defs>
+                            <clipPath id="clip0_40_471"><rect width="51" height="51" fill="white" /></clipPath>
+                          </defs>
+                        </svg>
                       </div>
+                      <h6 className="title mb-10 text-[18px] font-bold text-stone-950">Expert Travel Planning</h6>
+                      <p className="des text-[14px] leading-7 text-stone-600">Experienced travel specialists creating seamless itineraries with local expertise and 24/7 support.</p>
                     </div>
-                  ))}
+                  </div>
+                  <div>
+                    <div className="icon-box-style3 border border-stone-200 bg-white p-6 shadow-[0_12px_30px_rgba(0,0,0,0.05)]">
+                      <div className="icon flex-three mb-5 text-[#4DA528]">
+                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-12 w-12">
+                          <mask id="mask0_40_476" style={{ maskType: 'luminance' }} maskUnits="userSpaceOnUse" x="0" y="0" width="40" height="40">
+                            <path d="M0 0H40V40H0V0Z" fill="white" />
+                          </mask>
+                          <g mask="url(#mask0_40_476)">
+                            <path d="M20 23.125V38.8281H38.8281V12.2656H34.1406" stroke="currentColor" strokeWidth="2" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M5.85938 12.2656H1.17188V38.8281H20V23.2031" stroke="currentColor" strokeWidth="2" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M26.9598 9.14062H34.1406V34.1406H26.5035C23.5528 34.1406 20.933 36.0287 20 38.8281" stroke="currentColor" strokeWidth="2" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M13.0402 9.14062H5.85938V34.1406H13.4965C16.4472 34.1406 19.067 36.0287 20 38.8281" stroke="currentColor" strokeWidth="2" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M20 1.17188C14.6974 1.17188 11.3111 6.82758 13.8151 11.5017L20 23.0469L26.1849 11.5017C28.6889 6.82758 25.3027 1.17188 20 1.17188Z" stroke="currentColor" strokeWidth="2" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M22.3438 8.20312C22.3438 9.4975 21.2944 10.5469 20 10.5469C18.7056 10.5469 17.6562 9.4975 17.6562 8.20312C17.6562 6.90875 18.7056 5.85937 20 5.85937C21.2944 5.85937 22.3438 6.90875 22.3438 8.20312Z" stroke="currentColor" strokeWidth="2" strokeMiterlimit="10" strokeLinecap="round" strokeLinejoin="round" />
+                          </g>
+                        </svg>
+                      </div>
+                      <h6 className="title mb-10 text-[18px] font-bold text-stone-950">Tailor-Made Experiences</h6>
+                      <p className="des text-[14px] leading-7 text-stone-600">Customized holidays designed around your budget, travel style, and dream destinations.</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex-three btn-wrap-about fadeInUp wow mt-9 flex flex-col gap-4 sm:flex-row sm:items-center">
+                <div className="btn-wrap-about fadeInUp wow mt-9 flex flex-col gap-4 sm:flex-row sm:items-center">
                   <button onClick={() => onNavigate('about')} className="btn-main inline-flex cursor-pointer items-center justify-center gap-3 rounded-[5px] bg-[#4DA528] px-8 py-[18px] text-[15px] font-bold uppercase tracking-[0.05em] text-white transition hover:bg-[#FF970D]">
                     <span className="btn-main-text">More about us</span>
                     <span className="iconer"><ArrowRight className="h-4 w-4" /></span>
                   </button>
-                  <div className="profile flex-three flex items-center gap-3">
+                  <div className="profile flex items-center gap-3">
                     <div className="image h-12 w-12 overflow-hidden rounded-full">
-                      <img src={getTravelImage(ugcPosts[0].avatar)} alt={ugcPosts[0].handle} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+                      <img src={avatar10} alt="Founder" className="h-full w-full object-cover" />
                     </div>
                     <div className="content">
-                      <p className="font-serif text-[20px] italic text-stone-950">Pravaah Curator</p>
-                      <span className="text-main text-[12px] font-bold uppercase tracking-wider text-[#4DA528]">Ceo & Founder</span>
+                      <img src={founderNameImage} alt="Pravaah Curator" className="h-6 w-auto object-contain" />
+                      <span className="mt-1 block text-[12px] font-bold uppercase tracking-wider text-[#4DA528]">Ceo & Founder</span>
                     </div>
                   </div>
                 </div>
-                <div className="map-check flex-three fadeInUp wow flex items-center gap-3 text-[#4DA528]">
+                <div className="map-check fadeInUp wow mt-8 flex items-center gap-3 text-[#4DA528]">
                   <Map className="h-7 w-7" />
                   <span className="text-main font-semibold">Checkout Beautiful Places Arround the World.</span>
                 </div>
@@ -705,28 +1031,47 @@ export default function HomeView({
 
       <section className="tour-package bg-white pb-20 pt-10 sm:pt-12" id="featured-packages">
         <div className="tf-container mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
-          <div className="center m0-auto w-text-heading mx-auto mb-10 max-w-3xl text-center">
-            <span className="sub-title-heading text-main mb-15 fadeInUp wow font-serif text-[32px] italic text-[#4DA528]">Explore the world</span>
-            <h2 className="title-heading fadeInUp wow mt-4 text-[42px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">
+          <div className="center m0-auto w-text-heading mx-auto mb-12 max-w-3xl text-center">
+            <span className="sub-title-heading text-main mb-4 fadeInUp wow font-serif text-[30px] italic text-[#4DA528] sm:text-[32px]">Explore the world</span>
+            <h2 className="title-heading fadeInUp wow mt-3 text-[34px] font-extrabold leading-tight text-stone-950 sm:text-[46px] lg:text-[50px]">
               Amazing Featured Tour <span className="text-gray font-yes font-serif italic font-medium text-stone-400">Package</span> the world
             </h2>
           </div>
           <div className="tab-tour-list">
-                <ul className="tab-list mb-10 flex flex-wrap justify-center gap-3" id="myTab" role="tablist">
+                <ul className="tab-list mb-6 flex flex-wrap justify-center gap-3" id="myTab" role="tablist">
                   {(['Pilgrimage', 'Treks', 'Adventure', 'Himachal', 'Ladakh'] as DestinationCategory[]).map((category) => (
                     <li key={category} className="nav-item" role="presentation">
                       <button
                         className={`nav-link cursor-pointer rounded-full border px-6 py-3 text-[14px] font-bold transition ${
                           plannerCategory === category
-                            ? 'active border-[#4DA528] bg-[#4DA528] text-white'
+                            ? 'active border-[#4DA528] bg-[#4DA528] text-white shadow-lg'
                             : 'border-stone-200 bg-white text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'
                         }`}
                         type="button"
                         role="tab"
                         aria-selected={plannerCategory === category}
-                        onClick={() => onSelectCategory(category)}
+                        onClick={() => handlePlannerCategorySelect(category)}
                       >
                         {category}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <ul className="tab-list mb-10 flex flex-wrap justify-center gap-3">
+                  {featuredCategoryCards.map((item) => (
+                    <li key={item.slug} className="nav-item" role="presentation">
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={activeFeaturedSlug === item.slug}
+                        onClick={() => handleFeaturedCategoryClick(item.slug)}
+                        className={`nav-link cursor-pointer rounded-full border px-6 py-3 text-[14px] font-bold transition ${
+                          activeFeaturedSlug === item.slug
+                            ? 'active border-[#4DA528] bg-[#4DA528] text-white shadow-lg'
+                            : 'border-stone-200 bg-white text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'
+                        }`}
+                      >
+                        {item.title}
                       </button>
                     </li>
                   ))}
@@ -734,87 +1079,57 @@ export default function HomeView({
                 <div className="tab-content" id="myTabContent">
                   <div className="tab-pane fade show active" role="tabpanel" tabIndex={0}>
                     {loading ? (
-                      <div className="flex justify-center py-20">
-                        <div className="h-10 w-10 animate-spin rounded-full border-2 border-[#4DA528] border-t-transparent" />
+                      <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 xl:grid-cols-4">
+                        {Array.from({ length: 4 }).map((_, idx) => (
+                          <SkeletonCard key={idx} />
+                        ))}
                       </div>
-                    ) : featuredPackages.length === 0 ? (
+                    ) : filteredCategoryPackages.length === 0 ? (
                       <div className="mx-auto max-w-2xl border border-dashed border-stone-300 bg-white p-12 text-center">
                         <AlertCircle className="mx-auto mb-4 h-8 w-8 text-stone-300" />
-                        <p className="text-sm text-stone-500">No active travel packages have been marked as featured yet.</p>
+                        <p className="text-sm text-stone-500">No packages available for the selected category or featured collection.</p>
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 items-stretch gap-7 sm:grid-cols-2 xl:grid-cols-4">
-                        {featuredPackages.slice(0, 4).map((pkg, idx) => (
-                          <div key={pkg.id} className="h-full">
-                            <article className="tour-listing wow fadeInUp animated group flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-2" data-wow-delay={`${(idx + 1) / 10}s`}>
-                              <button type="button" onClick={() => onNavigate('package-detail', pkg.id)} className="tour-listing-image relative block h-[270px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
-                                <div className="badge-top flex-two absolute left-4 right-4 top-4 z-10 flex items-center justify-between">
-                                  <span className="feature rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">Featured</span>
-                                  <div className="badge-media flex-five flex gap-2">
-                                    <span className="media rounded bg-white/90 px-3 py-1 text-[12px] font-bold text-stone-800">{idx + 2}</span>
-                                    <span className="media rounded bg-white/90 px-3 py-1 text-[12px] font-bold text-stone-800">{liveReviews.length || 1}</span>
-                                  </div>
-                                </div>
-                                <img src={getTravelImage(pkg.imageUrl)} alt={pkg.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" onError={handleTravelImageError} />
-                                {isAdminLoggedIn && onDeletePackage && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onDeletePackage(pkg.id);
-                                    }}
-                                    className="absolute bottom-4 right-4 z-20 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-red-600 text-white shadow-md transition hover:bg-red-700"
-                                    title="Delete Package"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </button>
-                                )}
-                              </button>
-                              <div className="tour-listing-content flex flex-1 flex-col p-6">
-                                <span className="tag-listing inline-block rounded bg-[#FF970D]/12 px-3 py-1 text-[12px] font-bold text-[#D57400]">{pkg.category}</span>
-                                <span className="map mt-4 flex items-center gap-2 text-[14px] font-medium text-stone-500">
-                                  <Map className="h-4 w-4 text-[#4DA528]" />
-                                  {pkg.destination}
-                                </span>
-                                <h3 className="title-tour-list mt-3">
-                                  <button onClick={() => onNavigate('package-detail', pkg.id)} className="line-clamp-2 cursor-pointer text-left text-[22px] font-bold leading-tight text-stone-950 transition hover:text-[#4DA528]">
-                                    {pkg.title}
-                                  </button>
-                                </h3>
-                                <div className="review mt-4 flex items-center gap-1 text-[#FF970D]">
-                                  {[...Array(5)].map((_, i) => <Star key={i} className="h-4 w-4 fill-current" />)}
-                                  <span className="ml-2 text-[13px] font-medium text-stone-500">({liveReviews.length || 1} Review)</span>
-                                </div>
-                                <div className="icon-box flex-three mt-5 flex items-center justify-between border-y border-stone-100 py-4 text-[14px] text-stone-600">
-                                  <div className="icons flex-three flex items-center gap-2">
-                                    <Clock className="h-4 w-4 text-[#4DA528]" />
-                                    <span>{pkg.duration}</span>
-                                  </div>
-                                  <div className="icons flex-three flex items-center gap-2">
-                                    <Users className="h-4 w-4 text-[#4DA528]" />
-                                    <span>12 Person</span>
-                                  </div>
-                                </div>
-                                <div className="flex-two mt-auto flex items-center justify-between pt-5">
-                                  <div className="price-box flex-three">
-                                    <p className="text-[14px] text-stone-500">From <span className="price-sale text-[20px] font-extrabold text-[#4DA528]">{formatPrice(pkg.price)}</span></p>
-                                  </div>
-                                  <button onClick={() => onNavigate('package-detail', pkg.id)} className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-[#4DA528] hover:text-white">
-                                    <Heart className="h-4 w-4" />
-                                  </button>
-                                </div>
-                              </div>
-                            </article>
-                          </div>
-                        ))}
+                        {featuredCarouselPackages.length > 0 ? featuredCarouselPackages.map((pkg, idx) => {
+                          const isWishlisted = wishlistPackageIds.includes(pkg.id);
+                          return (
+                            <div key={pkg.id} className="h-full">
+                              <PackageCard
+                                pkg={pkg}
+                                index={idx}
+                                isWishlisted={isWishlisted}
+                                onNavigate={onNavigate}
+                                onToggleWishlist={onToggleWishlist}
+                                onDeletePackage={onDeletePackage}
+                                isAdminLoggedIn={isAdminLoggedIn}
+                              />
+                            </div>
+                          );
+                        }) : filteredCategoryPackages.slice(0, 4).map((pkg, idx) => {
+                          const isWishlisted = wishlistPackageIds.includes(pkg.id);
+                          return (
+                            <div key={pkg.id} className="h-full">
+                              <PackageCard
+                                pkg={pkg}
+                                index={idx}
+                                isWishlisted={isWishlisted}
+                                onNavigate={onNavigate}
+                                onToggleWishlist={onToggleWishlist}
+                                onDeletePackage={onDeletePackage}
+                                isAdminLoggedIn={isAdminLoggedIn}
+                              />
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
                 </div>
                 <div className="mt-12 text-center">
-                  <button onClick={() => onNavigate('packages')} className="btn-main inline-flex cursor-pointer items-center justify-center gap-3 rounded-[5px] bg-[#4DA528] px-8 py-[18px] text-[15px] font-bold uppercase tracking-[0.05em] text-white transition hover:bg-[#FF970D]">
-                    <span className="btn-main-text">View all tour</span>
-                    <span className="iconer"><ArrowRight className="h-4 w-4" /></span>
+                  <button onClick={() => onNavigate('packages')} className="inline-flex cursor-pointer items-center justify-center gap-3 rounded-full bg-[#4DA528] px-8 py-[16px] text-[14px] font-semibold uppercase tracking-[0.16em] text-white transition hover:bg-[#FF970D]">
+                    <span>View all tours</span>
+                    <ArrowRight className="h-4 w-4" />
                   </button>
                 </div>
           </div>
@@ -825,61 +1140,176 @@ export default function HomeView({
         <div className="mask-top absolute left-0 top-0 h-24 w-24 rounded-br-full bg-[#4DA528]/10" />
         <div className="mask-bottom absolute bottom-0 right-0 h-28 w-28 rounded-tl-full bg-[#FF970D]/10" />
         <div className="tf-container relative z-index3 mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
-          <div className="mb-10">
-            <div className="clip-text text-center text-[54px] font-extrabold uppercase leading-none text-stone-200 sm:text-[90px]">Activities</div>
+          <div className="center m0-auto w-text-heading mx-auto mb-10 max-w-3xl text-center">
+            <span className="sub-title-heading text-main mb-5 font-serif text-[32px] italic text-[#4DA528]">Explore the world</span>
+            <h2 className="title-heading mt-4 text-[42px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">Amazing Activities</h2>
+            <p className="mt-4 text-lg leading-8 text-stone-600">Experience Adventure</p>
           </div>
-              <ul className="nav-tabs-activities flex gap-3 overflow-x-auto pb-3 md:flex-wrap md:justify-center md:overflow-visible md:pb-0" id="myTablist" role="tablist">
-                {popularDestinations.map((dest, idx) => (
-                  <li key={`${dest.name}-activity-${idx}`} className="shrink-0" role="presentation">
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={idx === 0}
-                      onClick={() => onSelectCategory(dest.category)}
-                      className={`inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-full border px-5 py-3 text-center text-[13px] font-bold transition ${
-                        idx === 0 ? 'active border-[#4DA528] bg-[#4DA528] text-white' : 'border-stone-200 bg-white text-stone-800 hover:border-[#4DA528] hover:text-[#4DA528]'
-                      }`}
-                    >
-                      <span className="icon flex h-8 w-8 items-center justify-center rounded-full bg-current/10">
-                        <Compass className="h-5 w-5" />
-                      </span>
-                      <span className="whitespace-nowrap">{dest.type}</span>
+
+          <div className="mb-10 overflow-x-auto pb-3">
+            <div className="flex flex-wrap items-center gap-3">
+              {activityTabs.map((activity) => (
+                <button
+                  key={activity.id}
+                  type="button"
+                  onClick={() => handleActivityClick(activity.id)}
+                  aria-pressed={activity.id === activeActivityId}
+                  className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-full border px-5 py-3 text-[14px] font-semibold transition duration-300 ${
+                    activity.id === activeActivityId
+                      ? 'border-transparent bg-[#4DA528] text-white shadow-[0_18px_40px_rgba(74,165,74,0.22)]'
+                      : 'border-stone-200 bg-white text-stone-800 hover:border-[#4DA528] hover:text-[#4DA528]'
+                  }`}
+                >
+                  <Compass className="h-4 w-4" />
+                  <span className="whitespace-nowrap">{activity.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className={`grid gap-6 ${packagesVisible ? 'opacity-100' : 'opacity-0'} transition-opacity duration-300 sm:grid-cols-2 lg:grid-cols-3`}>
+            {filteredActivityItems.length > 0 ? (
+              filteredActivityItems.map((item, idx) => {
+                const linkedPackage = packageList.find((pkg) => pkg.id === item.linkedPackageId);
+                const imageUrl = item.thumbnailUrl || linkedPackage?.imageUrl || 'https://images.unsplash.com/photo-1516685304081-de7947d419d3?auto=format&fit=crop&w=800&q=80';
+                return (
+                  <article key={item.id} className="tour-listing wow fadeInUp animated group flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-1" data-wow-delay={`${(idx + 1) / 10}s`}>
+                    <button type="button" onClick={() => linkedPackage ? onNavigate('package-detail', linkedPackage.id) : undefined} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
+                      <img src={getTravelImage(imageUrl)} alt={item.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" loading="lazy" decoding="async" width="800" height="560" onError={handleTravelImageError} />
                     </button>
-                  </li>
-                ))}
-              </ul>
-              <div className="tab-content mt-10" id="myTabContents">
-                <div className="tab-pane fade show active" role="tabpanel" tabIndex={0}>
-                  <div className="tabs-activities-content flex flex-col overflow-hidden rounded-[18px] bg-[#081E2A] lg:flex-row">
-                    <div className="activities-image lg:w-1/2">
-                      <img src={getTravelImage(popularDestinations[1].image)} alt={popularDestinations[1].name} className="h-[360px] w-full object-cover lg:h-full" referrerPolicy="no-referrer" onError={handleTravelImageError} />
-                    </div>
-                    <div className="activities-content relative flex-1 p-8 sm:p-12">
-                      <span className="sub-title text-white/70">Welcome to Pravaah</span>
-                      <h3 className="title-activitis mt-4 max-w-xl text-[34px] font-extrabold leading-tight text-white sm:text-[48px]">Real adventure & enjoy your dream tours</h3>
-                      <div className="flex-three mt-8 flex flex-col gap-4 text-white sm:flex-row">
-                        <div className="icon-list-wrap flex-three flex items-center gap-3">
-                          <Check className="h-5 w-5 text-[#4DA528]" />
-                          <span className="icon-lists">Real adventure Feel</span>
-                        </div>
-                        <div className="icon-list-wrap flex-three flex items-center gap-3">
-                          <ShieldCheck className="h-5 w-5 text-[#4DA528]" />
-                          <span className="icon-lists">Comfort & Secure trip</span>
-                        </div>
-                      </div>
-                      <div className="btn-wrap-activitis flex-three mt-10 flex items-center gap-4">
-                        <button type="button" onClick={handleLaunchPlanner} className="icon-activitis flex-five flex h-12 w-12 items-center justify-center rounded-full bg-[#4DA528] text-white">
-                          <ArrowRight className="h-5 w-5" />
+                    <div className="tour-listing-content flex flex-1 flex-col p-6">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="tag-listing inline-block rounded bg-[#FF970D]/12 px-3 py-1 text-[12px] font-bold text-[#D57400]">{linkedPackage?.category || 'Activity'}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (linkedPackage) onToggleWishlist?.(linkedPackage);
+                          }}
+                          className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 transition hover:bg-[#4DA528] hover:text-white"
+                          title={linkedPackage ? (wishlistPackageIds.includes(linkedPackage.id) ? 'Remove from Wishlist' : 'Add to Wishlist') : 'Link a package to enable wishlist'}
+                        >
+                          <Heart className={`h-4 w-4 transition ${linkedPackage && wishlistPackageIds.includes(linkedPackage.id) ? 'fill-rose-600 text-rose-600' : 'text-rose-500'}`} />
                         </button>
-                        <button type="button" onClick={() => onNavigate('packages')} className="get-start text-white">Get Started Today</button>
                       </div>
-                      <div className="mask-tab absolute bottom-8 right-8 h-20 w-20 rounded-full border border-white/10" />
+                      <span className="map mt-4 flex items-center gap-2 text-[14px] font-medium text-stone-500">
+                        <Map className="h-4 w-4 text-[#4DA528]" />
+                        {item.subtitle || (linkedPackage?.destination ?? 'Explore')}
+                      </span>
+                      <h3 className="title-tour-list mt-3 text-[22px] font-bold leading-tight text-stone-950">
+                        <button onClick={() => linkedPackage ? onNavigate('package-detail', linkedPackage.id) : undefined} className="cursor-pointer text-left transition hover:text-[#4DA528]">
+                          {item.title}
+                        </button>
+                      </h3>
+                      <div className="mt-3 text-sm text-stone-600">
+                        <span className="font-semibold text-stone-900">From {formatPrice(item.startingPrice)}</span>
+                      </div>
+                      <p className="mt-4 line-clamp-3 text-sm leading-6 text-stone-600">{item.description}</p>
+                      <div className="mt-auto flex flex-col gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-sm text-stone-500">Activity</p>
+                          <p className="text-sm font-semibold text-stone-900">{itemActivityTitle(item.activityId)}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => linkedPackage ? onNavigate('package-detail', linkedPackage.id) : undefined}
+                          disabled={!linkedPackage}
+                          className={`inline-flex items-center justify-center rounded-full px-5 py-3 text-sm font-bold text-white transition ${linkedPackage ? 'bg-[#4DA528] hover:bg-[#3a8d1f]' : 'bg-stone-300 cursor-not-allowed'}`}
+                        >
+                          {linkedPackage ? 'View package' : 'No package linked'}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  </article>
+                );
+              })
+            ) : filteredActivityPackages.length === 0 ? (
+              <div className="col-span-full rounded-[20px] border border-stone-200 bg-white p-10 text-center text-stone-500 shadow-sm">
+                No packages are available for this activity yet.
               </div>
+            ) : (
+              filteredActivityPackages.map((pkg, idx) => {
+                const isWishlisted = wishlistPackageIds.includes(pkg.id);
+                return (
+                  <article key={pkg.id} className="tour-listing wow fadeInUp animated group flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-1" data-wow-delay={`${(idx + 1) / 10}s`}>
+                    <button type="button" onClick={() => onNavigate('package-detail', pkg.id)} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
+                      <img src={getTravelImage(pkg.imageUrl)} alt={pkg.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" loading="lazy" decoding="async" width="800" height="560" onError={handleTravelImageError} />
+                    </button>
+                    <div className="tour-listing-content flex flex-1 flex-col p-6">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="tag-listing inline-block rounded bg-[#FF970D]/12 px-3 py-1 text-[12px] font-bold text-[#D57400]">{pkg.category}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleWishlist?.(pkg);
+                          }}
+                          className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 transition hover:bg-[#4DA528] hover:text-white"
+                          title={isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
+                        >
+                          <Heart className={`h-4 w-4 transition ${isWishlisted ? 'fill-rose-600 text-rose-600' : 'text-rose-500'}`} />
+                        </button>
+                      </div>
+                      <span className="map mt-4 flex items-center gap-2 text-[14px] font-medium text-stone-500">
+                        <Map className="h-4 w-4 text-[#4DA528]" />
+                        {pkg.location || pkg.destination}
+                      </span>
+                      <h3 className="title-tour-list mt-3 text-[22px] font-bold leading-tight text-stone-950">
+                        <button onClick={() => onNavigate('package-detail', pkg.id)} className="cursor-pointer text-left transition hover:text-[#4DA528]">
+                          {pkg.title}
+                        </button>
+                      </h3>
+                      <div className="mt-3 text-sm text-stone-600">
+                        <span className="font-semibold text-stone-900">{pkg.duration}</span>
+                      </div>
+                      <p className="mt-4 line-clamp-3 text-sm leading-6 text-stone-600">{pkg.shortDescription || pkg.destination}</p>
+                      <div className="mt-auto flex flex-col gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-sm text-stone-500">Starting</p>
+                          <p className="text-xl font-bold text-[#4DA528]">{formatPrice(pkg.offerPrice || pkg.price)}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onNavigate('package-detail', pkg.id)}
+                          className="inline-flex items-center justify-center rounded-full bg-[#4DA528] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#3a8d1f]"
+                        >
+                          Book Now
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })
+            )}
+          </div>
         </div>
       </section>
+
+      {filteredActivityRecommendations.length > 0 && (
+        <section className="recommendation-section bg-[#f7faf8] py-16">
+          <div className="tf-container mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
+              <div className="mb-10 text-center">
+              <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Recommended for you</span>
+              <h2 className="mt-3 text-[32px] font-extrabold text-stone-950 sm:text-[40px]">Related adventures and must-see experiences</h2>
+              <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-stone-600">These recommendations complement the selected activity and help travelers discover curated packages and experiences.</p>
+            </div>
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredActivityRecommendations.map((recommendation, index) => {
+                const linkedPackage = packageList.find((pkg) => pkg.id === recommendation.linkedPackageId);
+                return (
+                  <RecommendationCard
+                    key={recommendation.id}
+                    recommendation={recommendation}
+                    linkedPackage={linkedPackage}
+                    onNavigate={onNavigate}
+                    index={index}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
 
       {featuredPackages.length > 0 && <section className="offer-package bg-1 relative overflow-hidden bg-white py-20">
         <img src={getTravelImage(popularDestinations[3].image)} alt={popularDestinations[3].name} className="feature-ofer absolute inset-y-0 right-0 hidden h-full w-[34%] object-cover opacity-20 lg:block" referrerPolicy="no-referrer" onError={handleTravelImageError} />
@@ -954,123 +1384,6 @@ export default function HomeView({
         </div>
       </section>}
 
-      <section className="widget-counter relative bg-[#4DA528] py-14 text-white sm:py-16" id="home-statistics">
-        <div className="counter-top absolute left-0 top-0 h-20 w-20 rounded-br-full bg-white/10" />
-        <div className="counter-bottom absolute bottom-0 right-0 h-20 w-20 rounded-tl-full bg-white/10" />
-        <div className="tf-container relative mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
-          <div className="mb-8 grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
-            <div className="cta-wrap flex flex-col gap-5 sm:flex-row sm:items-center">
-              <div className="image fadeInLeft wow h-20 w-20 overflow-hidden rounded-full border-4 border-white/20">
-                <img src={getTravelImage(popularDestinations[2].image)} alt={popularDestinations[2].name} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
-              </div>
-              <div className="content">
-                <h2 className="title-call mb-18 fadeInUp wow text-[30px] font-extrabold leading-tight text-white sm:text-[34px]">Ready to adventure and enjoy natural</h2>
-                <p className="des fadeInUp wow text-white/80">Explore Uttarakhand with guides who respect the mountains.</p>
-              </div>
-            </div>
-            <div>
-              <div className="callt-to-action-button fadeInRight wow lg:text-end">
-                <button onClick={() => onNavigate('packages')} className="get-call inline-flex cursor-pointer rounded-[5px] bg-white px-7 py-4 text-[14px] font-bold uppercase text-[#4DA528] transition hover:bg-[#FF970D] hover:text-white">Let's get started</button>
-              </div>
-            </div>
-          </div>
-          <div className="relative z-index3 grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
-            {[
-              [featuredPackages.length, 'Happy Traveller'],
-              [`${averageRating}`, 'Total Positive Reviews'],
-              [popularDestinations.length, 'Tour Completed'],
-              [liveReviews.length || 0, 'Awards Won'],
-            ].map(([value, label]) => (
-              <div key={label} className="wow fadeInUp animated min-w-0">
-                <div className="tf-counter center tf-countto h-full rounded-[14px] bg-white/10 p-5 text-center ring-1 ring-white/10 sm:p-6">
-                  <div className="icon mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white/15">
-                    <PlaneTakeoff className="h-8 w-8" />
-                  </div>
-                  <div className="number-counter block text-[34px] font-extrabold leading-none sm:text-[44px]">{value}</div>
-                  <span className="line mx-auto my-3 block h-px w-16 bg-white/45" />
-                  <p className="title-counter text-[16px] font-bold leading-6">{label}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="widget-destination py-14 sm:py-20" id="popular-destinations">
-        <div className="tf-container mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
-          <div className="center m0-auto w-text-heading mx-auto mb-10 max-w-3xl text-center">
-            <span className="sub-title-heading text-main mb-15 fadeInUp wow font-serif text-[32px] italic text-[#4DA528]">Explore the world</span>
-            <h2 className="title-heading fadeInUp wow mt-4 text-[42px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">We provide top tourist destinations</h2>
-          </div>
-          <div className="grid-three-destination grid grid-cols-1 items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {popularDestinations.map((dest, idx) => (
-              <div key={dest.name} className="tf-widget-destination wow fadeInUp animated h-full">
-                <button type="button" onClick={() => onSelectCategory(dest.category)} className="destination-imgae group relative block aspect-[4/5] w-full cursor-pointer overflow-hidden rounded-[12px] text-left shadow-[0_14px_38px_rgba(0,0,0,0.12)]">
-                  <span className="tour absolute left-5 top-5 z-10 rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">{idx + 3} tours</span>
-                  <img src={getTravelImage(dest.image)} alt={dest.name} className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" onError={handleTravelImageError} />
-                  <span className="absolute inset-0 bg-linear-to-t from-black/74 via-black/18 to-transparent" />
-                  <span className="destination-content absolute inset-x-0 bottom-0 p-6 text-white">
-                    <span className="nation text-[15px] font-medium uppercase text-white/76">{dest.name}</span>
-                    <span className="btn-destination flex-two mt-3 flex items-center justify-between">
-                      <span className="title text-[22px] font-bold">View all tours</span>
-                      <span className="btn-view flex-five flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#4DA528] transition group-hover:bg-[#4DA528] group-hover:text-white">
-                        <ArrowRight className="h-4 w-4" />
-                      </span>
-                    </span>
-                  </span>
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-[#F4F6F8] py-20" id="testimonials">
-        <div className="mx-auto grid max-w-[1320px] gap-12 px-4 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:px-8">
-          <div className="relative hidden min-h-[520px] md:block">
-            <img src={getTravelImage('https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=700&q=80')} alt="Traveler testimonial" className="absolute left-0 top-0 h-[350px] w-[72%] rounded-[20px] object-cover shadow-xl" referrerPolicy="no-referrer" onError={handleTravelImageError} />
-            <img src={getTravelImage('https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=700&q=80')} alt="Traveler testimonial" className="absolute bottom-0 right-0 h-[320px] w-[70%] rounded-[20px] object-cover shadow-xl" referrerPolicy="no-referrer" onError={handleTravelImageError} />
-          </div>
-          <div>
-            <span className="font-serif text-[32px] italic text-[#4DA528]">Travelers say</span>
-            <h2 className="mt-4 text-[42px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">What our clients say about us</h2>
-            {loadingReviews ? (
-              <div className="mt-12 flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full border-2 border-[#4DA528] border-t-transparent animate-spin" />
-                <span className="text-stone-500">Loading traveler journals...</span>
-              </div>
-            ) : liveReviews.length === 0 ? (
-              <div className="mt-12 bg-white p-8 shadow-[0_12px_35px_rgba(0,0,0,0.08)]">
-                <MessageSquare className="mb-4 h-8 w-8 text-stone-300" />
-                <p className="text-stone-600">No traveler reviews found. Be the first to share your experience.</p>
-              </div>
-            ) : (
-              <div className="mt-10 grid gap-6">
-                {liveReviews.slice(0, 3).map((review) => (
-                  <article key={review.id} className="relative bg-white p-8 shadow-[0_12px_35px_rgba(0,0,0,0.08)]">
-                    <Quote className="absolute right-8 top-8 h-12 w-12 text-[#4DA528]/15" />
-                    <div className="profile mb-4">
-                      <h3 className="text-[24px] font-bold text-stone-950">{review.name}</h3>
-                      <span className="text-[13px] font-bold uppercase tracking-widest text-[#4DA528]">{review.destination}</span>
-                    </div>
-                    <p className="max-w-2xl text-[16px] leading-8 text-stone-600">"{review.comment}"</p>
-                    <span className="my-6 block h-px w-full bg-stone-100" />
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex gap-1 text-[#FF970D]">
-                        {[...Array(5)].map((_, i) => (
-                          <Star key={i} className={`h-4 w-4 ${i < review.rating ? 'fill-current' : 'text-stone-200'}`} />
-                        ))}
-                      </div>
-                      <img src={getTravelImage(review.imageUrl)} alt="Trip photograph" className="h-14 w-14 rounded-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
       <section className="relative overflow-hidden bg-[#081E2A] py-20 text-white" id="home-banner-contact">
         <img src={getTravelImage('https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=1800&q=80')} alt="Adventure route" className="absolute inset-0 h-full w-full object-cover opacity-30" referrerPolicy="no-referrer" onError={handleTravelImageError} />
         <div className="relative mx-auto grid max-w-[1320px] gap-10 px-4 sm:px-6 lg:grid-cols-[1.2fr_0.8fr] lg:px-8">
@@ -1091,105 +1404,6 @@ export default function HomeView({
           </div>
         </div>
       </section>
-
-      <section className="relative z-10 -mb-24 px-4 sm:px-6 lg:px-8" id="home-cta">
-        <div className="mx-auto flex max-w-[1320px] flex-col items-center justify-between gap-6 rounded-[14px] bg-[#4DA528] p-8 text-white shadow-[0_20px_55px_rgba(0,0,0,0.16)] md:flex-row">
-          <div className="flex flex-col gap-5 md:flex-row md:items-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/16">
-              <PlaneTakeoff className="h-10 w-10" />
-            </div>
-            <div>
-              <h2 className="text-[28px] font-extrabold leading-tight sm:text-[34px]">Ready to adventure and enjoy natural</h2>
-              <p className="mt-2 text-[15px] text-white/82">Plan your custom Himalayan flow with Pravaah's travel curators.</p>
-            </div>
-          </div>
-          <button onClick={() => onNavigate('contact')} className="shrink-0 cursor-pointer rounded-[5px] bg-white px-8 py-4 text-[15px] font-bold text-[#4DA528] transition hover:bg-[#FF970D] hover:text-white">
-            Let,s get started
-          </button>
-        </div>
-      </section>
-
-      {/* ======================================================== */}
-      {/* UGC POST DETAIL LIGHTBOX MODAL */}
-      {/* ======================================================== */}
-      {selectedUgcPost && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in" id="ugc-lightbox">
-          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full border border-stone-100 overflow-hidden grid grid-cols-1 md:grid-cols-2">
-            
-            {/* Left: Image */}
-            <div className="relative aspect-square md:aspect-auto md:h-[550px] bg-stone-900 flex items-center justify-center">
-              <img src={getTravelImage(selectedUgcPost.img)} alt="Post visual" className="w-full h-full object-cover" onError={handleTravelImageError} />
-              <button 
-                onClick={() => setSelectedUgcPost(null)}
-                className="absolute top-4 left-4 p-2 bg-black/60 hover:bg-black text-white rounded-full transition-colors md:hidden"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Right: Comments, Reviews and details */}
-            <div className="p-6 md:p-8 flex flex-col justify-between h-[450px] md:h-[550px] space-y-4">
-              <div className="space-y-4 overflow-y-auto">
-                <div className="flex items-center justify-between border-b border-stone-100 pb-4">
-                  <div className="flex items-center gap-3">
-                    <img src={getTravelImage(selectedUgcPost.avatar)} alt="avatar" className="w-10 h-10 rounded-full border border-stone-200" referrerPolicy="no-referrer" onError={handleTravelImageError} />
-                    <div>
-                      <div className="text-sm font-bold text-stone-850 flex items-center gap-1">
-                        <span>{selectedUgcPost.handle}</span>
-                        <span className="w-3.5 h-3.5 bg-sky-500 rounded-full flex items-center justify-center text-[7px] text-white font-bold">✓</span>
-                      </div>
-                      <span className="text-[9px] uppercase tracking-widest text-[#4DA528] font-bold">{selectedUgcPost.location}</span>
-                    </div>
-                  </div>
-                  
-                  <button 
-                    onClick={() => setSelectedUgcPost(null)}
-                    className="p-1.5 hover:bg-stone-100 rounded-full text-stone-400 hover:text-stone-750 transition-colors hidden md:block"
-                  >
-                    <X className="w-5.5 h-5.5" />
-                  </button>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex gap-0.5 text-[#F4C430]">
-                    {[...Array(selectedUgcPost.rating)].map((_, i) => <Star key={i} className="w-4 h-4 fill-current" />)}
-                  </div>
-                  <p className="text-stone-700 text-xs sm:text-sm leading-relaxed whitespace-pre-line font-light italic">
-                    "{selectedUgcPost.caption}"
-                  </p>
-                </div>
-
-                {/* Simulated Verified Comments */}
-                <div className="border-t border-stone-100 pt-4 space-y-3">
-                  <h5 className="text-[10px] uppercase tracking-widest text-stone-400 font-bold">Verified Comments</h5>
-                  <div className="space-y-2">
-                    <div className="text-xs bg-stone-50 p-2.5 border border-stone-150 rounded text-stone-600 leading-relaxed font-light">
-                      <strong className="text-stone-800">@praveen_sharma:</strong> Stunner of a shot! Did you hire helicopter from Dehradun?
-                    </div>
-                    <div className="text-xs bg-stone-50 p-2.5 border border-stone-150 rounded text-stone-600 leading-relaxed font-light">
-                      <strong className="text-stone-800">@hiking_anya:</strong> @praveen_sharma Yes! Pravaah managed the heli slots. Seamless VIP lounge check-ins. Definitely worth the bespoke comfort pack!
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t border-stone-100 pt-4 flex flex-col gap-3">
-                <button
-                  onClick={() => {
-                    setSelectedUgcPost(null);
-                    onNavigate('packages');
-                  }}
-                  className="w-full py-3 bg-[#4DA528] hover:bg-[#3f8f21] text-white font-bold uppercase tracking-widest text-xs rounded transition flex items-center justify-center gap-1.5"
-                >
-                  <Search className="w-4 h-4" />
-                  <span>Browse Similar Curated Escapes</span>
-                </button>
-              </div>
-
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ======================================================== */}
       {/* MULTI-STEP AI PERSONALIZATION PLANNER MODAL */}

@@ -3,7 +3,7 @@ import {
   User, Calendar, Lock, Shield, Sparkles, CheckCircle, CreditCard, 
   Plus, Trash2, ChevronDown, MapPin, LogOut, RefreshCw, 
   Check, X, Info, AlertCircle, Compass, Star,
-  CloudSun, AlertTriangle, Thermometer, Briefcase, Map, Heart
+  CloudSun, AlertTriangle, Thermometer, Briefcase, Map, Heart, MessageCircle
 } from 'lucide-react';
 import { 
   signInWithEmailAndPassword, 
@@ -14,16 +14,22 @@ import {
   signOut,
   sendSignInLinkToEmail,
   isSignInWithEmailLink,
-  signInWithEmailLink
+  signInWithEmailLink,
+  updateProfile,
+  type User as FirebaseUser
 } from 'firebase/auth';
-import { auth, db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, getDoc, setDoc } from '../lib/firebase';
+import { auth, db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, getDoc, setDoc, serverTimestamp, onSnapshot } from '../lib/firebase';
 import { formatPrice } from '../types';
 import { triggerSystemEmail } from '../lib/emailClient';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
+import { SkeletonBookingCard } from './SkeletonLoader';
 
 interface CustomerPortalViewProps {
   onLogout: () => void;
   onNavigateToHome: () => void;
+  onNavigate?: (view: string, packageId?: string | null) => void;
+  onNavigateToPackages?: () => void;
+  savedPackagesRefreshKey?: number;
 }
 
 // Client side image optimization helper
@@ -66,7 +72,55 @@ const resizeAndCompressImage = (base64Str: string): Promise<string> => {
   });
 };
 
-export default function CustomerPortalView({ onLogout, onNavigateToHome }: CustomerPortalViewProps) {
+const normalizeBookingRecord = (booking: any) => {
+  const bookingStatus = String(booking?.bookingStatus || booking?.status || 'Pending').trim();
+  const guests = Number((booking?.guests ?? booking?.travelers ?? ((booking?.adults || 0) + (booking?.children || 0))) || 1);
+  const totalPrice = Number(booking?.totalPrice ?? booking?.price ?? 0);
+  const createdAt = booking?.createdAt || new Date().toISOString();
+  const updatedAt = booking?.updatedAt || createdAt;
+
+  return {
+    ...booking,
+    bookingId: booking?.bookingId || `PRV-${new Date(createdAt).getFullYear()}-${String(booking?.id || '').slice(0, 4).toUpperCase()}`,
+    customerId: booking?.customerId || booking?.userId || '',
+    customerName: booking?.customerName || booking?.userName || 'Traveler',
+    email: booking?.email || booking?.customerEmail || '',
+    phone: booking?.phone || booking?.customerPhone || '',
+    packageId: booking?.packageId || '',
+    packageTitle: booking?.packageTitle || booking?.destination || 'Custom Package',
+    travelDate: booking?.travelDate || '',
+    guests,
+    totalPrice,
+    bookingStatus,
+    createdAt,
+    updatedAt,
+    notes: booking?.notes || [],
+  };
+};
+
+const getBookingStatusBadgeClasses = (bookingStatus: string) => {
+  switch (bookingStatus) {
+    case 'Contacted':
+      return 'bg-sky-100 text-sky-700';
+    case 'Confirmed':
+      return 'bg-emerald-100 text-emerald-700';
+    case 'Cancelled':
+      return 'bg-rose-100 text-rose-700';
+    case 'Completed':
+      return 'bg-emerald-100 text-emerald-700';
+    default:
+      return 'bg-amber-100 text-amber-700';
+  }
+};
+
+const getBookingWhatsAppUrl = (booking: any) => {
+  const bookingId = booking?.bookingId || 'PRV-2026-0001';
+  const packageTitle = booking?.packageTitle || 'your package';
+  const message = `Hello Pravaah Travels,%0AI have submitted my booking.%0ABooking ID: ${bookingId}%0APackage: ${packageTitle}%0APlease confirm my booking.`;
+  return `https://wa.me/919999999999?text=${message}`;
+};
+
+export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavigate, onNavigateToPackages, savedPackagesRefreshKey = 0 }: CustomerPortalViewProps) {
   // Auth state
   const [user, setUser] = useState(auth.currentUser);
   const [authTab, setAuthTab] = useState<'login' | 'register' | 'emailLink'>('login');
@@ -93,7 +147,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
   // Bookings list
   const [bookings, setBookings] = useState<any[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
-  const [expandedBookingId, setExpandedBookingId] = useState<string | null>(null);
+  const [selectedBookingDetails, setSelectedBookingDetails] = useState<any | null>(null);
 
   // Real-time travel/weather alerts state
   const [weatherAlert, setWeatherAlert] = useState<any | null>(null);
@@ -184,24 +238,24 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewSuccess, setReviewSuccess] = useState(false);
 
-  const fetchSavedPackages = async (uid: string) => {
+  const fetchSavedPackages = (uid: string) => {
     setSavedPackagesLoading(true);
-    try {
-      const q = query(
-        collection(db, 'users', uid, 'private'),
-        where('type', '==', 'saved_package')
-      );
-      const snapshot = await getDocs(q);
-      const fetched = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
+    const q = query(
+      collection(db, 'users', uid, 'private'),
+      where('type', '==', 'saved_package')
+    );
+
+    return onSnapshot(q, (snapshot) => {
+      const fetched = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data()
       }));
       setSavedPackages(fetched);
-    } catch (err: any) {
-      console.error('Error fetching saved packages:', err);
-    } finally {
       setSavedPackagesLoading(false);
-    }
+    }, (err: any) => {
+      console.error('Error fetching saved packages:', err);
+      setSavedPackagesLoading(false);
+    });
   };
 
   const fetchUserProfile = async (uid: string) => {
@@ -239,7 +293,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
       alert('Profile updated securely!');
     } catch (err: any) {
       console.error('Error saving profile:', err);
-      alert(`Failed to save profile: ${err.message}`);
+      alert('We could not save your profile right now. Please try again in a moment.');
     } finally {
       setProfileSaving(false);
     }
@@ -252,7 +306,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
       fetchSavedPackages(user.uid);
     } catch (err: any) {
       console.error('Error deleting saved package:', err);
-      alert('Failed to remove saved package.');
+      alert('We could not remove that saved package. Please try again in a moment.');
     }
   };
 
@@ -271,13 +325,23 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    if (!user?.uid) {
+      setSavedPackages([]);
+      return;
+    }
+
+    const unsubscribe = fetchSavedPackages(user.uid);
+    return () => unsubscribe?.();
+  }, [savedPackagesRefreshKey, user?.uid]);
+
   // Compute next upcoming trip helper
   const getNextUpcomingTrip = () => {
     if (!bookings || bookings.length === 0) return null;
     const now = new Date();
     
     // Filter active bookings (not cancelled) with a travelDate
-    const active = bookings.filter(b => b.status !== 'Cancelled' && b.travelDate);
+    const active = bookings.filter(b => (b.bookingStatus || b.status || 'Pending') !== 'Cancelled' && b.travelDate);
     if (active.length === 0) return null;
 
     // Sort by travelDate ascending
@@ -421,6 +485,25 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
   // ----------------------------------------------------
   // AUTHENTICATION LOGIC
   // ----------------------------------------------------
+  const ensureUserProfile = async (user: FirebaseUser, provider: 'password' | 'google' | 'github', profileDisplayName: string) => {
+    const userDocRef = doc(db, 'users', user.uid);
+    const existingUserDoc = await getDoc(userDocRef);
+
+    if (existingUserDoc.exists()) {
+      return;
+    }
+
+    const resolvedDisplayName = profileDisplayName.trim() || user.displayName || user.email?.split('@')[0] || 'Traveler';
+
+    await setDoc(userDocRef, {
+      displayName: resolvedDisplayName,
+      email: user.email || '',
+      photoURL: user.photoURL || '',
+      provider,
+      createdAt: serverTimestamp(),
+    });
+  };
+
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
@@ -434,11 +517,14 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
         setAuthSuccess('Logged in successfully!');
       } else {
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
-        // Save display name as fallback
-        if (displayName && userCred.user) {
-          // Keep display name local if needed, or simply update state
-          setAuthSuccess('Account created successfully!');
+        const profileName = displayName.trim() || email.split('@')[0];
+
+        if (userCred.user) {
+          await updateProfile(userCred.user, { displayName: profileName });
+          await ensureUserProfile(userCred.user, 'password', profileName);
         }
+
+        setAuthSuccess('Account created successfully!');
       }
     } catch (err: any) {
       console.error('Customer Auth Error:', err);
@@ -465,7 +551,8 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
         ? new GoogleAuthProvider() 
         : new GithubAuthProvider();
       
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      await ensureUserProfile(result.user, providerName, result.user.displayName || 'Traveler');
       setAuthSuccess(`Logged in securely via ${providerName === 'google' ? 'Google' : 'GitHub'}!`);
     } catch (err: any) {
       console.error('Social login failed:', err);
@@ -567,23 +654,32 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
 
     setBookingSubmitting(true);
     const bookingData = {
-      userId: user.uid,
+      bookingId: `PRV-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
+      customerId: user.uid,
       customerName: newBookingName,
+      email: newBookingEmail,
+      phone: newBookingPhone,
+      packageId: '',
+      packageTitle: newBookingPackage || 'Custom Package / Personalized Trip',
+      travelDate: newBookingDate,
+      guests: Number(newBookingAdults) + Number(newBookingChildren),
+      totalPrice: Number(newBookingBudget) || 0,
+      bookingStatus: 'Pending',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      userId: user.uid,
       customerPhone: newBookingPhone,
       customerWhatsApp: newBookingWhatsApp,
       customerEmail: newBookingEmail,
       destination: newBookingDest,
-      packageTitle: newBookingPackage || 'Custom Package / Personalized Trip',
-      travelDate: newBookingDate,
       adults: Number(newBookingAdults),
       children: Number(newBookingChildren),
       pickupCity: newBookingPickupCity,
       budget: `₹${newBookingBudget.toLocaleString('en-IN')}`,
-      price: 0,
+      price: Number(newBookingBudget) || 0,
       specialRequests: newBookingRequests,
-      status: 'New Lead', // CRM Status initial value
+      status: 'Pending',
       paymentStatus: 'Unpaid',
-      createdAt: new Date().toISOString(),
       notes: [],
       assignedStaff: '',
       followUpDate: ''
@@ -1381,7 +1477,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
           }`}
         >
           <Heart className="w-4.5 h-4.5 text-rose-500 fill-current" />
-          <span>Saved Packages ({savedPackages.length})</span>
+          <span>Wishlist ({savedPackages.length})</span>
         </button>
 
         <button
@@ -1725,9 +1821,10 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
           </div>
 
           {bookingsLoading ? (
-            <div className="rounded-[18px] border border-stone-200 bg-white py-14 text-center shadow-sm">
-              <RefreshCw className="w-8 h-8 text-[#008080] animate-spin mx-auto mb-2" />
-              <p className="text-xs text-stone-500">Retrieving secure records from Firestore...</p>
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <SkeletonBookingCard key={idx} />
+              ))}
             </div>
           ) : bookings.length === 0 ? (
             <div className="relative overflow-hidden rounded-[22px] border border-dashed border-stone-300 bg-white p-10 text-center shadow-sm">
@@ -1750,127 +1847,182 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-              {bookings.map((booking) => {
-                const isExpanded = expandedBookingId === booking.id;
-                return (
-                  <div 
-                    key={booking.id}
-                    className="group overflow-hidden rounded-[18px] border border-stone-200 bg-white shadow-[0_14px_38px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_55px_rgba(18,38,32,0.14)]"
-                  >
-                    <div className="relative h-52 overflow-hidden bg-stone-100">
-                      <img
-                        src={getBookingImage(booking)}
-                        alt={booking.destination || booking.packageTitle || 'Travel booking'}
-                        className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
-                        referrerPolicy="no-referrer"
-                        onError={handleTravelImageError}
-                      />
-                      <div className="absolute inset-0 bg-linear-to-t from-stone-950/70 via-transparent to-transparent" />
-                      <div className="absolute left-4 top-4 flex flex-wrap gap-2">
-                        <span className={`rounded bg-white px-3 py-1 text-[11px] font-extrabold uppercase tracking-wider ${
-                          booking.status === 'Confirmed' ? 'text-emerald-700' :
-                          booking.status === 'Cancelled' ? 'text-rose-700' : 'text-amber-700'
-                        }`}>
-                          {booking.status}
-                        </span>
-                        <span className="rounded bg-[#4DA528] px-3 py-1 text-[11px] font-extrabold uppercase tracking-wider text-white">
-                          {booking.paymentStatus || 'Unpaid'}
-                        </span>
+              {bookings.map((booking) => (
+                <div
+                  key={booking.id}
+                  className="overflow-hidden rounded-[20px] border border-stone-200 bg-white shadow-[0_16px_42px_rgba(18,38,32,0.08)]"
+                >
+                  <div className="p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Booking ID</p>
+                        <p className="mt-1 text-sm font-bold text-stone-950">{booking.bookingId}</p>
                       </div>
-                      <div className="absolute bottom-4 left-4 right-4 text-white">
-                        <p className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-wider text-white/75">
-                          <MapPin className="h-4 w-4 text-[#4DA528]" />
-                          {booking.destination || 'Custom Destination'}
-                        </p>
-                        <h4 className="mt-2 line-clamp-2 text-2xl font-extrabold leading-tight">{booking.packageTitle}</h4>
+                      <span className={`rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] ${getBookingStatusBadgeClasses(booking.bookingStatus)}`}>
+                        {booking.bookingStatus}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 rounded-[16px] border border-stone-100 bg-stone-50 p-4">
+                      <h4 className="text-lg font-extrabold text-stone-900">{booking.packageTitle}</h4>
+                      <div className="mt-3 grid gap-3 text-sm text-stone-600 sm:grid-cols-2">
+                        <div>
+                          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Travel Date</p>
+                          <p className="mt-1 font-semibold text-stone-900">{booking.travelDate || 'Flexible'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Guests</p>
+                          <p className="mt-1 font-semibold text-stone-900">{booking.guests || 1}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Price</p>
+                          <p className="mt-1 font-semibold text-stone-900">{formatPrice(booking.totalPrice || booking.price)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Created</p>
+                          <p className="mt-1 font-semibold text-stone-900">{new Date(booking.createdAt).toLocaleDateString('en-IN')}</p>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Header Clickbar */}
-                    <div 
-                      onClick={() => setExpandedBookingId(isExpanded ? null : booking.id)}
-                      className="flex cursor-pointer flex-col gap-4 p-5 transition-colors hover:bg-[#fffaf1] sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="grid flex-1 grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-                        <div className="rounded-[12px] bg-stone-50 p-3">
-                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-stone-400">Date</span>
-                          <p className="mt-1 font-bold text-stone-900">{booking.travelDate || 'Flexible'}</p>
-                        </div>
-                        <div className="rounded-[12px] bg-stone-50 p-3">
-                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-stone-400">Travelers</span>
-                          <p className="mt-1 font-bold text-stone-900">{booking.travelers || ((booking.adults || 0) + (booking.children || 0)) || 1}</p>
-                        </div>
-                        <div className="col-span-2 rounded-[12px] bg-stone-50 p-3 sm:col-span-1">
-                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-stone-400">Price</span>
-                          <p className="mt-1 font-extrabold text-[#4DA528]">{formatPrice(booking.price)}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-4 sm:flex-col sm:items-end">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">{new Date(booking.createdAt).toLocaleDateString()}</span>
-                        <ChevronDown className={`w-5 h-5 text-stone-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                      </div>
+                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBookingDetails(booking)}
+                        className="flex-1 rounded-[5px] border border-stone-200 bg-white px-3 py-2.5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
+                      >
+                        View Details
+                      </button>
+                      <a
+                        href={getBookingWhatsAppUrl(booking)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 rounded-[5px] bg-emerald-600 px-3 py-2.5 text-center text-[10px] font-extrabold uppercase tracking-[0.16em] text-white transition hover:bg-emerald-700"
+                      >
+                        Contact Support
+                      </a>
                     </div>
-
-                    {/* Expandable contents */}
-                    {isExpanded && (
-                      <div className="border-t border-stone-100 bg-stone-50/50 p-4 sm:p-6 space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                          {/* Financials card */}
-                          <div className="bg-white border border-stone-150 p-4 rounded-lg">
-                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Package Price</span>
-                            <span className="text-xl font-bold text-[#008080]">{formatPrice(booking.price)}</span>
-                            
-                            <div className="border-t border-stone-100 my-3 pt-3 flex items-center justify-between">
-                              <span className="text-xs text-stone-500">Dues Payment:</span>
-                              <span className={`text-xs font-bold uppercase tracking-wider ${
-                                booking.paymentStatus === 'Paid' ? 'text-emerald-600' : 'text-rose-600'
-                              }`}>
-                                {booking.paymentStatus}
-                              </span>
-                            </div>
-
-                            {booking.paymentStatus !== 'Paid' && booking.status !== 'Cancelled' && (
-                              <button
-                                type="button"
-                                onClick={() => setPayingBooking(booking)}
-                                className="w-full mt-3 py-2 bg-[#008080] hover:bg-[#006666] text-white text-xs font-bold rounded transition-colors flex items-center justify-center space-x-1 shadow-xs"
-                              >
-                                <CreditCard className="w-4 h-4" />
-                                <span>Complete Payment</span>
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Request description */}
-                          <div className="bg-white border border-stone-150 p-4 rounded-lg md:col-span-2 space-y-3">
-                            <div>
-                              <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">Special Requests</span>
-                              <p className="text-xs text-stone-700 mt-1 whitespace-pre-wrap">
-                                {booking.specialRequests || 'No special requests submitted.'}
-                              </p>
-                            </div>
-
-                            {booking.status === 'Pending' && (
-                              <div className="pt-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleCancelBooking(booking.id)}
-                                  className="text-xs text-rose-600 hover:text-rose-800 hover:underline font-bold"
-                                >
-                                  Cancel Booking Request
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
           )}
+        </div>
+      )}
+
+      {selectedBookingDetails && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-stone-950/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-[24px] border border-stone-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-stone-100 bg-[#fffdf8] p-5">
+              <div>
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Booking Details</p>
+                <h3 className="mt-1 text-xl font-extrabold text-stone-950">{selectedBookingDetails.bookingId}</h3>
+              </div>
+              <button type="button" onClick={() => setSelectedBookingDetails(null)} className="rounded-full border border-stone-200 p-2 text-stone-500 transition hover:bg-stone-100">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-5 p-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-[16px] border border-stone-100 bg-stone-50 p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Customer Information</p>
+                  <p className="mt-2 font-semibold text-stone-900">{selectedBookingDetails.customerName}</p>
+                  <p className="mt-1 text-sm text-stone-600">{selectedBookingDetails.email}</p>
+                  <p className="mt-1 text-sm text-stone-600">{selectedBookingDetails.phone}</p>
+                </div>
+                <div className="rounded-[16px] border border-stone-100 bg-stone-50 p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Package Information</p>
+                  <p className="mt-2 font-semibold text-stone-900">{selectedBookingDetails.packageTitle}</p>
+                  <p className="mt-1 text-sm text-stone-600">Travel Date: {selectedBookingDetails.travelDate || 'Flexible'}</p>
+                  <p className="mt-1 text-sm text-stone-600">Guests: {selectedBookingDetails.guests || 1}</p>
+                </div>
+              </div>
+
+              <div className="rounded-[16px] border border-stone-100 bg-white p-4">
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Status Timeline</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {['Pending', 'Contacted', 'Confirmed', 'Completed', 'Cancelled'].map((status) => (
+                    <span key={status} className={`rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] ${selectedBookingDetails.bookingStatus === status ? getBookingStatusBadgeClasses(status) : 'bg-stone-100 text-stone-500'}`}>
+                      {status}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-[16px] border border-stone-100 bg-white p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Booking Timeline</p>
+                  <div className="mt-3 space-y-2">
+                    {(selectedBookingDetails.bookingTimeline || []).map((item: any, index: number) => (
+                      <div key={`${item.title}-${index}`} className="rounded-[10px] border border-stone-100 bg-stone-50 px-3 py-2">
+                        <p className="text-sm font-semibold text-stone-900">{item.title}</p>
+                        <p className="mt-1 text-xs text-stone-600">{item.note}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-[16px] border border-stone-100 bg-white p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Payment Status</p>
+                  <p className="mt-2 text-sm font-semibold text-stone-900">{selectedBookingDetails.paymentStatus || 'Pending'}</p>
+                  <p className="mt-2 text-sm text-stone-600">Payment method: {selectedBookingDetails.paymentMethod || 'Not selected'}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" className="rounded-[8px] border border-stone-200 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-700">View Voucher</button>
+                    <button type="button" className="rounded-[8px] border border-stone-200 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-700">Download Invoice</button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-[16px] border border-stone-100 bg-white p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Traveller List</p>
+                  <div className="mt-3 space-y-2">
+                    {(selectedBookingDetails.travellerList && selectedBookingDetails.travellerList.length > 0) ? selectedBookingDetails.travellerList.map((traveller: any, index: number) => (
+                      <div key={`${traveller.name}-${index}`} className="rounded-[10px] border border-stone-100 bg-stone-50 px-3 py-2 text-sm text-stone-700">
+                        <p className="font-semibold text-stone-900">{traveller.name || `Traveller ${index + 1}`}</p>
+                        <p className="mt-1 text-xs">Age: {traveller.age || 'N/A'} • Gender: {traveller.gender || 'N/A'} • ID: {traveller.idType || 'N/A'} {traveller.idNumber || ''}</p>
+                      </div>
+                    )) : <p className="text-sm text-stone-500">No additional travellers added yet.</p>}
+                  </div>
+                </div>
+                <div className="rounded-[16px] border border-stone-100 bg-white p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Booking Notes</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-stone-600">
+                    {(selectedBookingDetails.notes && selectedBookingDetails.notes.length > 0)
+                      ? selectedBookingDetails.notes.map((note: any) => `• ${note.text}`).join('\n')
+                      : 'No notes have been added for this booking yet.'}
+                  </p>
+                  <div className="mt-4 rounded-[10px] border border-stone-100 bg-stone-50 p-3 text-sm text-stone-600">
+                    <p className="font-semibold text-stone-900">Internal Notes</p>
+                    <p className="mt-1">{selectedBookingDetails.internalNotes?.length ? selectedBookingDetails.internalNotes.join(' • ') : 'No internal notes yet.'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-[16px] border border-stone-100 bg-white p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Assigned Executive</p>
+                  <p className="mt-2 text-sm font-semibold text-stone-900">{selectedBookingDetails.assignedStaff || 'Unassigned'}</p>
+                </div>
+                <div className="rounded-[16px] border border-stone-100 bg-white p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Invoice & Voucher</p>
+                  <p className="mt-2 text-sm text-stone-600">Invoice: {selectedBookingDetails.invoice?.invoiceNumber || 'Pending'}</p>
+                  <p className="mt-1 text-sm text-stone-600">Voucher: {selectedBookingDetails.voucher?.voucherCode || 'Pending'}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-[16px] border border-stone-100 bg-white p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Payment History</p>
+                  <p className="mt-2 text-sm text-stone-600">{selectedBookingDetails.paymentHistory?.length ? `${selectedBookingDetails.paymentHistory.length} transaction(s)` : 'No payments recorded yet.'}</p>
+                </div>
+                <div className="rounded-[16px] border border-stone-100 bg-white p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Service Requests</p>
+                  <p className="mt-2 text-sm text-stone-600">Cancel request: {selectedBookingDetails.cancelRequested ? 'Yes' : 'No'}</p>
+                  <p className="mt-1 text-sm text-stone-600">Reschedule request: {selectedBookingDetails.rescheduleRequested ? 'Yes' : 'No'}</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2216,11 +2368,11 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
       {/* Saved Packages Tab */}
       {activeTab === 'saved-packages' && (
         <div className="space-y-6 animate-fade-in" id="saved-packages-panel">
-          <div className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
+          <div className="rounded-[22px] border border-stone-200 bg-white p-4 shadow-[0_14px_38px_rgba(18,38,32,0.08)] sm:p-6">
             <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Wishlist</span>
-            <h3 className="mt-2 flex items-center gap-2 text-2xl font-extrabold text-stone-950">
+            <h3 className="mt-2 flex items-center gap-2 text-xl font-extrabold text-stone-950 sm:text-2xl">
               <Heart className="w-5 h-5 text-rose-500 fill-current" />
-              <span>Your Saved & Bookmarked Packages</span>
+              <span>Your Wishlist</span>
             </h3>
             <p className="mt-1 text-sm text-stone-500">Quickly access and request bookings for tour packages you bookmarked.</p>
           </div>
@@ -2242,11 +2394,11 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
               </p>
               <button
                 type="button"
-                onClick={onNavigateToHome}
-                className="relative mt-6 inline-flex items-center gap-2 rounded-[5px] bg-[#4DA528] px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
+                onClick={onNavigateToPackages || onNavigateToHome}
+                className="relative mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[5px] bg-[#4DA528] px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D] sm:w-auto"
               >
                 <Compass className="w-4 h-4" />
-                <span>Browse Packages</span>
+                <span>Explore Packages</span>
               </button>
             </div>
           ) : (
@@ -2278,7 +2430,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
                     </div>
                   </div>
 
-                  <div className="mt-2 flex items-center justify-between border-t border-stone-100 p-4">
+                  <div className="mt-2 flex flex-col gap-3 border-t border-stone-100 p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <span className="text-[9px] text-stone-400 block uppercase tracking-wider">Target Budget</span>
                       <span className="text-lg font-extrabold text-[#4DA528]">{formatPrice(saved.price)}</span>
@@ -2296,6 +2448,13 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
                         className="rounded-[5px] bg-[#4DA528] px-3 py-2 text-[10px] font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
                       >
                         Book Now
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onNavigate?.('package-detail', saved.packageId || saved.id)}
+                        className="rounded-[5px] border border-stone-200 bg-white px-3 py-2 text-[10px] font-extrabold uppercase tracking-wider text-stone-600 transition hover:border-[#4DA528] hover:text-[#4DA528]"
+                      >
+                        View Details
                       </button>
                       <button
                         type="button"
@@ -2338,7 +2497,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome }: Custo
               </p>
             </div>
           ) : (
-            <div className="relative ml-4 space-y-6 border-l-2 border-[#4DA528]/30 py-2 pl-6">
+            <div className="relative ml-0 space-y-6 border-l-2 border-[#4DA528]/30 py-2 pl-6 sm:ml-4">
               {bookings.filter(b => b.status === 'Confirmed').map((trip) => (
                 <div key={trip.id} className="relative max-w-4xl overflow-hidden rounded-[18px] border border-stone-200 bg-white shadow-[0_14px_38px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_55px_rgba(18,38,32,0.14)]">
                   {/* Timeline point */}

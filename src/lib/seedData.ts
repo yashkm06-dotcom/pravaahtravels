@@ -4,6 +4,7 @@ export const SEED_PACKAGES: Omit<TravelPackage, 'id'>[] = [
   {
     title: 'Kedarnath & Badrinath Do Dham Yatra',
     destination: 'Uttarakhand, India',
+    location: 'Uttarakhand',
     category: 'Pilgrimage',
     duration: '6 Days / 5 Nights',
     price: 22500,
@@ -39,6 +40,7 @@ export const SEED_PACKAGES: Omit<TravelPackage, 'id'>[] = [
   {
     title: 'Kedarkantha Peak Winter Trek Expedition',
     destination: 'Sankri, Uttarakhand, India',
+    location: 'Uttarakhand',
     category: 'Treks',
     duration: '6 Days / 5 Nights',
     price: 9500,
@@ -73,6 +75,7 @@ export const SEED_PACKAGES: Omit<TravelPackage, 'id'>[] = [
   {
     title: 'Rishikesh Ultimate Adventure: Bungy & Rafting',
     destination: 'Rishikesh, Uttarakhand, India',
+    location: 'Uttarakhand',
     category: 'Adventure',
     duration: '3 Days / 2 Nights',
     price: 12000,
@@ -104,6 +107,7 @@ export const SEED_PACKAGES: Omit<TravelPackage, 'id'>[] = [
   {
     title: 'Spiti Valley High Altitude Explorer',
     destination: 'Spiti Valley, Himachal Pradesh, India',
+    location: 'Himachal Pradesh',
     category: 'Himachal',
     duration: '8 Days / 7 Nights',
     price: 26000,
@@ -140,6 +144,7 @@ export const SEED_PACKAGES: Omit<TravelPackage, 'id'>[] = [
   {
     title: 'Himalayan Serenade - Leh Ladakh Odyssey',
     destination: 'Leh Ladakh, India',
+    location: 'Ladakh',
     category: 'Ladakh',
     duration: '7 Days / 6 Nights',
     price: 45000,
@@ -176,6 +181,7 @@ export const SEED_PACKAGES: Omit<TravelPackage, 'id'>[] = [
   {
     title: 'Chopta Tungnath Trek & Rishikesh Gateway',
     destination: 'Chopta, Uttarakhand, India',
+    location: 'Uttarakhand',
     category: 'Uttarakhand',
     duration: '4 Days / 3 Nights',
     price: 11500,
