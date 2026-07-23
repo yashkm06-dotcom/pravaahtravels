@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db, collection, getDocs, query, orderBy, deleteDoc, doc, getDoc, onSnapshot, where, addDoc } from './lib/firebase';
 import { MessageCircle, Sparkles, Compass } from 'lucide-react';
-import { TravelPackage, Enquiry, GalleryImage, DestinationCategory, WebsiteCMSSettings, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem } from './types';
+import { TravelPackage, Enquiry, GalleryImage, WebsiteCMSSettings, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem } from './types';
 
 // Component imports
 import Header from './components/Header';
@@ -45,10 +45,22 @@ interface RouteState {
   packageId: string | null;
 }
 
+interface PackageFilterSelection {
+  search?: string;
+  category?: string;
+  location?: string;
+  destination?: string;
+  bookingType?: string;
+  availability?: string;
+}
+
 const getRouteStateFromUrl = (): RouteState => {
   const path = window.location.pathname;
   if (path === '/' || path === '') {
     return { view: 'home', packageId: null };
+  }
+  if (path === '/admin' || path.startsWith('/admin/')) {
+    return { view: 'admin-dashboard', packageId: null };
   }
   if (path.startsWith('/package/')) {
     const parts = path.split('/');
@@ -80,6 +92,9 @@ const getUrlFromRouteState = (view: string, packageId: string | null): string =>
   if (view === 'home') return '/';
   if (view === 'package-detail' && packageId) return `/package/${packageId}`;
   if (view === 'reviews') return '/review'; // as explicitly requested
+  if (view === 'admin-dashboard' && (window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/'))) {
+    return window.location.pathname;
+  }
   return `/${view}`;
 };
 
@@ -418,7 +433,6 @@ export default function App() {
           imageUrl: pkg.imageUrl || '',
           duration: pkg.duration,
           price: pkg.price || 0,
-          category: pkg.category,
           createdAt: new Date().toISOString(),
         });
         setWishlistToast({ type: 'success', message: 'Package added to Wishlist ❤️' });
@@ -464,16 +478,41 @@ export default function App() {
     setSelectedPackageId(packageId);
   };
 
-  const handleSelectCategory = (category: DestinationCategory) => {
-    setPrefilledCategory(category);
+  const openPackagesWithFilters = useCallback((filters: PackageFilterSelection, preserveExisting = false) => {
+    const params = preserveExisting ? new URLSearchParams(window.location.search) : new URLSearchParams();
+
+    const setOrDelete = (key: string, value?: string) => {
+      const normalized = String(value ?? '').trim();
+      if (normalized && normalized !== 'All') {
+        params.set(key, normalized);
+      } else {
+        params.delete(key);
+      }
+    };
+
+    if ('search' in filters) setOrDelete('search', filters.search);
+    if ('category' in filters) setOrDelete('category', filters.category);
+    if ('location' in filters) setOrDelete('location', filters.location);
+    if ('destination' in filters) setOrDelete('destination', filters.destination);
+    if ('bookingType' in filters) setOrDelete('type', filters.bookingType);
+    if ('availability' in filters) setOrDelete('availability', filters.availability);
+
+    const queryString = params.toString();
+    window.history.pushState(null, '', `/packages${queryString ? `?${queryString}` : ''}`);
+
+    setPrefilledCategory(params.get('category') || 'All');
+    setSelectedPackageLocation(params.get('location') || 'All');
     setCurrentView('packages');
+    setSelectedPackageId(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const handleSelectCategory = (category: string) => {
+    openPackagesWithFilters({ category }, window.location.pathname === '/packages');
   };
 
   const handleSearchByLocation = (location: string) => {
-    setSelectedPackageLocation(location);
-    setCurrentView('packages');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    openPackagesWithFilters({ location }, false);
   };
 
   const handleAdminLogout = async () => {
@@ -615,7 +654,13 @@ export default function App() {
           )}
 
           {currentView === 'destinations' && (
-            <DestinationsView onSelectCategory={handleSelectCategory} />
+            <DestinationsView
+              onSelectCategory={handleSelectCategory}
+              onSelectFilter={(filters) => openPackagesWithFilters(filters, false)}
+              packages={packages}
+              featuredCategories={featuredCategories}
+              loading={loadingData}
+            />
           )}
 
           {currentView === 'packages' && (

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, lazy, Suspense } from 'react';
 import { 
   Compass, LayoutDashboard, FileText, Package, Image as ImageIcon, 
   Plus, Edit2, Trash2, X, Search, Download, 
@@ -42,6 +42,13 @@ interface AdminDashboardViewProps {
 
 type AdminTab = 'overview' | 'packages' | 'enquiries' | 'customers' | 'gallery' | 'media-library' | 'website' | 'activities' | 'bookings' | 'reviews' | 'blogs' | 'analytics' | 'settings';
 
+const getInitialAdminTab = (): AdminTab => {
+  if (typeof window !== 'undefined' && (window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/'))) {
+    return 'activities';
+  }
+  return 'overview';
+};
+
 function AdminDashboardView({
   packages,
   enquiries,
@@ -54,7 +61,7 @@ function AdminDashboardView({
   websiteCMS,
 }: AdminDashboardViewProps) {
   // Navigation inside Dashboard
-  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [activeTab, setActiveTab] = useState<AdminTab>(() => getInitialAdminTab());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [adminSearch, setAdminSearch] = useState('');
   const [mediaLibrarySearch, setMediaLibrarySearch] = useState('');
@@ -63,6 +70,24 @@ function AdminDashboardView({
   const [cmsSaving, setCmsSaving] = useState(false);
   const [cmsUploadingField, setCmsUploadingField] = useState<'heroBackgroundImageUrl' | 'logoUrl' | null>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
+
+  const handleAdminTabChange = useCallback((tab: AdminTab) => {
+    setActiveTab(tab);
+    if (tab !== 'activities' && (window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/'))) {
+      window.history.pushState(null, '', '/admin-dashboard');
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleAdminPopState = () => {
+      if (window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/')) {
+        setActiveTab('activities');
+      }
+    };
+
+    window.addEventListener('popstate', handleAdminPopState);
+    return () => window.removeEventListener('popstate', handleAdminPopState);
+  }, []);
 
   // Analytics State
   const [analyticsEvents, setAnalyticsEvents] = useState<any[]>([]);
@@ -1941,7 +1966,7 @@ function AdminDashboardView({
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => setActiveTab(item.id)}
+                      onClick={() => handleAdminTabChange(item.id)}
                       className={`group flex w-full items-center gap-3 rounded-[14px] px-3 py-3 text-left text-xs font-extrabold uppercase tracking-[0.08em] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#071d28] ${
                         selected
                           ? 'bg-[#4DA528] text-white shadow-[0_14px_35px_rgba(77,165,40,0.3)]'
@@ -2034,7 +2059,7 @@ function AdminDashboardView({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setActiveTab('activities')}
+                    onClick={() => handleAdminTabChange('activities')}
                     className="inline-flex h-11 w-11 items-center justify-center rounded-[12px] border border-stone-200 bg-white text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/30 focus-visible:ring-offset-2"
                     title="Activities quick actions"
                   >
@@ -2060,7 +2085,7 @@ function AdminDashboardView({
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => setActiveTab(item.id)}
+                    onClick={() => handleAdminTabChange(item.id)}
                     className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-[11px] font-extrabold uppercase tracking-wider transition ${
                       activeTab === item.id ? 'bg-[#4DA528] text-white' : 'bg-white text-stone-600'
                     }`}

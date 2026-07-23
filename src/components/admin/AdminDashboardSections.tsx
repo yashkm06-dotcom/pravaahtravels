@@ -177,6 +177,147 @@ interface ActivitiesTabProps {
   onRefreshData: () => Promise<void>;
 }
 
+type ActivityManagerPage = 'dashboard' | 'activities' | 'activity-items' | 'recommendations';
+
+const activityManagerPaths: Record<Exclude<ActivityManagerPage, 'dashboard'>, string> = {
+  activities: '/admin/activities',
+  'activity-items': '/admin/activity-items',
+  recommendations: '/admin/recommendations',
+};
+
+const getInitialActivityManager = (): ActivityManagerPage => {
+  if (typeof window === 'undefined') return 'dashboard';
+  if (window.location.pathname === '/admin/activities') return 'activities';
+  if (window.location.pathname === '/admin/activity-items') return 'activity-items';
+  if (window.location.pathname === '/admin/recommendations') return 'recommendations';
+  return 'dashboard';
+};
+
+function AdminPageHeader({
+  eyebrow,
+  title,
+  description,
+  action,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <section className="relative overflow-hidden rounded-[26px] bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)] sm:p-8">
+      <div className="absolute inset-y-0 right-0 hidden w-1/3 bg-linear-to-l from-[#4DA528]/12 to-transparent lg:block" />
+      <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="max-w-3xl">
+          <span className="inline-flex rounded-full bg-[#4DA528]/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">{eyebrow}</span>
+          <h2 className="mt-4 text-4xl font-extrabold tracking-tight text-stone-950">{title}</h2>
+          <p className="mt-3 text-sm leading-7 text-stone-500">{description}</p>
+        </div>
+        {action}
+      </div>
+    </section>
+  );
+}
+
+function AdminManagementCard({
+  icon: Icon,
+  title,
+  description,
+  count,
+  onOpen,
+}: {
+  icon: React.ElementType;
+  title: string;
+  description: string;
+  count: number;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group flex min-h-[260px] flex-col justify-between rounded-[24px] border border-stone-200 bg-white p-6 text-left shadow-[0_14px_38px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-1 hover:border-[#4DA528]/40 hover:shadow-[0_24px_55px_rgba(18,38,32,0.14)]"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <span className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-[#4DA528]/10 text-[#4DA528] transition group-hover:bg-[#4DA528] group-hover:text-white">
+          <Icon className="h-6 w-6" />
+        </span>
+        <span className="rounded-full bg-[#f7f8f3] px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-stone-500">
+          {count} {count === 1 ? 'item' : 'items'}
+        </span>
+      </div>
+      <div>
+        <h3 className="text-2xl font-extrabold text-stone-950">{title}</h3>
+        <p className="mt-3 text-sm leading-7 text-stone-500">{description}</p>
+        <span className="mt-6 inline-flex items-center gap-2 rounded-[5px] bg-stone-950 px-4 py-3 text-[10px] font-extrabold uppercase tracking-wider text-white transition group-hover:bg-[#4DA528]">
+          Open
+          <ChevronRight className="h-3.5 w-3.5" />
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function AdminSearchBar({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="relative w-full sm:w-[280px]">
+      <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="h-12 w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] pl-11 pr-4 text-sm outline-none transition focus:border-[#4DA528] focus:bg-white"
+      />
+    </div>
+  );
+}
+
+function AdminEmptyState({ icon: Icon, title, description }: { icon: React.ElementType; title: string; description: string }) {
+  return (
+    <div className="rounded-[20px] border border-dashed border-stone-200 bg-[#f7f8f3] p-10 text-center">
+      <Icon className="mx-auto h-10 w-10 text-stone-300" />
+      <p className="mt-3 text-sm font-extrabold text-stone-700">{title}</p>
+      <p className="mx-auto mt-2 max-w-sm text-xs leading-6 text-stone-500">{description}</p>
+    </div>
+  );
+}
+
+function AdminLoadingState({ label }: { label: string }) {
+  return (
+    <div className="flex items-center justify-center gap-3 rounded-[20px] border border-dashed border-stone-200 bg-[#f7f8f3] p-10 text-sm font-semibold text-stone-500">
+      <RefreshCw className="h-4 w-4 animate-spin text-[#4DA528]" />
+      {label}
+    </div>
+  );
+}
+
+function AdminImagePreview({ src, label }: { src?: string; label: string }) {
+  if (!src) {
+    return (
+      <div className="rounded-[16px] border border-dashed border-stone-300 bg-white p-4 text-xs text-stone-500">
+        No image selected yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-[16px] border border-stone-200 bg-white">
+      <div className="aspect-[16/9] bg-stone-100">
+        <img src={src} alt={label} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+      </div>
+      <p className="truncate px-4 py-3 text-xs font-semibold text-stone-500">{label}</p>
+    </div>
+  );
+}
+
 export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [featuredCategories, setFeaturedCategories] = useState<FeaturedCategoryItem[]>([]);
@@ -242,6 +383,7 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
   const [activityRecommendationFilter, setActivityRecommendationFilter] = useState<string>('all');
   const [activityRecommendationImageUploading, setActivityRecommendationImageUploading] = useState(false);
   const [featuredImageUploading, setFeaturedImageUploading] = useState(false);
+  const [activeManager, setActiveManager] = useState<ActivityManagerPage>(() => getInitialActivityManager());
 
   const fetchActivities = async () => {
     setLoadingActivities(true);
@@ -301,6 +443,27 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
     fetchActivityItems();
     fetchActivityRecommendations();
   }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveManager(getInitialActivityManager());
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const openManager = (manager: Exclude<ActivityManagerPage, 'dashboard'>) => {
+    setActiveManager(manager);
+    window.history.pushState(null, '', activityManagerPaths[manager]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const openManagerDashboard = () => {
+    setActiveManager('dashboard');
+    window.history.pushState(null, '', '/admin-dashboard');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const resetActivityForm = () => {
     setActivityEditingId(null);
@@ -756,17 +919,60 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
     });
   }, [activityRecommendations, activityRecommendationSearch, activityRecommendationFilter]);
 
+  const managementCards = [
+    {
+      icon: Compass,
+      title: 'Activities',
+      description: 'Manage the top-level activity tabs, imagery, categories, ordering, and homepage visibility.',
+      count: activities.length,
+      onOpen: () => openManager('activities'),
+    },
+    {
+      icon: Package,
+      title: 'Activity Items',
+      description: 'Create child experience cards, connect them to activities, and link packages when needed.',
+      count: activityItems.length,
+      onOpen: () => openManager('activity-items'),
+    },
+    {
+      icon: Sparkles,
+      title: 'Recommendations',
+      description: 'Curate recommendation cards with prices, ratings, badges, locations, and package links.',
+      count: activityRecommendations.length,
+      onOpen: () => openManager('recommendations'),
+    },
+  ];
+
   return (
     <div className="space-y-8 animate-fade-in">
-      <section className="relative overflow-hidden rounded-[26px] bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)] sm:p-8">
-        <div className="absolute inset-y-0 right-0 hidden w-1/3 bg-linear-to-l from-[#4DA528]/12 to-transparent lg:block" />
-        <div className="relative max-w-3xl">
-          <span className="inline-flex rounded-full bg-[#4DA528]/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Activities Module</span>
-          <h2 className="mt-4 text-4xl font-extrabold tracking-tight text-stone-950">Manage activities, child experiences, and recommendations from one place.</h2>
-          <p className="mt-3 text-sm leading-7 text-stone-500">Keep the homepage experience organized while preserving the public UI exactly as it is today.</p>
-        </div>
-      </section>
+      <AdminPageHeader
+        eyebrow="Activities Module"
+        title={activeManager === 'dashboard' ? 'Choose a focused CMS workspace.' : activeManager === 'activities' ? 'Manage homepage activity cards.' : activeManager === 'activity-items' ? 'Manage activity experience cards.' : 'Manage curated recommendations.'}
+        description={activeManager === 'dashboard'
+          ? 'Activities, activity items, and recommendations now live in focused management pages while reusing the same Firebase CRUD.'
+          : 'Search, edit, upload imagery, reorder, publish, and delete records without changing the existing Firestore collections.'}
+        action={activeManager !== 'dashboard' ? (
+          <button
+            type="button"
+            onClick={openManagerDashboard}
+            className="inline-flex items-center gap-2 rounded-[5px] border border-stone-200 bg-white px-4 py-3 text-[10px] font-extrabold uppercase tracking-wider text-stone-700 transition hover:-translate-y-0.5 hover:border-[#4DA528] hover:text-[#4DA528]"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            Back to dashboard
+          </button>
+        ) : null}
+      />
 
+      {activeManager === 'dashboard' ? (
+        <section className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          {managementCards.map((card) => (
+            <AdminManagementCard key={card.title} {...card} />
+          ))}
+        </section>
+      ) : (
+        <>
+
+      {activeManager === 'activities' && (
       <section className="space-y-8">
         <div className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
           <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -828,6 +1034,7 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
                 }} className="mt-3 block w-full text-xs" />
                 <span className="mt-2 block text-xs text-stone-500">{activityImageUploading ? 'Uploading...' : 'Upload or paste direct image URL'}</span>
               </label>
+              <AdminImagePreview src={activeActivityForm.imageUrl} label="Activity image preview" />
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-stone-500">{activityEditingId ? 'Editing existing activity' : 'Create a new activity entry.'}</div>
                 <div className="flex flex-col gap-3 sm:flex-row">
@@ -845,13 +1052,13 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
                   <h4 className="text-lg font-bold text-stone-950">Activity list</h4>
                   <p className="text-sm text-stone-500">Search, reorder, and toggle which cards show on the homepage.</p>
                 </div>
-                <input value={activitySearch} onChange={(e) => setActivitySearch(e.target.value)} placeholder="Search activities" className="h-12 rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                <AdminSearchBar value={activitySearch} onChange={setActivitySearch} placeholder="Search activities" />
               </div>
               <div className="space-y-4">
                 {loadingActivities ? (
-                  <div className="rounded-[20px] border border-dashed border-stone-200 bg-[#f7f8f3] p-10 text-center text-sm text-stone-500">Loading activities…</div>
+                  <AdminLoadingState label="Loading activities..." />
                 ) : filteredActivities.length === 0 ? (
-                  <div className="rounded-[20px] border border-dashed border-stone-200 bg-[#f7f8f3] p-10 text-center text-sm text-stone-500">No activities match your search.</div>
+                  <AdminEmptyState icon={Compass} title="No activities match your search." description="Try a broader title, subtitle, category, or location keyword." />
                 ) : (
                   filteredActivities.map((activity, index) => (
                     <div key={activity.id} className="rounded-[18px] border border-stone-200 p-4">
@@ -877,7 +1084,9 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
           </div>
         </div>
       </section>
+      )}
 
+      {activeManager === 'activity-items' && (
       <section className="space-y-8">
         <div className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
           <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -944,6 +1153,7 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
                 }} className="mt-3 block w-full text-xs" />
                 <span className="mt-2 block text-xs text-stone-500">{activityItemImageUploading ? 'Uploading...' : 'Upload or paste direct image URL'}</span>
               </label>
+              <AdminImagePreview src={activeActivityItemForm.thumbnailUrl} label="Activity item thumbnail preview" />
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-stone-500">{activityItemEditingId ? 'Editing existing activity item' : 'Create a new activity experience card.'}</div>
                 <div className="flex flex-col gap-3 sm:flex-row">
@@ -961,13 +1171,13 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
                   <h4 className="text-lg font-bold text-stone-950">Activity items</h4>
                   <p className="text-sm text-stone-500">Search, reorder, and publish child experience cards.</p>
                 </div>
-                <input value={activityItemSearch} onChange={(e) => setActivityItemSearch(e.target.value)} placeholder="Search activity items" className="h-12 rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                <AdminSearchBar value={activityItemSearch} onChange={setActivityItemSearch} placeholder="Search activity items" />
               </div>
               <div className="space-y-4">
                 {loadingActivityItems ? (
-                  <div className="rounded-[20px] border border-dashed border-stone-200 bg-[#f7f8f3] p-10 text-center text-sm text-stone-500">Loading activity items…</div>
+                  <AdminLoadingState label="Loading activity items..." />
                 ) : filteredActivityItems.length === 0 ? (
-                  <div className="rounded-[20px] border border-dashed border-stone-200 bg-[#f7f8f3] p-10 text-center text-sm text-stone-500">No activity items match your search.</div>
+                  <AdminEmptyState icon={Package} title="No activity items match your search." description="Search by title, subtitle, description, or linked package ID." />
                 ) : (
                   filteredActivityItems.map((item, index) => {
                     const itemActivity = activities.find((activity) => activity.id === item.activityId);
@@ -997,7 +1207,9 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
           </div>
         </div>
       </section>
+      )}
 
+      {activeManager === 'recommendations' && (
       <section className="space-y-8">
         <div className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
           <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1078,6 +1290,7 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
                 }} className="mt-3 block w-full text-xs" />
                 <span className="mt-2 block text-xs text-stone-500">{activityRecommendationImageUploading ? 'Uploading...' : 'Upload or paste direct image URL'}</span>
               </label>
+              <AdminImagePreview src={activeActivityRecommendationForm.thumbnailUrl} label="Recommendation image preview" />
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="flex items-center gap-3 rounded-[12px] border border-stone-200 bg-white px-4 py-3 text-sm">
                   <input type="checkbox" checked={activeActivityRecommendationForm.enabled ?? true} onChange={(e) => setActiveActivityRecommendationForm((prev) => ({ ...prev, enabled: e.target.checked }))} className="h-4 w-4 rounded border-stone-300 text-[#4DA528] focus:ring-[#4DA528]" />
@@ -1112,14 +1325,14 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
                       <option key={activity.id} value={activity.id}>{activity.title}</option>
                     ))}
                   </select>
-                  <input value={activityRecommendationSearch} onChange={(e) => setActivityRecommendationSearch(e.target.value)} placeholder="Search recommendations" className="h-12 rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+                  <AdminSearchBar value={activityRecommendationSearch} onChange={setActivityRecommendationSearch} placeholder="Search recommendations" />
                 </div>
               </div>
               <div className="space-y-4">
                 {loadingActivityRecommendations ? (
-                  <div className="rounded-[20px] border border-dashed border-stone-200 bg-[#f7f8f3] p-10 text-center text-sm text-stone-500">Loading recommendations…</div>
+                  <AdminLoadingState label="Loading recommendations..." />
                 ) : filteredActivityRecommendations.length === 0 ? (
-                  <div className="rounded-[20px] border border-dashed border-stone-200 bg-[#f7f8f3] p-10 text-center text-sm text-stone-500">No recommendations match your search.</div>
+                  <AdminEmptyState icon={Sparkles} title="No recommendations match your search." description="Clear the activity filter or search a wider badge, location, duration, or package term." />
                 ) : (
                   filteredActivityRecommendations.map((item, index) => {
                     const itemActivity = activities.find((activity) => activity.id === item.activityId);
@@ -1155,6 +1368,9 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
           </div>
         </div>
       </section>
+      )}
+        </>
+      )}
     </div>
   );
 }
