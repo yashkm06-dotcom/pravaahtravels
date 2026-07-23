@@ -9,6 +9,7 @@ import {
   Filter,
   Heart,
   MapPin,
+  MessageCircle,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -17,7 +18,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { PACKAGE_LOCATIONS, TravelPackage, formatPrice } from '../types';
+import { DEFAULT_WEBSITE_CMS, PACKAGE_LOCATIONS, TravelPackage, WebsiteCMSSettings, formatPrice } from '../types';
 import { SkeletonPackage } from './SkeletonLoader';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 
@@ -34,6 +35,7 @@ interface PackagesViewProps {
   onPackageSaved?: () => void;
   wishlistPackageIds?: string[];
   onToggleWishlist?: (pkg: TravelPackage) => Promise<void> | void;
+  websiteCMS?: WebsiteCMSSettings;
 }
 
 interface PackageFilters {
@@ -96,6 +98,24 @@ const getPackageReviewCount = (pkg: TravelPackage) => {
   return Number.isFinite(reviewCount) && reviewCount > 0 ? reviewCount : null;
 };
 
+const slugifyPackageTitle = (value: string) => String(value ?? '')
+  .toLowerCase()
+  .trim()
+  .replace(/&/g, 'and')
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '');
+
+const getPackageRouteSegment = (pkg: Pick<TravelPackage, 'id' | 'title'>) => {
+  const slug = slugifyPackageTitle(pkg.title);
+  return slug ? `${slug}-${pkg.id}` : String(pkg.id);
+};
+
+const sanitizeWhatsAppPhone = (value?: string) => {
+  const digits = String(value ?? '').replace(/[^\d]/g, '');
+  if (!digits) return '';
+  return digits.startsWith('91') ? digits : `91${digits.replace(/^0+/, '')}`;
+};
+
 export default function PackagesView({
   packages,
   onNavigate,
@@ -109,6 +129,7 @@ export default function PackagesView({
   onPackageSaved,
   wishlistPackageIds = [],
   onToggleWishlist,
+  websiteCMS,
 }: PackagesViewProps) {
   const initialFilters = useMemo(() => readFiltersFromUrl(), []);
   const [searchQuery, setSearchQuery] = useState(initialFilters.searchQuery);
@@ -255,6 +276,12 @@ export default function PackagesView({
   }, [searchQuery, selectedCategory, selectedDestination, selectedBookingType, selectedDuration, selectedAvailability, onResetPrefilledCategory, onClearSelectedLocation]);
 
   const hasActiveFilters = activeFilterChips.length > 0 || sortOrder !== 'default';
+  const whatsappPhone = sanitizeWhatsAppPhone(websiteCMS?.footerPhone) || sanitizeWhatsAppPhone(DEFAULT_WEBSITE_CMS.footerPhone);
+
+  const getPackageWhatsAppUrl = (pkg: TravelPackage) => {
+    const message = `Hello,\nI am interested in the ${pkg.title} package.\nPlease send complete details.`;
+    return `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(message)}`;
+  };
 
   const handleReset = () => {
     setSearchQuery('');
@@ -650,16 +677,27 @@ export default function PackagesView({
                         >
                           <Heart className={`h-4 w-4 transition hover:scale-110 ${isSaved ? 'fill-rose-600 text-rose-600' : ''}`} />
                         </button>
+                        <a
+                          href={getPackageWhatsAppUrl(pkg)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(event) => event.stopPropagation()}
+                          className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-[5px] border border-emerald-200 bg-emerald-50 text-emerald-700 transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/25"
+                          aria-label={`Ask on WhatsApp about ${pkg.title}`}
+                          title="WhatsApp Package"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </a>
                         <button
                           type="button"
-                          onClick={() => onNavigate('package-detail', pkg.id)}
+                          onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))}
                           className="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-[5px] border border-stone-200 bg-white px-4 py-3 text-[10px] font-extrabold uppercase tracking-[0.14em] text-stone-800 transition hover:-translate-y-0.5 hover:border-[#4DA528] hover:text-[#4DA528]"
                         >
                           View Details
                         </button>
                         <button
                           type="button"
-                          onClick={() => onNavigate('package-detail', pkg.id)}
+                          onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))}
                           className="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-[5px] bg-[#4DA528] px-4 py-3 text-[10px] font-extrabold uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5 hover:bg-[#FF970D]"
                         >
                           <span>Book Now</span>

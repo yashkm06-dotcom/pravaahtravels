@@ -3,10 +3,10 @@ import {
   Compass, LayoutDashboard, FileText, Package, Image as ImageIcon, 
   Plus, Edit2, Trash2, X, Search, Download, 
   Calendar, DollarSign, Users, LogOut, Globe, Eye, ChevronDown, ChevronUp,
-  Upload, CheckCircle, Clock, Phone, Mail, MessageSquare, Clipboard, ExternalLink, Star, LineChart as LineChartIcon, RefreshCw,
+  Upload, CheckCircle, Clock, Phone, Mail, MessageSquare, Clipboard, ExternalLink, Star, LineChart as LineChartIcon, RefreshCw, MapPin,
   Menu, Bell, Settings, Palette, Home, Megaphone, Images, PanelLeftClose, PanelLeftOpen, Heart, Sparkles, ChevronRight
 } from 'lucide-react';
-import { TravelPackage, Enquiry, GalleryImage, ActivityItem, DestinationCategory, EnquiryStatus, formatPrice, WebsiteCMSSettings, PACKAGE_LOCATIONS, type CustomerProfile } from '../types';
+import { TravelPackage, Enquiry, GalleryImage, ActivityItem, DestinationCategory, EnquiryStatus, Review, formatPrice, WebsiteCMSSettings, PACKAGE_LOCATIONS, type CustomerProfile } from '../types';
 import { auth, db, storage, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, setDoc, writeBatch, getDoc } from '../lib/firebase';
 import { collectionGroup } from 'firebase/firestore';
 import { triggerSystemEmail } from '../lib/emailClient';
@@ -782,6 +782,19 @@ function AdminDashboardView({
   const [replyText, setReplyText] = useState('');
   const [activeReviewForReply, setActiveReviewForReply] = useState<any | null>(null);
   const [isReplyModalOpen, setIsReplyModalOpen] = useState(false);
+  const [isReviewFormOpen, setIsReviewFormOpen] = useState(false);
+  const [editingReview, setEditingReview] = useState<Review | null>(null);
+  const [reviewFormData, setReviewFormData] = useState({
+    name: '',
+    destination: '',
+    rating: 5,
+    imageUrl: '',
+    comment: '',
+    createdAt: new Date().toISOString().substring(0, 10),
+    status: 'Approved' as 'Pending' | 'Approved' | 'Rejected',
+  });
+  const [reviewFormSaving, setReviewFormSaving] = useState(false);
+  const [reviewImageUploading, setReviewImageUploading] = useState(false);
 
   const fetchAdminReviews = async () => {
     setReviewsLoading(true);
@@ -847,6 +860,102 @@ function AdminDashboardView({
       await fetchAdminReviews();
     } catch (err) {
       console.error('Error deleting review:', err);
+    }
+  };
+
+  const resetReviewForm = () => {
+    setEditingReview(null);
+    setReviewFormData({
+      name: '',
+      destination: '',
+      rating: 5,
+      imageUrl: '',
+      comment: '',
+      createdAt: new Date().toISOString().substring(0, 10),
+      status: 'Approved',
+    });
+  };
+
+  const handleOpenReviewAdd = () => {
+    resetReviewForm();
+    setIsReviewFormOpen(true);
+  };
+
+  const handleOpenReviewEdit = (review: Review) => {
+    const parsedReviewDate = review.createdAt ? new Date(review.createdAt) : null;
+    const safeReviewDate = parsedReviewDate && !Number.isNaN(parsedReviewDate.getTime())
+      ? parsedReviewDate.toISOString().substring(0, 10)
+      : new Date().toISOString().substring(0, 10);
+    setEditingReview(review);
+    setReviewFormData({
+      name: review.name || '',
+      destination: review.destination || '',
+      rating: Number(review.rating || 5),
+      imageUrl: review.imageUrl || '',
+      comment: review.comment || '',
+      createdAt: safeReviewDate,
+      status: review.status || 'Approved',
+    });
+    setIsReviewFormOpen(true);
+  };
+
+  const handleReviewImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setReviewImageUploading(true);
+    try {
+      const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const imageRef = ref(storage, `reviews/${fileName}`);
+      const snapshot = await uploadBytes(imageRef, file);
+      const imageUrl = await getDownloadURL(snapshot.ref);
+      setReviewFormData((prev) => ({ ...prev, imageUrl }));
+    } catch (err) {
+      console.error('Review image upload failed:', err);
+      alert('Failed to upload review photo.');
+    } finally {
+      setReviewImageUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleSaveAdminReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewFormData.name.trim() || !reviewFormData.destination.trim() || !reviewFormData.comment.trim()) {
+      alert('Please complete customer name, destination, and review text.');
+      return;
+    }
+
+    setReviewFormSaving(true);
+    try {
+      const createdAt = reviewFormData.createdAt
+        ? new Date(`${reviewFormData.createdAt}T00:00:00`).toISOString()
+        : new Date().toISOString();
+      const payload = {
+        name: reviewFormData.name.trim(),
+        destination: reviewFormData.destination.trim(),
+        rating: Math.max(1, Math.min(5, Number(reviewFormData.rating) || 5)),
+        imageUrl: reviewFormData.imageUrl.trim(),
+        comment: reviewFormData.comment.trim(),
+        status: reviewFormData.status,
+        verified: true,
+        createdAt,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (editingReview?.id) {
+        await updateDoc(doc(db, 'reviews', editingReview.id), payload);
+      } else {
+        await addDoc(collection(db, 'reviews'), payload);
+      }
+
+      await fetchAdminReviews();
+      setIsReviewFormOpen(false);
+      resetReviewForm();
+    } catch (err) {
+      console.error('Error saving admin review:', err);
+      alert('Failed to save review.');
+    } finally {
+      setReviewFormSaving(false);
     }
   };
 
@@ -1056,6 +1165,8 @@ function AdminDashboardView({
   // ----------------------------------------------------
   const metrics = useMemo(() => {
     const totalEnquiries = enquiries.length;
+    const totalActivities = activities.length;
+    const totalGalleryImages = gallery.length;
 
     const currentYearMonth = new Date().toISOString().substring(0, 7);
     const thisMonthEnquiries = enquiries.filter(
@@ -1097,8 +1208,34 @@ function AdminDashboardView({
       )
     );
 
+    const savedPackageCounts = wishlistItems.reduce<Record<string, number>>((acc, item) => {
+      const packageId = String(item.packageId || '').trim();
+      if (!packageId) return acc;
+      acc[packageId] = (acc[packageId] || 0) + 1;
+      return acc;
+    }, {});
+    const mostSavedEntry = Object.entries(savedPackageCounts).sort((a, b) => b[1] - a[1])[0];
+    const mostSavedPackageId = mostSavedEntry?.[0];
+    const mostSavedPackageCount = mostSavedEntry?.[1] ?? 0;
+    const mostSavedPackage = mostSavedPackageId
+      ? `${packages.find((p) => p.id === mostSavedPackageId)?.title || 'Saved Package'} (${mostSavedPackageCount})`
+      : 'No saves yet';
+
+    const destinationCounts = [...bookings, ...enquiries].reduce<Record<string, number>>((acc, item: any) => {
+      const destination = String(item.destination || item.packageTitle || '').trim();
+      if (!destination) return acc;
+      acc[destination] = (acc[destination] || 0) + 1;
+      return acc;
+    }, {});
+    const topDestinationEntry = Object.entries(destinationCounts).sort((a, b) => b[1] - a[1])[0];
+    const topDestinationName = topDestinationEntry?.[0];
+    const topDestinationCount = topDestinationEntry?.[1] ?? 0;
+    const mostPopularDestination = topDestinationName ? `${topDestinationName} (${topDestinationCount})` : 'No destination data';
+
     return {
       totalEnquiries,
+      totalActivities,
+      totalGalleryImages,
       thisMonthEnquiries,
       totalPackages,
       activePackages,
@@ -1113,8 +1250,10 @@ function AdminDashboardView({
       totalCustomers: customerEmails.length,
       wishlistSaves: wishlistItems.length,
       estimatedRevenue: totalRevenue,
+      mostSavedPackage,
+      mostPopularDestination,
     };
-  }, [enquiries, packages, bookings, wishlistItems]);
+  }, [activities.length, enquiries, gallery.length, packages, bookings, wishlistItems]);
 
   // ----------------------------------------------------
   // ENQUIRIES FILTERS & EXPORT
@@ -1806,19 +1945,21 @@ function AdminDashboardView({
 
   const dashboardStats = [
     { label: 'Total Packages', value: metrics.totalPackages, description: 'Live catalogue items', icon: Package, tone: 'from-[#4DA528]/12 to-white', trend: '+3 this month' },
-    { label: 'Total Bookings', value: metrics.totalBookingsCount, description: 'All booking requests', icon: Calendar, tone: 'from-sky-500/12 to-white', trend: 'Updated live' },
-    { label: 'Pending Bookings', value: metrics.pendingBookingsCount, description: 'Awaiting confirmation', icon: Clock, tone: 'from-amber-500/14 to-white', trend: 'Needs attention' },
-    { label: 'Confirmed Bookings', value: metrics.confirmedBookingsCount, description: 'Ready for travel', icon: CheckCircle, tone: 'from-emerald-500/12 to-white', trend: 'Healthy pipeline' },
-    { label: 'Cancelled Bookings', value: metrics.cancelledBookingsCount, description: 'Cancelled requests', icon: X, tone: 'from-rose-500/12 to-white', trend: 'Watch churn' },
+    { label: 'Total Activities', value: metrics.totalActivities, description: 'Experience CMS entries', icon: Compass, tone: 'from-teal-500/12 to-white', trend: 'CMS ready' },
+    { label: 'Gallery Images', value: metrics.totalGalleryImages, description: 'Published media assets', icon: Images, tone: 'from-sky-500/12 to-white', trend: 'Media library' },
     { label: 'Total Customers', value: metrics.totalCustomers, description: 'Bookings + enquiries', icon: Users, tone: 'from-violet-500/12 to-white', trend: 'Growing steadily' },
-    { label: 'Wishlist Saves', value: metrics.wishlistSaves, description: 'Packages saved by travelers', icon: Heart, tone: 'from-rose-500/12 to-white', trend: 'Top intent signal' },
+    { label: 'Saved Packages', value: metrics.wishlistSaves, description: 'Packages saved by travelers', icon: Heart, tone: 'from-rose-500/12 to-white', trend: 'Top intent signal' },
+    { label: 'Total Enquiries', value: metrics.totalEnquiries, description: `${metrics.thisMonthEnquiries} this month`, icon: FileText, tone: 'from-amber-500/14 to-white', trend: 'Lead pipeline' },
+    { label: 'Most Saved Package', value: metrics.mostSavedPackage, description: 'Wishlist leader', icon: Star, tone: 'from-[#071d28]/10 to-white', trend: 'Demand signal' },
+    { label: 'Popular Destination', value: metrics.mostPopularDestination, description: 'Bookings + enquiries', icon: MapPin, tone: 'from-emerald-500/12 to-white', trend: 'Route signal' },
+    { label: 'Total Bookings', value: metrics.totalBookingsCount, description: 'All booking requests', icon: Calendar, tone: 'from-sky-500/12 to-white', trend: 'Updated live' },
     { label: 'Estimated Revenue', value: formatPrice(metrics.estimatedRevenue), description: 'Confirmed trip value', icon: DollarSign, tone: 'from-[#071d28]/10 to-white', trend: 'Forecast ready' },
   ];
 
   const quickActions = [
     { label: 'Add Package', icon: Plus, action: handleOpenPkgAdd, tone: 'bg-[#4DA528] text-white hover:bg-[#FF970D]' },
     { label: 'View Bookings', icon: Calendar, action: () => setActiveTab('bookings'), tone: 'bg-stone-950 text-white hover:bg-stone-800' },
-    { label: 'Customers', icon: Users, action: () => setActiveTab('bookings'), tone: 'bg-white text-stone-700 hover:text-[#4DA528] border border-stone-200' },
+    { label: 'Customers', icon: Users, action: () => setActiveTab('customers'), tone: 'bg-white text-stone-700 hover:text-[#4DA528] border border-stone-200' },
     { label: 'Reports', icon: LineChartIcon, action: () => setActiveTab('analytics'), tone: 'bg-[#f7f8f3] text-stone-700 hover:text-[#4DA528] border border-stone-200' },
     { label: 'Settings', icon: Settings, action: () => setActiveTab('settings'), tone: 'bg-white text-stone-700 hover:text-[#4DA528] border border-stone-200' },
   ];
@@ -2444,6 +2585,8 @@ function AdminDashboardView({
                 handleReviewFeaturedToggle={handleReviewFeaturedToggle}
                 handleReviewStatusUpdate={handleReviewStatusUpdate}
                 handleDeleteReview={handleDeleteReview}
+                handleOpenReviewAdd={handleOpenReviewAdd}
+                handleOpenReviewEdit={handleOpenReviewEdit}
                 activeReviewForReply={activeReviewForReply}
                 setActiveReviewForReply={setActiveReviewForReply}
                 replyText={replyText}
@@ -3257,68 +3400,171 @@ function AdminDashboardView({
         </div>
       )}
       {/* ==================================================== */}
-      {/* DIALOG D: REVIEW REPLY MODAL */}
+      {/* DIALOG D: REVIEW ADD/EDIT MODAL */}
       {/* ==================================================== */}
-      {isReplyModalOpen && activeReviewForReply && (
-        <div className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in font-sans">
-          <div className="bg-white rounded-md w-full max-w-md overflow-hidden shadow-2xl p-6 space-y-4">
-            
-            <div className="flex justify-between items-center border-b border-stone-100 pb-3">
-              <h3 className="font-serif font-normal text-base text-stone-900 flex items-center gap-2">
-                <span>Reply to Review</span>
-              </h3>
-              <button 
+      {isReviewFormOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/45 p-4 backdrop-blur-xs animate-fade-in font-sans">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[18px] bg-white shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-stone-100 bg-white p-6">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Reviews CMS</span>
+                <h3 className="mt-2 text-2xl font-extrabold text-stone-950">{editingReview ? 'Edit Customer Review' : 'Add Customer Review'}</h3>
+                <p className="mt-1 text-sm text-stone-500">Publish verified customer stories using the existing reviews collection.</p>
+              </div>
+              <button
+                type="button"
                 onClick={() => {
-                  setIsReplyModalOpen(false);
-                  setActiveReviewForReply(null);
-                  setReplyText('');
+                  setIsReviewFormOpen(false);
+                  resetReviewForm();
                 }}
-                className="text-stone-400 hover:text-stone-900 cursor-pointer"
+                className="rounded-full border border-stone-200 p-2 text-stone-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                aria-label="Close review form"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="bg-stone-50 border border-stone-200 p-3 rounded text-xs space-y-1">
-              <span className="font-bold text-stone-500 uppercase text-[9px] tracking-wider block">Customer Testimonial</span>
-              <strong className="text-stone-850 block">{activeReviewForReply.name} ({activeReviewForReply.rating}★)</strong>
-              <p className="text-stone-600 italic">"{activeReviewForReply.comment}"</p>
-            </div>
+            <form onSubmit={handleSaveAdminReview} className="space-y-5 p-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500" htmlFor="review-customer-name">Customer Name *</label>
+                  <input
+                    id="review-customer-name"
+                    type="text"
+                    required
+                    value={reviewFormData.name}
+                    onChange={(e) => setReviewFormData((prev) => ({ ...prev, name: e.target.value }))}
+                    className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white"
+                  />
+                </div>
 
-            <form onSubmit={handleReviewReplySubmit} className="space-y-4">
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Your Official Coordinator Reply *</label>
-                <textarea
-                  required
-                  rows={4}
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  placeholder="Thank you for sharing your incredible experience, we look forward to designing your next customized tour..."
-                  className="w-full px-3 py-2 border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080]"
-                ></textarea>
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500" htmlFor="review-destination">Destination *</label>
+                  <input
+                    id="review-destination"
+                    type="text"
+                    required
+                    value={reviewFormData.destination}
+                    onChange={(e) => setReviewFormData((prev) => ({ ...prev, destination: e.target.value }))}
+                    className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500" htmlFor="review-rating">Rating *</label>
+                  <select
+                    id="review-rating"
+                    value={reviewFormData.rating}
+                    onChange={(e) => setReviewFormData((prev) => ({ ...prev, rating: Number(e.target.value) }))}
+                    className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white"
+                  >
+                    {[5, 4, 3, 2, 1].map((rating) => (
+                      <option key={rating} value={rating}>{rating} Star{rating === 1 ? '' : 's'}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500" htmlFor="review-date">Review Date *</label>
+                  <input
+                    id="review-date"
+                    type="date"
+                    required
+                    value={reviewFormData.createdAt}
+                    onChange={(e) => setReviewFormData((prev) => ({ ...prev, createdAt: e.target.value }))}
+                    className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500" htmlFor="review-status">Status *</label>
+                  <select
+                    id="review-status"
+                    value={reviewFormData.status}
+                    onChange={(e) => setReviewFormData((prev) => ({ ...prev, status: e.target.value as 'Pending' | 'Approved' | 'Rejected' }))}
+                    className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white"
+                  >
+                    <option value="Approved">Approved</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Rejected">Rejected</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500" htmlFor="review-photo-upload">Photo Upload</label>
+                  <div className="relative rounded-[12px] border border-dashed border-stone-300 bg-[#f7f8f3] px-4 py-3 text-sm text-stone-500 transition hover:border-[#4DA528]">
+                    <input
+                      id="review-photo-upload"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleReviewImageUpload}
+                      disabled={reviewImageUploading}
+                      className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+                    />
+                    <span className="inline-flex items-center gap-2 font-semibold">
+                      <Upload className="h-4 w-4 text-[#4DA528]" />
+                      {reviewImageUploading ? 'Uploading photo...' : 'Upload customer photo'}
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex gap-4 pt-3 border-t border-stone-100">
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500" htmlFor="review-photo-url">Photo URL</label>
+                <input
+                  id="review-photo-url"
+                  type="url"
+                  value={reviewFormData.imageUrl}
+                  onChange={(e) => setReviewFormData((prev) => ({ ...prev, imageUrl: e.target.value }))}
+                  placeholder="https://..."
+                  className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white"
+                />
+              </div>
+
+              {reviewFormData.imageUrl && (
+                <div className="overflow-hidden rounded-[14px] border border-stone-200 bg-stone-100">
+                  <img
+                    src={reviewFormData.imageUrl}
+                    alt="Review photo preview"
+                    className="h-52 w-full object-cover"
+                    referrerPolicy="no-referrer"
+                    onError={handleTravelImageError}
+                  />
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500" htmlFor="review-comment">Review *</label>
+                <textarea
+                  id="review-comment"
+                  required
+                  rows={5}
+                  value={reviewFormData.comment}
+                  onChange={(e) => setReviewFormData((prev) => ({ ...prev, comment: e.target.value }))}
+                  className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white"
+                />
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-stone-100 pt-5 sm:flex-row">
                 <button
                   type="button"
                   onClick={() => {
-                    setIsReplyModalOpen(false);
-                    setActiveReviewForReply(null);
-                    setReplyText('');
+                    setIsReviewFormOpen(false);
+                    resetReviewForm();
                   }}
-                  className="w-1/2 py-2 border border-stone-200 text-stone-600 text-[10px] font-bold uppercase tracking-wider rounded hover:bg-stone-50 cursor-pointer"
+                  className="flex-1 rounded-[10px] border border-stone-200 bg-white px-4 py-3 text-xs font-extrabold uppercase tracking-wider text-stone-700 transition hover:bg-stone-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 py-2 bg-[#008080] hover:bg-[#006666] text-white text-[10px] font-bold uppercase tracking-wider rounded shadow-sm cursor-pointer text-center"
+                  disabled={reviewFormSaving || reviewImageUploading}
+                  className="flex-1 rounded-[10px] bg-[#4DA528] px-4 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Save Reply
+                  {reviewFormSaving ? 'Saving Review...' : editingReview ? 'Update Review' : 'Add Review'}
                 </button>
               </div>
             </form>
-
           </div>
         </div>
       )}

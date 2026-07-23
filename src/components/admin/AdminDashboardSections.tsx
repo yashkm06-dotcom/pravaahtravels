@@ -24,6 +24,7 @@ interface OverviewTabProps {
     pendingReceivables: number;
     totalPackages: number;
     activePackages: number;
+    recentEnquiries: Enquiry[];
   };
   formatPriceValue: (value: number) => string;
   quickActions: Array<{ label: string; icon: React.ElementType; action: () => void; tone: string }>;
@@ -164,6 +165,38 @@ export const OverviewTab = React.memo(function OverviewTab(props: OverviewTabPro
               <button type="button" onClick={() => setActiveTab('packages')} className="inline-flex w-full items-center justify-center gap-2 rounded-[5px] border border-stone-200 px-4 py-3 text-xs font-extrabold uppercase tracking-wider text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]">
                 Manage Catalogue
               </button>
+            </div>
+          </div>
+
+          <div className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Recent Enquiries</span>
+              <button type="button" onClick={() => setActiveTab('enquiries')} className="text-[10px] font-extrabold uppercase tracking-wider text-stone-500 transition hover:text-[#4DA528]">Open Leads</button>
+            </div>
+            <div className="mt-5 space-y-3">
+              {metrics.recentEnquiries.length > 0 ? (
+                metrics.recentEnquiries.map((enquiry) => (
+                  <button
+                    key={enquiry.id}
+                    type="button"
+                    onClick={() => setActiveTab('enquiries')}
+                    className="w-full rounded-[16px] border border-stone-100 bg-[#fbfcf7] p-4 text-left transition hover:border-[#4DA528]/40 hover:bg-white"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-extrabold text-stone-950">{enquiry.name || 'Traveler'}</h4>
+                        <p className="mt-1 text-xs text-stone-500">{enquiry.destination || 'Custom destination'} · {enquiry.travelDate || 'Flexible dates'}</p>
+                      </div>
+                      <span className="rounded-full bg-[#4DA528]/10 px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-wider text-[#4DA528]">{enquiry.status || 'New'}</span>
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="rounded-[18px] border border-dashed border-stone-300 bg-[#f7f8f3] p-8 text-center">
+                  <Mail className="mx-auto h-9 w-9 text-stone-300" />
+                  <p className="mt-3 text-sm font-bold text-stone-600">No enquiries yet.</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2588,6 +2621,8 @@ interface ReviewsTabProps {
   handleReviewFeaturedToggle: (id: string, currentFeatured: boolean) => Promise<void>;
   handleReviewStatusUpdate: (id: string, status: 'Approved' | 'Rejected') => Promise<void>;
   handleDeleteReview: (id: string) => Promise<void>;
+  handleOpenReviewAdd: () => void;
+  handleOpenReviewEdit: (review: any) => void;
   activeReviewForReply: any | null;
   setActiveReviewForReply: (value: any | null) => void;
   replyText: string;
@@ -2598,7 +2633,7 @@ interface ReviewsTabProps {
 }
 
 export function ReviewsTab(props: ReviewsTabProps) {
-  const { filteredAdminReviews, reviewsLoading, reviewSearch, setReviewSearch, reviewStatusFilter, setReviewStatusFilter, reviewRatingFilter, setReviewRatingFilter, fetchAdminReviews, handleReviewFeaturedToggle, handleReviewStatusUpdate, handleDeleteReview, activeReviewForReply, setActiveReviewForReply, replyText, setReplyText, isReplyModalOpen, setIsReplyModalOpen, handleReviewReplySubmit } = props;
+  const { filteredAdminReviews, reviewsLoading, reviewSearch, setReviewSearch, reviewStatusFilter, setReviewStatusFilter, reviewRatingFilter, setReviewRatingFilter, fetchAdminReviews, handleReviewFeaturedToggle, handleReviewStatusUpdate, handleDeleteReview, handleOpenReviewAdd, handleOpenReviewEdit, activeReviewForReply, setActiveReviewForReply, replyText, setReplyText, isReplyModalOpen, setIsReplyModalOpen, handleReviewReplySubmit } = props;
 
   return (
     <div className="space-y-6 animate-fade-in font-sans">
@@ -2610,7 +2645,11 @@ export function ReviewsTab(props: ReviewsTabProps) {
           </h2>
           <p className="text-xs text-stone-500 font-light mt-0.5">Moderate customer reviews, feature high-quality testimonials, and reply directly to feedback.</p>
         </div>
-        <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={handleOpenReviewAdd} className="px-4 py-2 bg-[#4DA528] hover:bg-[#FF970D] text-white text-xs font-bold rounded shadow-sm flex items-center gap-1.5 transition cursor-pointer border border-[#4DA528]/20">
+            <Plus className="h-3.5 w-3.5" />
+            <span>Add Review</span>
+          </button>
           <button onClick={() => void fetchAdminReviews()} className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold rounded shadow-sm flex items-center gap-1.5 transition cursor-pointer border border-stone-250">
             <span>Refresh Reviews</span>
           </button>
@@ -2688,7 +2727,23 @@ export function ReviewsTab(props: ReviewsTabProps) {
                   </div>
                 </div>
 
-                <div className="text-stone-700 text-xs italic font-serif leading-relaxed pl-4 border-l-2 border-stone-250 py-1">"{r.comment}"</div>
+                <div className="grid gap-4 md:grid-cols-[120px_1fr] md:items-start">
+                  {r.imageUrl ? (
+                    <img
+                      src={r.imageUrl}
+                      alt={`${r.name || 'Customer'} review`}
+                      className="h-24 w-full rounded-[10px] border border-stone-200 object-cover"
+                      referrerPolicy="no-referrer"
+                      loading="lazy"
+                      onError={handleTravelImageError}
+                    />
+                  ) : (
+                    <div className="hidden h-24 rounded-[10px] border border-dashed border-stone-200 bg-stone-50 text-[10px] font-bold uppercase tracking-wider text-stone-400 md:flex md:items-center md:justify-center">
+                      No Photo
+                    </div>
+                  )}
+                  <div className="text-stone-700 text-xs italic font-serif leading-relaxed pl-4 border-l-2 border-stone-250 py-1">"{r.comment}"</div>
+                </div>
 
                 {r.reply && (
                   <div className="bg-stone-50 border border-stone-200/60 rounded p-3 pl-4 text-xs space-y-1 ml-4 relative">
@@ -2705,6 +2760,7 @@ export function ReviewsTab(props: ReviewsTabProps) {
                   <div className="flex items-center gap-2">
                     {status !== 'Approved' && <button onClick={() => void handleReviewStatusUpdate(r.id, 'Approved')} className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded text-emerald-700 font-bold uppercase text-[9px] tracking-wider transition cursor-pointer">Approve Testimonial</button>}
                     {status !== 'Rejected' && <button onClick={() => void handleReviewStatusUpdate(r.id, 'Rejected')} className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded text-rose-700 font-bold uppercase text-[9px] tracking-wider transition cursor-pointer">Reject / Hide</button>}
+                    <button onClick={() => handleOpenReviewEdit(r)} className="px-2.5 py-1.5 bg-white hover:bg-stone-100 border border-stone-200 rounded text-stone-700 font-bold uppercase text-[9px] tracking-wider transition cursor-pointer">Edit Review</button>
                     <button onClick={() => { setActiveReviewForReply(r); setReplyText(r.reply || ''); setIsReplyModalOpen(true); }} className="px-2.5 py-1.5 bg-[#fcfbf9] hover:bg-stone-100 border border-stone-200 rounded text-stone-700 font-bold uppercase text-[9px] tracking-wider transition cursor-pointer">{r.reply ? 'Edit Reply' : 'Reply feedback'}</button>
                     <button onClick={() => void handleDeleteReview(r.id)} className="p-1.5 bg-stone-50 hover:bg-rose-600 border border-stone-200 text-stone-400 hover:text-white rounded transition cursor-pointer" title="Delete review permanently">
                       <Trash2 className="w-3.5 h-3.5" />

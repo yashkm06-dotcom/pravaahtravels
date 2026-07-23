@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db, collection, getDocs, query, orderBy, deleteDoc, doc, getDoc, onSnapshot, where, addDoc } from './lib/firebase';
 import { MessageCircle, Sparkles, Compass } from 'lucide-react';
-import { TravelPackage, Enquiry, GalleryImage, WebsiteCMSSettings, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem } from './types';
+import { TravelPackage, Enquiry, GalleryImage, WebsiteCMSSettings, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem, DEFAULT_WEBSITE_CMS } from './types';
 
 // Component imports
 import Header from './components/Header';
 import Footer from './components/Footer';
 import LoginModal from './components/LoginModal';
 import SEO from './components/SEO';
+import PremiumEnquiryModal from './components/PremiumEnquiryModal';
 
 const HomeView = lazy(() => import('./components/HomeView'));
 const AboutView = lazy(() => import('./components/AboutView'));
@@ -54,6 +55,35 @@ interface PackageFilterSelection {
   availability?: string;
 }
 
+const slugifyPackageTitle = (value: string) => String(value ?? '')
+  .toLowerCase()
+  .trim()
+  .replace(/&/g, 'and')
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '');
+
+const getPackageRouteSegment = (pkg: Pick<TravelPackage, 'id' | 'title'>) => {
+  const slug = slugifyPackageTitle(pkg.title);
+  return slug ? `${slug}-${pkg.id}` : String(pkg.id);
+};
+
+const sanitizeWhatsAppPhone = (value?: string) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const digits = raw.replace(/[^\d]/g, '');
+  if (!digits) return '';
+  return digits.startsWith('91') ? digits : `91${digits.replace(/^0+/, '')}`;
+};
+
+const getCmsWhatsAppPhone = (websiteCMS: Partial<WebsiteCMSSettings>) => {
+  return sanitizeWhatsAppPhone(websiteCMS.footerPhone) || sanitizeWhatsAppPhone(DEFAULT_WEBSITE_CMS.footerPhone);
+};
+
+const getPackageCanonicalUrl = (pkg: Pick<TravelPackage, 'id' | 'title'>) => {
+  if (typeof window === 'undefined') return `/packages/${getPackageRouteSegment(pkg)}`;
+  return `${window.location.origin}/packages/${getPackageRouteSegment(pkg)}`;
+};
+
 const getRouteStateFromUrl = (): RouteState => {
   const path = window.location.pathname;
   if (path === '/' || path === '') {
@@ -66,6 +96,11 @@ const getRouteStateFromUrl = (): RouteState => {
     const parts = path.split('/');
     const packageId = parts[2] || null;
     return { view: 'package-detail', packageId };
+  }
+  if (path.startsWith('/packages/')) {
+    const parts = path.split('/');
+    const packageSlug = parts[2] ? decodeURIComponent(parts[2]) : null;
+    return { view: 'package-detail', packageId: packageSlug };
   }
   const cleanPath = path.replace(/^\//, ''); // remove leading slash
   if (cleanPath === 'review' || cleanPath === 'reviews') {
@@ -90,7 +125,7 @@ const getRouteStateFromUrl = (): RouteState => {
 
 const getUrlFromRouteState = (view: string, packageId: string | null): string => {
   if (view === 'home') return '/';
-  if (view === 'package-detail' && packageId) return `/package/${packageId}`;
+  if (view === 'package-detail' && packageId) return `/packages/${packageId}`;
   if (view === 'reviews') return '/review'; // as explicitly requested
   if (view === 'admin-dashboard' && (window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/'))) {
     return window.location.pathname;
@@ -113,6 +148,7 @@ export default function App() {
   const [prefilledCategory, setPrefilledCategory] = useState<string>('All');
   const [selectedPackageLocation, setSelectedPackageLocation] = useState<string>('All');
   const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [quoteModalOpen, setQuoteModalOpen] = useState(false);
   const [pendingPostLoginView, setPendingPostLoginView] = useState<string | null>(null);
 
   // Firebase auth state
@@ -407,6 +443,14 @@ export default function App() {
     setSavedPackagesRefreshKey((prev) => prev + 1);
   }, []);
 
+  const handleOpenQuoteModal = useCallback(() => {
+    setQuoteModalOpen(true);
+  }, []);
+
+  const handleCloseQuoteModal = useCallback(() => {
+    setQuoteModalOpen(false);
+  }, []);
+
   const handleToggleWishlist = useCallback(async (pkg: TravelPackage) => {
     if (!pkg?.id) return;
 
@@ -532,7 +576,11 @@ export default function App() {
     if (!window.confirm('Are you absolutely sure you want to delete this travel package permanently?')) return;
     try {
       await deleteDoc(doc(db, 'packages', id));
-      if (selectedPackageId === id) {
+      const deletedPackage = packages.find((item) => item.id === id);
+      if (
+        selectedPackageId === id ||
+        (deletedPackage && selectedPackageId === getPackageRouteSegment(deletedPackage))
+      ) {
         setSelectedPackageId(null);
         setCurrentView('packages');
       }
@@ -556,14 +604,136 @@ export default function App() {
 
   const activeSelectedPackage = useMemo(() => {
     if (!selectedPackageId) return null;
-    return packages.find((p) => p.id === selectedPackageId) || null;
+    const normalizedPackageId = decodeURIComponent(String(selectedPackageId));
+    return packages.find((p) => (
+      String(p.id) === normalizedPackageId ||
+      getPackageRouteSegment(p) === normalizedPackageId ||
+      slugifyPackageTitle(p.title) === normalizedPackageId
+    )) || null;
   }, [packages, selectedPackageId]);
+
+  const pageSeo = useMemo(() => {
+    const baseUrl = typeof window === 'undefined' ? 'https://pravaahtravels.com' : window.location.origin;
+    const fallbackTitle = websiteCMS.seoTitle || DEFAULT_WEBSITE_CMS.seoTitle;
+    const fallbackDescription = websiteCMS.seoDescription || DEFAULT_WEBSITE_CMS.seoDescription;
+    const fallbackKeywords = websiteCMS.seoKeywords || DEFAULT_WEBSITE_CMS.seoKeywords;
+    const fallbackImage = websiteCMS.heroBackgroundImageUrl || DEFAULT_WEBSITE_CMS.heroBackgroundImageUrl;
+    const phone = websiteCMS.footerPhone || DEFAULT_WEBSITE_CMS.footerPhone;
+    const address = websiteCMS.footerAddress || DEFAULT_WEBSITE_CMS.footerAddress;
+
+    const viewMeta: Record<string, { title: string; description: string; canonicalPath: string }> = {
+      home: {
+        title: fallbackTitle,
+        description: fallbackDescription,
+        canonicalPath: '/',
+      },
+      packages: {
+        title: 'Premium Travel Packages',
+        description: 'Browse Pravaah Travels packages with curated itineraries, destinations, pricing, and enquiry support.',
+        canonicalPath: '/packages',
+      },
+      destinations: {
+        title: 'Destinations',
+        description: 'Explore pilgrimage, adventure, family, luxury, wildlife, and Himalayan destinations with Pravaah Travels.',
+        canonicalPath: '/destinations',
+      },
+      gallery: {
+        title: 'Travel Gallery',
+        description: 'View Pravaah Travels destination photography, tour galleries, and real Himalayan journey moments.',
+        canonicalPath: '/gallery',
+      },
+      about: {
+        title: 'About Pravaah Travels',
+        description: 'Learn about Pravaah Travels, our local travel expertise, and premium Himalayan journey planning.',
+        canonicalPath: '/about',
+      },
+      contact: {
+        title: 'Contact Pravaah Travels',
+        description: 'Contact Pravaah Travels for custom packages, enquiries, bookings, and support.',
+        canonicalPath: '/contact',
+      },
+      reviews: {
+        title: 'Verified Travel Reviews',
+        description: 'Read verified Pravaah Travels customer reviews, ratings, and destination experiences.',
+        canonicalPath: '/review',
+      },
+      portal: {
+        title: 'Customer Portal',
+        description: 'Access your Pravaah Travels bookings, saved packages, reviews, and travel dashboard.',
+        canonicalPath: '/portal',
+      },
+    };
+
+    const activeMeta = viewMeta[currentView] || viewMeta.home;
+    const title = activeSelectedPackage?.seoTitle || activeSelectedPackage?.title || activeMeta.title;
+    const description = activeSelectedPackage?.seoDescription || activeSelectedPackage?.shortDescription || activeMeta.description;
+    const canonicalUrl = activeSelectedPackage
+      ? getPackageCanonicalUrl(activeSelectedPackage)
+      : `${baseUrl}${activeMeta.canonicalPath}`;
+    const ogImage = activeSelectedPackage?.packageBannerUrl || activeSelectedPackage?.imageUrl || fallbackImage;
+
+    const schemaMarkup = activeSelectedPackage ? {
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'TravelAgency',
+          name: 'Pravaah Travels',
+          url: baseUrl,
+          image: ogImage,
+          telephone: phone,
+          email: websiteCMS.footerEmail || DEFAULT_WEBSITE_CMS.footerEmail,
+          address,
+        },
+        {
+          '@type': 'TouristTrip',
+          additionalType: 'TourPackage',
+          name: activeSelectedPackage.title,
+          description,
+          image: ogImage,
+          url: canonicalUrl,
+          touristType: activeSelectedPackage.category,
+          itinerary: activeSelectedPackage.itinerary?.map((day) => ({
+            '@type': 'ItemList',
+            name: `Day ${day.day}: ${day.title}`,
+            description: day.description,
+          })),
+          offers: {
+            '@type': 'Offer',
+            price: activeSelectedPackage.offerPrice || activeSelectedPackage.price,
+            priceCurrency: 'INR',
+            availability: activeSelectedPackage.active ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+          },
+        },
+      ],
+    } : {
+      '@context': 'https://schema.org',
+      '@type': 'TravelAgency',
+      name: 'Pravaah Travels',
+      url: baseUrl,
+      image: ogImage,
+      description,
+      telephone: phone,
+      email: websiteCMS.footerEmail || DEFAULT_WEBSITE_CMS.footerEmail,
+      address,
+    };
+
+    return {
+      title,
+      description,
+      keywords: activeSelectedPackage
+        ? `${activeSelectedPackage.title}, ${activeSelectedPackage.destination}, ${activeSelectedPackage.category}, ${fallbackKeywords}`
+        : fallbackKeywords,
+      canonicalUrl,
+      ogImage,
+      schemaMarkup,
+    };
+  }, [activeSelectedPackage, currentView, websiteCMS]);
 
   const showLoginModal = loginModalOpen || currentView === 'admin-login';
 
   // Generate dynamic WhatsApp contact url containing page context
   const getWhatsAppUrl = () => {
-    const phone = "919999999999";
+    const phone = getCmsWhatsAppPhone(websiteCMS);
     let text = "Hi Pravaah Travels support team! ";
 
     switch (currentView) {
@@ -612,10 +782,13 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-gray-800 font-sans" id="app-root">
       <SEO
-        title={websiteCMS.seoTitle}
-        description={websiteCMS.seoDescription}
-        keywords={websiteCMS.seoKeywords}
-        ogImage={websiteCMS.heroBackgroundImageUrl}
+        title={pageSeo.title}
+        description={pageSeo.description}
+        keywords={pageSeo.keywords}
+        canonicalUrl={pageSeo.canonicalUrl}
+        ogImage={pageSeo.ogImage}
+        ogType={activeSelectedPackage ? 'travel' : 'website'}
+        schemaMarkup={pageSeo.schemaMarkup}
       />
       
       {/* Hide header on full-screen admin dashboard */}
@@ -676,6 +849,7 @@ export default function App() {
               onPackageSaved={handlePackageSaved}
               wishlistPackageIds={wishlistPackageIds}
               onToggleWishlist={handleToggleWishlist}
+              websiteCMS={websiteCMS}
             />
           )}
 
@@ -690,6 +864,8 @@ export default function App() {
               wishlistPackageIds={wishlistPackageIds}
               onToggleWishlist={handleToggleWishlist}
               onNavigate={handleNavigate}
+              packages={packages}
+              websiteCMS={websiteCMS}
             />
           )}
 
@@ -802,6 +978,12 @@ export default function App() {
         </div>
       )}
 
+      <PremiumEnquiryModal
+        isOpen={quoteModalOpen}
+        onClose={handleCloseQuoteModal}
+        onSuccess={fetchAllData}
+      />
+
       {/* Hide footer on full-screen admin dashboard */}
       {currentView !== 'admin-dashboard' && (
         <Footer onNavigate={handleNavigate} websiteCMS={websiteCMS} gallery={gallery} loading={loadingData} />
@@ -811,24 +993,24 @@ export default function App() {
       {currentView !== 'admin-dashboard' && (
         <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3" id="floating-actions-stack">
           
-          {/* Trip Planner (AI Curator) Floating Button */}
+          {/* Premium Enquiry Floating Button */}
           <button
             type="button"
-            onClick={() => handleNavigate('ai-curator')}
-            className={`flex items-center gap-2.5 bg-stone-900 hover:bg-[#008080] text-white px-4 py-3 sm:px-5 sm:py-3.5 rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 ease-out cursor-pointer relative border border-stone-800 group ${currentView === 'ai-curator' ? 'bg-[#008080]' : ''}`}
+            onClick={handleOpenQuoteModal}
+            className="flex items-center gap-2.5 rounded-full border border-[#4DA528]/40 bg-stone-900 px-4 py-3 text-white shadow-lg transition-all duration-300 ease-out hover:scale-105 hover:bg-[#4DA528] hover:shadow-xl sm:px-5 sm:py-3.5 cursor-pointer relative group"
           >
             {/* Ambient Pulse */}
             <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-teal-500"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#4DA528] opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-[#4DA528]"></span>
             </span>
 
-            <Sparkles className="w-5 h-5 text-teal-400 group-hover:text-white transition-colors duration-200 animate-pulse" />
+            <Sparkles className="w-5 h-5 text-[#4DA528] group-hover:text-white transition-colors duration-200 animate-pulse" />
             
             <div className="flex flex-col text-left">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-300 group-hover:text-white leading-none">Trip Planner</span>
-              <span className="text-[8.5px] text-stone-400 group-hover:text-teal-100 font-light leading-none mt-0.5">
-                AI Custom Itinerary
+              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-300 group-hover:text-white leading-none">Plan Your Trip</span>
+              <span className="text-[8.5px] text-stone-400 group-hover:text-white/80 font-light leading-none mt-0.5">
+                Get Free Quote
               </span>
             </div>
           </button>

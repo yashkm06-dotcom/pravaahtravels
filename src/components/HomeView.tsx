@@ -53,6 +53,18 @@ type PackageCardProps = {
   isAdminLoggedIn?: boolean;
 };
 
+const slugifyPackageTitle = (value: string) => String(value ?? '')
+  .toLowerCase()
+  .trim()
+  .replace(/&/g, 'and')
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '');
+
+const getPackageRouteSegment = (pkg: Pick<TravelPackage, 'id' | 'title'>) => {
+  const slug = slugifyPackageTitle(pkg.title);
+  return slug ? `${slug}-${pkg.id}` : String(pkg.id);
+};
+
 const PackageCard = React.memo(function PackageCard({
   pkg,
   index,
@@ -69,7 +81,7 @@ const PackageCard = React.memo(function PackageCard({
   const difficulty = pkg.category === 'Treks' ? 'Moderate' : pkg.category === 'Adventure' ? 'Thrilling' : 'Easy';
   const locationLabel = pkg.location || pkg.destination;
 
-  const handleOpen = () => onNavigate('package-detail', pkg.id);
+  const handleOpen = () => onNavigate('package-detail', getPackageRouteSegment(pkg));
 
   return (
     <article className="group wow fadeInUp animated h-full overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-[0_18px_42px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_24px_56px_rgba(15,23,42,0.12)]" data-wow-delay={`${(index + 1) / 10}s`}>
@@ -217,7 +229,7 @@ const RecommendationCard = React.memo(function RecommendationCard({ recommendati
 
   const handleOpen = () => {
     if (linkedPackage) {
-      onNavigate('package-detail', linkedPackage.id);
+      onNavigate('package-detail', getPackageRouteSegment(linkedPackage));
       return;
     }
     onNavigate('packages');
@@ -1174,7 +1186,7 @@ export default function HomeView({
                 const imageUrl = item.thumbnailUrl || linkedPackage?.imageUrl || 'https://images.unsplash.com/photo-1516685304081-de7947d419d3?auto=format&fit=crop&w=800&q=80';
                 return (
                   <article key={item.id} className="tour-listing wow fadeInUp animated group flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-1" data-wow-delay={`${(idx + 1) / 10}s`}>
-                    <button type="button" onClick={() => linkedPackage ? onNavigate('package-detail', linkedPackage.id) : undefined} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
+                    <button type="button" onClick={() => linkedPackage ? onNavigate('package-detail', getPackageRouteSegment(linkedPackage)) : undefined} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
                       <img src={getTravelImage(imageUrl)} alt={item.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" loading="lazy" decoding="async" width="800" height="560" onError={handleTravelImageError} />
                     </button>
                     <div className="tour-listing-content flex flex-1 flex-col p-6">
@@ -1197,7 +1209,7 @@ export default function HomeView({
                         {item.subtitle || (linkedPackage?.destination ?? 'Explore')}
                       </span>
                       <h3 className="title-tour-list mt-3 text-[22px] font-bold leading-tight text-stone-950">
-                        <button onClick={() => linkedPackage ? onNavigate('package-detail', linkedPackage.id) : undefined} className="cursor-pointer text-left transition hover:text-[#4DA528]">
+                        <button onClick={() => linkedPackage ? onNavigate('package-detail', getPackageRouteSegment(linkedPackage)) : undefined} className="cursor-pointer text-left transition hover:text-[#4DA528]">
                           {item.title}
                         </button>
                       </h3>
@@ -1212,7 +1224,7 @@ export default function HomeView({
                         </div>
                         <button
                           type="button"
-                          onClick={() => linkedPackage ? onNavigate('package-detail', linkedPackage.id) : undefined}
+                          onClick={() => linkedPackage ? onNavigate('package-detail', getPackageRouteSegment(linkedPackage)) : undefined}
                           disabled={!linkedPackage}
                           className={`inline-flex items-center justify-center rounded-full px-5 py-3 text-sm font-bold text-white transition ${linkedPackage ? 'bg-[#4DA528] hover:bg-[#3a8d1f]' : 'bg-stone-300 cursor-not-allowed'}`}
                         >
@@ -1232,7 +1244,7 @@ export default function HomeView({
                 const isWishlisted = Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(pkg.id ?? '')) : false;
                 return (
                   <article key={pkg.id} className="tour-listing wow fadeInUp animated group flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-1" data-wow-delay={`${(idx + 1) / 10}s`}>
-                    <button type="button" onClick={() => onNavigate('package-detail', pkg.id)} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
+                    <button type="button" onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
                       <img src={getTravelImage(pkg.imageUrl)} alt={pkg.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" loading="lazy" decoding="async" width="800" height="560" onError={handleTravelImageError} />
                     </button>
                     <div className="tour-listing-content flex flex-1 flex-col p-6">
@@ -1255,7 +1267,7 @@ export default function HomeView({
                         {pkg.location || pkg.destination}
                       </span>
                       <h3 className="title-tour-list mt-3 text-[22px] font-bold leading-tight text-stone-950">
-                        <button onClick={() => onNavigate('package-detail', pkg.id)} className="cursor-pointer text-left transition hover:text-[#4DA528]">
+                        <button onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="cursor-pointer text-left transition hover:text-[#4DA528]">
                           {pkg.title}
                         </button>
                       </h3>
@@ -1270,7 +1282,7 @@ export default function HomeView({
                         </div>
                         <button
                           type="button"
-                          onClick={() => onNavigate('package-detail', pkg.id)}
+                          onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))}
                           className="inline-flex items-center justify-center rounded-full bg-[#4DA528] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#3a8d1f]"
                         >
                           Book Now
@@ -1356,7 +1368,7 @@ export default function HomeView({
                     {offerPackages.slice(0, 2).map((pkg) => (
                       <div key={`offer-${pkg.id}`} className="swiper-slide h-full">
                         <article className="tour-listing flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)]">
-                          <button type="button" onClick={() => onNavigate('package-detail', pkg.id)} className="tour-listing-image relative block h-[260px] w-full cursor-pointer overflow-hidden text-left">
+                          <button type="button" onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="tour-listing-image relative block h-[260px] w-full cursor-pointer overflow-hidden text-left">
                             <img src={getTravelImage(pkg.imageUrl)} alt={pkg.title} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                             <span className="feature absolute left-4 top-4 rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">Featured</span>
                           </button>
@@ -1368,7 +1380,7 @@ export default function HomeView({
                                 From <span className="price-sale text-[20px] font-extrabold text-[#4DA528]">{formatPrice(pkg.offerPrice || pkg.price)}</span>
                                 {pkg.offerPrice && <span className="ml-2 text-xs font-semibold text-stone-400 line-through">{formatPrice(pkg.price)}</span>}
                               </p>
-                              <button onClick={() => onNavigate('package-detail', pkg.id)} className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-[#4DA528] hover:text-white">
+                              <button onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-[#4DA528] hover:text-white">
                                 <Heart className="h-4 w-4" />
                               </button>
                             </div>

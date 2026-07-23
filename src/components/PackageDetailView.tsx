@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ArrowLeft, Calendar, MapPin, Check, X, Send, Users, 
   ChevronDown, ChevronUp, Trash2, GripVertical, Sliders, ArrowUp, ArrowDown, Sparkles, Phone, Compass, HelpCircle, CheckCircle2, Heart,
-  Star, Camera, ChevronRight, AlertCircle
+  Star, Camera, ChevronRight, AlertCircle, MessageCircle, BedDouble, Car, Utensils
 } from 'lucide-react';
-import { TravelPackage, Enquiry, formatPrice } from '../types';
+import { TravelPackage, Enquiry, Review, WebsiteCMSSettings, DEFAULT_WEBSITE_CMS, formatPrice } from '../types';
 import { db, collection, addDoc, auth, getDocs, query, where, orderBy, limit } from '../lib/firebase';
 import { triggerSystemEmail } from '../lib/emailClient';
 import InteractiveRouteMap from './InteractiveRouteMap';
@@ -21,7 +21,34 @@ interface PackageDetailViewProps {
   wishlistPackageIds?: string[];
   onToggleWishlist?: (pkg: TravelPackage) => void;
   onNavigate?: (view: string, packageId?: string | null) => void;
+  packages?: TravelPackage[];
+  websiteCMS?: WebsiteCMSSettings;
 }
+
+const slugifyPackageTitle = (value: string) => String(value ?? '')
+  .toLowerCase()
+  .trim()
+  .replace(/&/g, 'and')
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '');
+
+const getPackageRouteSegment = (pkg: Pick<TravelPackage, 'id' | 'title'>) => {
+  const slug = slugifyPackageTitle(pkg.title);
+  return slug ? `${slug}-${pkg.id}` : String(pkg.id);
+};
+
+const sanitizeWhatsAppPhone = (value?: string) => {
+  const digits = String(value ?? '').replace(/[^\d]/g, '');
+  if (!digits) return '';
+  return digits.startsWith('91') ? digits : `91${digits.replace(/^0+/, '')}`;
+};
+
+const getMatchingListItems = (items: string[] | undefined, terms: string[]) => {
+  return (items || []).filter((item) => {
+    const normalized = item.toLowerCase();
+    return terms.some((term) => normalized.includes(term));
+  });
+};
 
 export default function PackageDetailView({
   pkg,
@@ -33,6 +60,8 @@ export default function PackageDetailView({
   wishlistPackageIds = [],
   onToggleWishlist,
   onNavigate,
+  packages = [],
+  websiteCMS = DEFAULT_WEBSITE_CMS,
 }: PackageDetailViewProps) {
   // Accordion state for itinerary days
   const [activeDay, setActiveDay] = useState<number | null>(1);
@@ -67,6 +96,8 @@ export default function PackageDetailView({
   const [errorMsg, setErrorMsg] = useState('');
   const [saveNotice, setSaveNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [savingPackage, setSavingPackage] = useState(false);
+  const [publicPackageReviews, setPublicPackageReviews] = useState<Review[]>([]);
+  const [publicReviewsLoading, setPublicReviewsLoading] = useState(false);
 
   // Scroll to top when package changes
   useEffect(() => {
@@ -77,6 +108,56 @@ export default function PackageDetailView({
     setSelectedGalleryImage(0);
     setActiveFaq(null);
   }, [pkg.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchPackageReviews = async () => {
+      setPublicReviewsLoading(true);
+      try {
+        const reviewsSnapshot = await getDocs(query(collection(db, 'reviews'), orderBy('createdAt', 'desc')));
+        const fetchedReviews = reviewsSnapshot.docs
+          .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }) as Review & { packageId?: string; packageName?: string })
+          .filter((review) => {
+            const status = review.status || 'Approved';
+            if (status !== 'Approved') return false;
+
+            const packageId = String(review.packageId || '').trim();
+            const packageName = String(review.packageName || '').trim().toLowerCase();
+            const destination = String(review.destination || '').trim().toLowerCase();
+            const currentDestination = String(pkg.destination || '').trim().toLowerCase();
+            const currentTitle = String(pkg.title || '').trim().toLowerCase();
+
+            return packageId === pkg.id ||
+              Boolean(packageName && packageName === currentTitle) ||
+              Boolean(destination && currentDestination && (
+                destination === currentDestination ||
+                destination.includes(currentDestination) ||
+                currentDestination.includes(destination)
+              ));
+          });
+
+        if (!cancelled) {
+          setPublicPackageReviews(fetchedReviews);
+        }
+      } catch (error) {
+        console.error('Error fetching package reviews:', error);
+        if (!cancelled) {
+          setPublicPackageReviews([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setPublicReviewsLoading(false);
+        }
+      }
+    };
+
+    void fetchPackageReviews();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pkg.destination, pkg.id, pkg.title]);
 
   // Booking Request State
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
@@ -517,38 +598,51 @@ export default function PackageDetailView({
   const uniquePackageGalleryImages = Array.from(new Set(packageGalleryImages));
   const displayGalleryImages = uniquePackageGalleryImages.length > 0 ? uniquePackageGalleryImages : [DEFAULT_TRAVEL_IMAGE];
   const visibleGalleryImages = displayGalleryImages.slice(0, 6);
-  const packageReviews = Array.isArray((pkg as any).reviews) ? (pkg as any).reviews : [];
-  const relatedPackages = Array.isArray((pkg as any).relatedPackages) ? (pkg as any).relatedPackages : [];
+  const embeddedPackageReviews = Array.isArray((pkg as any).reviews) ? (pkg as any).reviews : [];
+  const packageReviews = useMemo(() => {
+    const reviewMap = new Map<string, any>();
+    [...publicPackageReviews, ...embeddedPackageReviews].forEach((review: any, index) => {
+      const key = String(review.id || `${review.name || 'review'}-${review.createdAt || index}`);
+      reviewMap.set(key, review);
+    });
+    return Array.from(reviewMap.values());
+  }, [embeddedPackageReviews, publicPackageReviews]);
+  const hotelItems = getMatchingListItems(pkg.inclusions, ['hotel', 'stay', 'accommodation', 'resort', 'camp', 'lodge']);
+  const transportationItems = getMatchingListItems(pkg.inclusions, ['transport', 'transfer', 'cab', 'vehicle', 'car', 'bus', 'tempo', 'traveller']);
+  const mealPlanItems = getMatchingListItems(pkg.inclusions, ['meal', 'breakfast', 'lunch', 'dinner', 'food']);
+  const averageRating = packageReviews.length > 0 ? packageReviews.reduce((sum: number, review: any) => sum + (Number(review.rating) || 0), 0) / packageReviews.length : null;
   const quickInfoItems = [
     { label: 'Destination', value: pkg.destination, icon: MapPin },
     { label: 'Duration', value: pkg.duration, icon: Calendar },
-    { label: 'Group Size', value: pkg.maxGuests ? `Up to ${pkg.maxGuests}` : 'Flexible', icon: Users },
-    { label: 'Accommodation', value: String(pkg.inclusions ?? '').toLowerCase().includes('hotel') ? 'Hotel stay included' : 'Premium stay', icon: Compass },
-    { label: 'Meals', value: String(pkg.inclusions ?? '').toLowerCase().includes('meals') ? 'Included' : 'On request', icon: Check },
-    { label: 'Transport', value: String(pkg.inclusions ?? '').toLowerCase().includes('transport') ? 'Private transfers' : 'Shared transfer', icon: Check },
-    { label: 'Rating', value: `${(packageReviews.length > 0 ? packageReviews.reduce((sum: number, review: any) => sum + (Number(review.rating) || 0), 0) / packageReviews.length : 4.8).toFixed(1)} / 5`, icon: Star },
+    { label: 'Group Size', value: pkg.maxGuests ? `Up to ${pkg.maxGuests}` : 'Flexible group size', icon: Users },
+    { label: 'Accommodation', value: hotelItems[0] || 'Not specified', icon: BedDouble },
+    { label: 'Meals', value: mealPlanItems[0] || 'Not specified', icon: Utensils },
+    { label: 'Transport', value: transportationItems[0] || 'Not specified', icon: Car },
+    { label: 'Rating', value: averageRating ? `${averageRating.toFixed(1)} / 5` : 'No reviews yet', icon: Star },
     { label: 'Starting Price', value: formatPrice(pkg.offerPrice || pkg.price), icon: Check },
   ];
-  const includedItems = (pkg.inclusions && pkg.inclusions.length > 0 ? pkg.inclusions : ['Hotel stay', 'Meals', 'Guide', 'Transport', 'Sightseeing']).slice(0, 6);
-  const excludedItems = (pkg.exclusions && pkg.exclusions.length > 0 ? pkg.exclusions : ['Flights', 'Personal expenses', 'Insurance']).slice(0, 6);
-  const highlightItems = (pkg.highlights && pkg.highlights.length > 0 ? pkg.highlights : ['Snow Trek', 'Camping', 'Photography', 'Adventure', 'Temple Visit', 'Lake View']).slice(0, 6);
-  const packingItems = (pkg.thingsToCarry && pkg.thingsToCarry.length > 0 ? pkg.thingsToCarry : ['Warm layers for cold mornings', 'Comfortable walking shoes', 'Reusable water bottle', 'Portable power bank']).slice(0, 6);
-  const departureWindowItems = (pkg.departureDates && pkg.departureDates.length > 0 ? pkg.departureDates : ['Flexible departures available on request']).slice(0, 6);
-  const policyItems = (pkg.policies && pkg.policies.length > 0 ? pkg.policies : ['Flexible rescheduling and private-group upgrades available', 'Final itinerary shared after confirmation']).slice(0, 6);
-  const faqItems = (pkg.faqs && pkg.faqs.length > 0 ? pkg.faqs : [
-    { question: 'Is this package suitable for beginners?', answer: 'Yes, our itinerary balances comfort, pace, and scenic highlights for first-time travelers.' },
-    { question: 'Can I personalize the itinerary?', answer: 'Absolutely. Our team can tailor the route, stay, and pace to your travel style.' },
-    { question: 'What is the best time to travel?', answer: 'Most journeys are best planned between spring and autumn for pleasant weather and clearer views.' },
-  ]).slice(0, 6);
-  const averageRating = packageReviews.length > 0 ? packageReviews.reduce((sum: number, review: any) => sum + (Number(review.rating) || 0), 0) / packageReviews.length : 4.8;
+  const includedItems = (pkg.inclusions || []).filter(Boolean).slice(0, 8);
+  const excludedItems = (pkg.exclusions || []).filter(Boolean).slice(0, 8);
+  const highlightItems = (pkg.highlights || []).filter(Boolean).slice(0, 8);
+  const packingItems = (pkg.thingsToCarry || []).filter(Boolean).slice(0, 6);
+  const departureWindowItems = (pkg.departureDates || []).filter(Boolean).slice(0, 6);
+  const policyItems = (pkg.policies || []).filter(Boolean).slice(0, 6);
+  const faqItems = (pkg.faqs || []).slice(0, 6);
   const mapQuery = (pkg as any).latitude && (pkg as any).longitude ? `${(pkg as any).latitude},${(pkg as any).longitude}` : pkg.destination;
   const mapEmbedUrl = `https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=12&output=embed`;
-  const fallbackRelatedPackages = [
-    { title: `${pkg.title} Deluxe`, destination: pkg.destination, duration: pkg.duration, price: pkg.price + 6000, imageUrl: pkg.imageUrl },
-    { title: `${pkg.destination} Premium Escape`, destination: pkg.destination, duration: pkg.duration, price: pkg.price + 12000, imageUrl: pkg.packageBannerUrl || pkg.imageUrl },
-    { title: `${pkg.category} Signature Tour`, destination: pkg.destination, duration: pkg.duration, price: pkg.price + 9000, imageUrl: pkg.imageUrl },
-  ];
-  const displayedRelatedPackages = relatedPackages.length > 0 ? relatedPackages.slice(0, 4) : fallbackRelatedPackages.slice(0, 3);
+  const displayedRelatedPackages = useMemo(() => {
+    return packages
+      .filter((item) => item.active && item.id !== pkg.id)
+      .filter((item) => (
+        item.category === pkg.category ||
+        String(item.location || '').toLowerCase() === String(pkg.location || '').toLowerCase() ||
+        String(item.destination || '').toLowerCase() === String(pkg.destination || '').toLowerCase() ||
+        Boolean(item.activityId && item.activityId === pkg.activityId)
+      ))
+      .slice(0, 3);
+  }, [packages, pkg.activityId, pkg.category, pkg.destination, pkg.id, pkg.location]);
+  const whatsappPhone = sanitizeWhatsAppPhone(websiteCMS.footerPhone) || sanitizeWhatsAppPhone(DEFAULT_WEBSITE_CMS.footerPhone);
+  const packageWhatsAppUrl = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Hello,\nI am interested in the ${pkg.title} Package.\nPlease send complete details.`)}`;
 
   return (
     <div id="package-detail-view" className="animate-fade-in overflow-hidden bg-[#fffaf1]">
@@ -600,7 +694,7 @@ export default function PackageDetailView({
                 </li>
                 <li className="flex-three inline-flex items-center gap-2 rounded-[5px] border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-md">
                   <Users className="h-4 w-4 text-[#4DA528]" />
-                  <span>Max Guests: 12</span>
+                  <span>{pkg.maxGuests ? `Max Guests: ${pkg.maxGuests}` : 'Flexible group size'}</span>
                 </li>
                 <li className="flex-three inline-flex items-center gap-2 rounded-[5px] border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-md">
                   <MapPin className="h-4 w-4 text-[#4DA528]" />
@@ -612,9 +706,11 @@ export default function PackageDetailView({
             <div className="inner-price rounded-[14px] border border-white/18 bg-white/12 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.24)] backdrop-blur-xl">
               <div className="start flex-three flex items-center gap-1 text-[#FF970D]">
                 {[...Array(5)].map((_, index) => (
-                  <Star key={index} className="h-4 w-4 fill-current" />
+                  <Star key={index} className={`h-4 w-4 ${averageRating && index < Math.round(averageRating) ? 'fill-current' : 'text-white/35'}`} />
                 ))}
-                <span className="review ml-2 text-[13px] font-semibold text-white/78">(1 Review)</span>
+                <span className="review ml-2 text-[13px] font-semibold text-white/78">
+                  {packageReviews.length > 0 ? `(${packageReviews.length} Review${packageReviews.length === 1 ? '' : 's'})` : '(No reviews yet)'}
+                </span>
               </div>
               <p className="price-sale text-main mt-4 text-[34px] font-extrabold text-[#4DA528]">
                 {formatPrice(pkg.offerPrice || pkg.price)}
@@ -723,16 +819,22 @@ export default function PackageDetailView({
                   <Sparkles className="h-4 w-4 text-[#FF970D]" />
                   <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Highlights</span>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {highlightItems.map((item, idx) => (
-                    <div key={`${item}-${idx}`} className="flex items-center gap-3 rounded-[12px] border border-stone-200 bg-[#fffaf1] p-4 text-sm font-medium text-stone-700 transition hover:-translate-y-1">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#4DA528]/10 text-[#4DA528]">
-                        <Compass className="h-4 w-4" />
+                {highlightItems.length > 0 ? (
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {highlightItems.map((item, idx) => (
+                      <div key={`${item}-${idx}`} className="flex items-center gap-3 rounded-[12px] border border-stone-200 bg-[#fffaf1] p-4 text-sm font-medium text-stone-700 transition hover:-translate-y-1">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#4DA528]/10 text-[#4DA528]">
+                          <Compass className="h-4 w-4" />
+                        </div>
+                        <span>{item}</span>
                       </div>
-                      <span>{item}</span>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-[12px] border border-dashed border-stone-300 bg-[#fffaf1] p-5 text-sm leading-7 text-stone-500">
+                    Highlights have not been published for this package yet.
+                  </div>
+                )}
               </div>
 
               <div className="expect-wrap rounded-[18px] border border-stone-200/70 bg-white/80 p-5">
@@ -910,14 +1012,18 @@ export default function PackageDetailView({
                   <Check className="h-5 w-5 text-[#0f766e]" />
                   <span>Included</span>
                 </h4>
-                <ul className="space-y-3">
-                  {includedItems.map((item, idx) => (
-                    <li key={`${item}-${idx}`} className="flex items-start gap-3 rounded-2xl bg-emerald-50/70 p-3 text-sm leading-6 text-stone-700">
-                      <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[#0f766e]" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
+                {includedItems.length > 0 ? (
+                  <ul className="space-y-3">
+                    {includedItems.map((item, idx) => (
+                      <li key={`${item}-${idx}`} className="flex items-start gap-3 rounded-2xl bg-emerald-50/70 p-3 text-sm leading-6 text-stone-700">
+                        <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[#0f766e]" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="rounded-2xl border border-dashed border-emerald-200 bg-white/70 p-4 text-sm leading-7 text-stone-500">Inclusions have not been published for this package yet.</p>
+                )}
               </div>
 
               <div className="space-y-5 rounded-[24px] border border-rose-200/80 bg-gradient-to-br from-rose-50/80 to-white p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8">
@@ -925,30 +1031,71 @@ export default function PackageDetailView({
                   <X className="h-5 w-5 text-rose-600" />
                   <span>Excluded</span>
                 </h4>
-                <ul className="space-y-3">
-                  {excludedItems.map((item, idx) => (
-                    <li key={`${item}-${idx}`} className="flex items-start gap-3 rounded-2xl bg-rose-50/70 p-3 text-sm leading-6 text-stone-700">
-                      <X className="mt-1 h-3.5 w-3.5 shrink-0 text-rose-600" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-
-            <div className="rounded-[24px] border border-stone-200/80 bg-gradient-to-br from-white via-[#fffdf8] to-[#fcf6e8] p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8" id="trip-essentials">
-              <div className="grid gap-6 lg:grid-cols-[1.02fr_0.98fr]">
-                <div className="rounded-[18px] border border-stone-200/70 bg-white/80 p-5">
-                  <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Pack smart</span>
-                  <h3 className="mt-3 text-2xl font-extrabold tracking-tight text-stone-950">Travel essentials</h3>
-                  <ul className="mt-5 space-y-3">
-                    {packingItems.map((item, idx) => (
-                      <li key={`${item}-${idx}`} className="flex items-start gap-3 rounded-[12px] border border-stone-200 bg-[#fffaf1] p-3 text-sm leading-6 text-stone-700">
-                        <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[#4DA528]" />
+                {excludedItems.length > 0 ? (
+                  <ul className="space-y-3">
+                    {excludedItems.map((item, idx) => (
+                      <li key={`${item}-${idx}`} className="flex items-start gap-3 rounded-2xl bg-rose-50/70 p-3 text-sm leading-6 text-stone-700">
+                        <X className="mt-1 h-3.5 w-3.5 shrink-0 text-rose-600" />
                         <span>{item}</span>
                       </li>
                     ))}
                   </ul>
+                ) : (
+                  <p className="rounded-2xl border border-dashed border-rose-200 bg-white/70 p-4 text-sm leading-7 text-stone-500">Exclusions have not been published for this package yet.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-stone-200/80 bg-gradient-to-br from-white via-[#fffdf8] to-[#fcf6e8] p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8" id="trip-essentials">
+              <div className="mb-6">
+                <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Stay, transfer & meals</span>
+                <h3 className="mt-3 text-3xl font-extrabold tracking-tight text-stone-950">Package logistics</h3>
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                {[
+                  { label: 'Hotels', icon: BedDouble, items: hotelItems },
+                  { label: 'Transportation', icon: Car, items: transportationItems },
+                  { label: 'Meal Plan', icon: Utensils, items: mealPlanItems },
+                ].map((section) => {
+                  const Icon = section.icon;
+                  return (
+                    <div key={section.label} className="rounded-[18px] border border-stone-200/70 bg-white/80 p-5">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#4DA528]/10 text-[#4DA528]">
+                          <Icon className="h-5 w-5" />
+                        </span>
+                        <h4 className="text-lg font-extrabold text-stone-950">{section.label}</h4>
+                      </div>
+                      {section.items.length > 0 ? (
+                        <ul className="mt-4 space-y-2">
+                          {section.items.slice(0, 3).map((item, idx) => (
+                            <li key={`${section.label}-${item}-${idx}`} className="rounded-[12px] border border-stone-200 bg-[#fffaf1] p-3 text-sm leading-6 text-stone-700">{item}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-4 rounded-[12px] border border-dashed border-stone-300 bg-[#fffaf1] p-3 text-sm leading-6 text-stone-500">Not specified in package inclusions.</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-6 grid gap-6 lg:grid-cols-[1.02fr_0.98fr]">
+                <div className="rounded-[18px] border border-stone-200/70 bg-white/80 p-5">
+                  <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Pack smart</span>
+                  <h3 className="mt-3 text-2xl font-extrabold tracking-tight text-stone-950">Travel essentials</h3>
+                  {packingItems.length > 0 ? (
+                    <ul className="mt-5 space-y-3">
+                      {packingItems.map((item, idx) => (
+                        <li key={`${item}-${idx}`} className="flex items-start gap-3 rounded-[12px] border border-stone-200 bg-[#fffaf1] p-3 text-sm leading-6 text-stone-700">
+                          <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[#4DA528]" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-5 rounded-[12px] border border-dashed border-stone-300 bg-[#fffaf1] p-4 text-sm leading-7 text-stone-500">Travel essentials have not been published for this package yet.</p>
+                  )}
                 </div>
 
                 <div className="rounded-[18px] border border-stone-200/70 bg-white/80 p-5">
@@ -957,19 +1104,27 @@ export default function PackageDetailView({
                   <div className="mt-5 space-y-4">
                     <div>
                       <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-stone-500">Departure windows</p>
-                      <ul className="mt-2 space-y-2">
-                        {departureWindowItems.map((item, idx) => (
-                          <li key={`${item}-${idx}`} className="rounded-[10px] border border-stone-200 bg-[#fffaf1] px-3 py-2 text-sm text-stone-700">{item}</li>
-                        ))}
-                      </ul>
+                      {departureWindowItems.length > 0 ? (
+                        <ul className="mt-2 space-y-2">
+                          {departureWindowItems.map((item, idx) => (
+                            <li key={`${item}-${idx}`} className="rounded-[10px] border border-stone-200 bg-[#fffaf1] px-3 py-2 text-sm text-stone-700">{item}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-2 rounded-[10px] border border-dashed border-stone-300 bg-[#fffaf1] px-3 py-2 text-sm text-stone-500">Departure windows are not listed yet.</p>
+                      )}
                     </div>
                     <div>
                       <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-stone-500">Planning notes</p>
-                      <ul className="mt-2 space-y-2">
-                        {policyItems.map((item, idx) => (
-                          <li key={`${item}-${idx}`} className="rounded-[10px] border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">{item}</li>
-                        ))}
-                      </ul>
+                      {policyItems.length > 0 ? (
+                        <ul className="mt-2 space-y-2">
+                          {policyItems.map((item, idx) => (
+                            <li key={`${item}-${idx}`} className="rounded-[10px] border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">{item}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-2 rounded-[10px] border border-dashed border-stone-300 bg-stone-50 px-3 py-2 text-sm text-stone-500">Planning notes are not listed yet.</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -980,25 +1135,32 @@ export default function PackageDetailView({
               <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">FAQ</span>
               <h3 className="mt-3 text-3xl font-extrabold tracking-tight text-stone-950">Questions before you go</h3>
               <div className="mt-6 space-y-3">
-                {faqItems.map((faq, idx) => {
-                  const isOpen = activeFaq === idx;
-                  return (
-                    <div key={`${faq.question}-${idx}`} className="rounded-[12px] border border-stone-200 bg-[#fffaf1] p-0 transition hover:shadow-sm">
-                      <button
-                        type="button"
-                        onClick={() => setActiveFaq(isOpen ? null : idx)}
-                        className="flex w-full cursor-pointer items-center justify-between gap-4 px-5 py-4 text-left"
-                      >
-                        <span className="flex items-start gap-3">
-                          <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-[#4DA528]" />
-                          <span className="text-sm font-extrabold text-stone-950">{faq.question}</span>
-                        </span>
-                        {isOpen ? <ChevronUp className="h-4 w-4 shrink-0 text-[#4DA528]" /> : <ChevronDown className="h-4 w-4 shrink-0 text-stone-400" />}
-                      </button>
-                      {isOpen && <p className="px-5 pb-5 pl-8 text-sm leading-7 text-stone-600">{faq.answer}</p>}
-                    </div>
-                  );
-                })}
+                {faqItems.length > 0 ? (
+                  faqItems.map((faq, idx) => {
+                    const isOpen = activeFaq === idx;
+                    return (
+                      <div key={`${faq.question}-${idx}`} className="rounded-[12px] border border-stone-200 bg-[#fffaf1] p-0 transition hover:shadow-sm">
+                        <button
+                          type="button"
+                          onClick={() => setActiveFaq(isOpen ? null : idx)}
+                          className="flex w-full cursor-pointer items-center justify-between gap-4 px-5 py-4 text-left"
+                          aria-expanded={isOpen}
+                        >
+                          <span className="flex items-start gap-3">
+                            <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-[#4DA528]" />
+                            <span className="text-sm font-extrabold text-stone-950">{faq.question}</span>
+                          </span>
+                          {isOpen ? <ChevronUp className="h-4 w-4 shrink-0 text-[#4DA528]" /> : <ChevronDown className="h-4 w-4 shrink-0 text-stone-400" />}
+                        </button>
+                        {isOpen && <p className="px-5 pb-5 pl-8 text-sm leading-7 text-stone-600">{faq.answer}</p>}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="rounded-[12px] border border-dashed border-stone-300 bg-[#fffaf1] p-6 text-sm leading-7 text-stone-500">
+                    FAQs have not been published for this package yet.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1055,6 +1217,16 @@ export default function PackageDetailView({
                   <Compass className="h-4 w-4" />
                   <span>Book Now</span>
                 </button>
+                <a
+                  href={packageWhatsAppUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-[12px] border border-emerald-200 bg-emerald-50 px-5 py-3 text-[12px] font-extrabold uppercase tracking-[0.14em] text-emerald-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffaf1]"
+                  aria-label={`Ask on WhatsApp about ${pkg.title}`}
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  <span>WhatsApp Details</span>
+                </a>
                 <button
                   type="button"
                   onClick={() => void handleSavePackage()}
@@ -1266,18 +1438,25 @@ export default function PackageDetailView({
             <div className="flex items-center gap-2 rounded-full border border-stone-200 bg-[#fffaf1] px-4 py-2">
               <div className="flex items-center gap-1 text-[#FF970D]">
                 {[...Array(5)].map((_, index) => (
-                  <Star key={index} className="h-4 w-4 fill-current" />
+                  <Star key={index} className={`h-4 w-4 ${averageRating && index < Math.round(averageRating) ? 'fill-current' : 'text-stone-200'}`} />
                 ))}
               </div>
-              <span className="text-sm font-semibold text-stone-700">{averageRating.toFixed(1)} average • {packageReviews.length || 0} review{(packageReviews.length || 0) === 1 ? '' : 's'}</span>
+              <span className="text-sm font-semibold text-stone-700">
+                {averageRating ? `${averageRating.toFixed(1)} average` : publicReviewsLoading ? 'Loading reviews' : 'No rating yet'} • {packageReviews.length || 0} review{(packageReviews.length || 0) === 1 ? '' : 's'}
+              </span>
             </div>
           </div>
 
-          {packageReviews.length > 0 ? (
+          {publicReviewsLoading ? (
+            <div className="rounded-[14px] border border-stone-200 bg-[#fffaf1] p-8 text-center">
+              <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#4DA528] border-t-transparent" />
+              <p className="mt-3 text-sm leading-7 text-stone-500">Loading verified reviews...</p>
+            </div>
+          ) : packageReviews.length > 0 ? (
             <div className="client-review-list grid gap-5 md:grid-cols-2">
               {packageReviews.map((review: any, index: number) => (
                 <article key={review.id || `${review.name || 'review'}-${index}`} className="client-review-item flex gap-4 rounded-[14px] border border-stone-200 bg-[#fffaf1] p-5 transition hover:-translate-y-1 hover:bg-white hover:shadow-sm">
-                  <img src={getTravelImage(review.imageUrl)} alt={review.name || 'Traveler'} className="h-14 w-14 shrink-0 rounded-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+                  <img src={getTravelImage(review.imageUrl)} alt={review.name || 'Traveler'} className="h-14 w-14 shrink-0 rounded-full object-cover" referrerPolicy="no-referrer" loading="lazy" decoding="async" onError={handleTravelImageError} />
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <h4 className="font-extrabold text-stone-950">{review.name || 'Traveler'}</h4>
@@ -1288,7 +1467,7 @@ export default function PackageDetailView({
                         <Star key={starIndex} className="h-3.5 w-3.5 fill-current" />
                       ))}
                     </div>
-                    <p className="mt-3 text-sm leading-7 text-stone-600">{review.comment}</p>
+                    <p className="mt-3 text-sm leading-7 text-stone-600">{review.comment || review.review}</p>
                     {review.destination && <p className="mt-3 text-[11px] font-bold uppercase tracking-wider text-stone-400">{review.destination}</p>}
                   </div>
                 </article>
@@ -1309,7 +1488,7 @@ export default function PackageDetailView({
 
           {displayedRelatedPackages.length > 0 ? (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {displayedRelatedPackages.map((related: any, index: number) => (
+              {displayedRelatedPackages.map((related: TravelPackage, index: number) => (
                 <article key={related.id || `${related.title || 'related'}-${index}`} className="tour-listing group overflow-hidden rounded-[14px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_24px_55px_rgba(18,38,32,0.16)]">
                   <div className="tour-listing-image relative block aspect-[1.22/1] w-full overflow-hidden bg-stone-100 text-left">
                     <img src={getTravelImage(related.imageUrl || pkg.imageUrl)} alt={related.title || 'Related package'} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" loading="lazy" decoding="async" onError={handleTravelImageError} />
@@ -1327,6 +1506,14 @@ export default function PackageDetailView({
                       <span className="text-sm text-stone-500">{related.duration}</span>
                       <span className="font-extrabold text-[#4DA528]">{formatPrice(related.price)}</span>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => onNavigate?.('package-detail', getPackageRouteSegment(related))}
+                      className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[5px] bg-stone-950 px-4 py-3 text-[10px] font-extrabold uppercase tracking-[0.16em] text-white transition hover:bg-[#4DA528]"
+                    >
+                      View Similar Tour
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 </article>
               ))}
@@ -1347,6 +1534,7 @@ export default function PackageDetailView({
               type="button"
               onClick={() => setIsLightboxOpen(false)}
               className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+              aria-label="Close gallery lightbox"
             >
               <X className="h-5 w-5" />
             </button>
@@ -1408,6 +1596,16 @@ export default function PackageDetailView({
             >
               Book Now
             </button>
+            <a
+              href={packageWhatsAppUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-extrabold uppercase tracking-[0.14em] text-emerald-700"
+              aria-label={`Ask on WhatsApp about ${pkg.title}`}
+            >
+              <MessageCircle className="h-4 w-4" />
+              WhatsApp
+            </a>
           </div>
         </div>
       </div>
@@ -1491,7 +1689,7 @@ export default function PackageDetailView({
                   </button>
                 </div>
                 <a
-                  href={`https://wa.me/919999999999?text=${encodeURIComponent(`Hello Pravaah Travels,\nI have submitted my booking.\nBooking ID: ${submittedBooking?.bookingId || 'PRV-2026-0001'}\nPackage: ${submittedBooking?.packageTitle || bookingForm.packageTitle}\nPlease confirm my booking.`)}`}
+                  href={`https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Hello Pravaah Travels,\nI have submitted my booking.\nBooking ID: ${submittedBooking?.bookingId || 'PRV-2026-0001'}\nPackage: ${submittedBooking?.packageTitle || bookingForm.packageTitle}\nPlease confirm my booking.`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-[11px] font-extrabold uppercase tracking-[0.16em] text-emerald-700"
@@ -1706,7 +1904,7 @@ export default function PackageDetailView({
                       <button type="button" onClick={() => downloadBookingDocument('voucher')} className="flex-1 rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-700">Download Voucher</button>
                       <button type="button" onClick={() => downloadBookingDocument('invoice')} className="flex-1 rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-700">Download Invoice</button>
                     </div>
-                    <a href={`https://wa.me/919999999999?text=${encodeURIComponent(`Hello Pravaah Travels, I have booked ${bookingForm.packageTitle}. Booking ID: ${submittedBooking?.bookingId || 'PRV-2026-0001'}`)}`} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">WhatsApp Confirmation</a>
+                    <a href={`https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Hello Pravaah Travels, I have booked ${bookingForm.packageTitle}. Booking ID: ${submittedBooking?.bookingId || 'PRV-2026-0001'}`)}`} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">WhatsApp Confirmation</a>
                   </div>
                 )}
 
