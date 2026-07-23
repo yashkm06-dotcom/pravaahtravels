@@ -37,40 +37,7 @@ export default function VerifiedReviews({ onNavigate }: VerifiedReviewsProps) {
       setReviews(fetchedReviews);
     } catch (err) {
       console.error('Error fetching reviews:', err);
-      // Fallback to gorgeous pre-seeded static reviews if there is a permission issue or database is empty
-      const fallbackReviews: Review[] = [
-        {
-          id: 'fb-1',
-          name: 'Anjali Deshmukh',
-          rating: 5,
-          comment: 'The Kedarnath Do Dham journey with Pravaah Travels was spiritually transforming and meticulously executed. Our senior-friendly schedule had perfect buffer stops, pure veg meals, and clean medical kits. Rajesh Sharma coordinated everything beautifully.',
-          destination: 'Kedarnath (Sacred Valleys)',
-          imageUrl: 'https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&q=80&w=800',
-          verified: true,
-          createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-        },
-        {
-          id: 'fb-2',
-          name: 'Rohan Mehra',
-          rating: 5,
-          comment: 'Thrill of rafting in Rishikesh combined with elite yoga instruction was mindblowing. The riverside alpine camp was clean, safe, and of absolute premium class. Highly recommend Pravaah for active high-altitude excursions!',
-          destination: 'Rishikesh (Ganga Valley)',
-          imageUrl: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&q=80&w=800',
-          verified: true,
-          createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
-        },
-        {
-          id: 'fb-3',
-          name: 'Vikram & Shalini Malhotra',
-          rating: 4,
-          comment: 'Superb honeymoon stay in a boutique cottage overlooking the Manali valley. Very romantic, private, and we got a premium luxury 4x4 SUV at our service. Highly helpful drivers on the steep mountain curves.',
-          destination: 'Manali & Solang valley',
-          imageUrl: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&q=80&w=800',
-          verified: true,
-          createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
-        }
-      ];
-      setReviews(fallbackReviews);
+      setReviews([]);
     } finally {
       setIsLoading(false);
     }
@@ -87,7 +54,7 @@ export default function VerifiedReviews({ onNavigate }: VerifiedReviewsProps) {
     if (status !== 'Approved') return false;
     
     const matchRating = selectedRatingFilter === 'all' || r.rating === Number(selectedRatingFilter);
-    const matchDest = selectedDestFilter === 'all' || r.destination.toLowerCase().includes(selectedDestFilter.toLowerCase());
+    const matchDest = selectedDestFilter === 'all' || String(r.destination ?? '').toLowerCase().includes(String(selectedDestFilter ?? '').toLowerCase());
     return matchRating && matchDest;
   });
 

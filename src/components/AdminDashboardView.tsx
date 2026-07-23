@@ -6,8 +6,8 @@ import {
   Upload, CheckCircle, Clock, Phone, Mail, MessageSquare, Clipboard, ExternalLink, Star, LineChart as LineChartIcon, RefreshCw,
   Menu, Bell, Settings, Palette, Home, Megaphone, Images, PanelLeftClose, PanelLeftOpen, Heart, Sparkles, ChevronRight
 } from 'lucide-react';
-import { TravelPackage, Enquiry, GalleryImage, ActivityItem, DestinationCategory, EnquiryStatus, formatPrice, WebsiteCMSSettings, DEFAULT_WEBSITE_CMS, PACKAGE_LOCATIONS, type CustomerProfile } from '../types';
-import { db, storage, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, setDoc, writeBatch, getDoc } from '../lib/firebase';
+import { TravelPackage, Enquiry, GalleryImage, ActivityItem, DestinationCategory, EnquiryStatus, formatPrice, WebsiteCMSSettings, PACKAGE_LOCATIONS, type CustomerProfile } from '../types';
+import { auth, db, storage, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, setDoc, writeBatch, getDoc } from '../lib/firebase';
 import { collectionGroup } from 'firebase/firestore';
 import { triggerSystemEmail } from '../lib/emailClient';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -42,7 +42,7 @@ interface AdminDashboardViewProps {
 
 type AdminTab = 'overview' | 'packages' | 'enquiries' | 'customers' | 'gallery' | 'media-library' | 'website' | 'activities' | 'bookings' | 'reviews' | 'blogs' | 'analytics' | 'settings';
 
-export default function AdminDashboardView({
+function AdminDashboardView({
   packages,
   enquiries,
   gallery,
@@ -155,7 +155,7 @@ export default function AdminDashboardView({
       const packageTitle = String(b.packageTitle || '').toLowerCase();
 
       if (bookingSearch) {
-        const queryStr = bookingSearch.toLowerCase();
+        const queryStr = String(bookingSearch ?? '').toLowerCase();
         const nameMatch = customerName.includes(queryStr);
         const emailMatch = customerEmail.includes(queryStr);
         const phoneMatch = customerPhone.includes(queryStr);
@@ -201,8 +201,8 @@ export default function AdminDashboardView({
       const email = String(customer.email || '').toLowerCase();
       const phone = String(customer.phone || customer.whatsapp || '').toLowerCase();
       const destinations = String(customer.preferredDestinations || '').toLowerCase();
-      const matchesSearch = !query || [name, email, phone, destinations].some((value) => value.includes(query));
-      const matchesDestination = customerDestinationFilter === 'All' || !customerDestinationFilter || destinations.includes(customerDestinationFilter.toLowerCase());
+      const matchesSearch = !query || [name, email, phone, destinations].some((value) => String(value ?? '').includes(query));
+      const matchesDestination = customerDestinationFilter === 'All' || !customerDestinationFilter || String(destinations ?? '').includes(String(customerDestinationFilter ?? '').toLowerCase());
       return matchesSearch && matchesDestination;
     });
   }, [customers, customerSearch, customerDestinationFilter]);
@@ -323,10 +323,7 @@ export default function AdminDashboardView({
   }, []);
 
   useEffect(() => {
-    setCmsFormData({
-      ...DEFAULT_WEBSITE_CMS,
-      ...websiteCMS,
-    });
+    setCmsFormData(websiteCMS);
   }, [websiteCMS]);
 
   const fetchWishlistAnalytics = async () => {
@@ -339,7 +336,16 @@ export default function AdminDashboardView({
       setWishlistItems(items);
       setSystemHealth((prev) => ({ ...prev, realtimeListenersActive: true }));
     } catch (err) {
-      console.error('Failed to load wishlist analytics:', err);
+      const message = err instanceof Error ? err.message : String(err ?? '');
+      const isPermissionError = /permission|Permission|insufficient permissions|PERMISSION_DENIED/i.test(message);
+
+      if (isPermissionError) {
+        console.warn('Wishlist analytics unavailable: Firestore permissions denied.', err);
+      } else {
+        console.error('Failed to load wishlist analytics:', err);
+      }
+
+      setWishlistItems([]);
     } finally {
       setWishlistLoading(false);
     }
@@ -721,9 +727,9 @@ export default function AdminDashboardView({
   // Filtered gallery selectors
   const filteredGalleryImages = useMemo(() => {
     return gallery.filter((img) => {
-      const matchSearch = img.title.toLowerCase().includes(gallerySearch.toLowerCase()) ||
-        (img.album || '').toLowerCase().includes(gallerySearch.toLowerCase()) ||
-        img.category.toLowerCase().includes(gallerySearch.toLowerCase());
+      const matchSearch = String(img.title ?? '').toLowerCase().includes(String(gallerySearch ?? '').toLowerCase()) ||
+        String(img.album ?? '').toLowerCase().includes(String(gallerySearch ?? '').toLowerCase()) ||
+        String(img.category ?? '').toLowerCase().includes(String(gallerySearch ?? '').toLowerCase());
       
       const matchAlbum = galleryAlbumFilter === 'All' || img.album === galleryAlbumFilter;
       const matchCategory = galleryCategoryFilter === 'All' || img.category === galleryCategoryFilter;
@@ -821,9 +827,9 @@ export default function AdminDashboardView({
 
   const filteredAdminReviews = useMemo(() => {
     return adminReviews.filter((r) => {
-      const matchSearch = r.name.toLowerCase().includes(reviewSearch.toLowerCase()) ||
-        (r.comment || '').toLowerCase().includes(reviewSearch.toLowerCase()) ||
-        (r.destination || '').toLowerCase().includes(reviewSearch.toLowerCase());
+      const matchSearch = String(r.name ?? '').toLowerCase().includes(String(reviewSearch ?? '').toLowerCase()) ||
+        String(r.comment ?? '').toLowerCase().includes(String(reviewSearch ?? '').toLowerCase()) ||
+        String(r.destination ?? '').toLowerCase().includes(String(reviewSearch ?? '').toLowerCase());
       
       const matchStatus = reviewStatusFilter === 'All' 
         ? true 
@@ -999,9 +1005,9 @@ export default function AdminDashboardView({
 
   const filteredBlogPosts = useMemo(() => {
     return blogPosts.filter((post) => {
-      const matchSearch = post.title.toLowerCase().includes(blogSearch.toLowerCase()) ||
-        (post.category || '').toLowerCase().includes(blogSearch.toLowerCase()) ||
-        (post.author || '').toLowerCase().includes(blogSearch.toLowerCase());
+      const matchSearch = String(post.title ?? '').toLowerCase().includes(String(blogSearch ?? '').toLowerCase()) ||
+        String(post.category ?? '').toLowerCase().includes(String(blogSearch ?? '').toLowerCase()) ||
+        String(post.author ?? '').toLowerCase().includes(String(blogSearch ?? '').toLowerCase());
       const matchStatus = blogStatusFilter === 'All' ? true : post.status === blogStatusFilter;
       return matchSearch && matchStatus;
     });
@@ -1091,9 +1097,9 @@ export default function AdminDashboardView({
   const filteredEnquiries = useMemo(() => {
     return enquiries.filter((e) => {
       const matchSearch =
-        e.name.toLowerCase().includes(enquirySearch.toLowerCase()) ||
-        e.phone.includes(enquirySearch) ||
-        e.destination.toLowerCase().includes(enquirySearch.toLowerCase());
+        String(e.name ?? '').toLowerCase().includes(String(enquirySearch ?? '').toLowerCase()) ||
+        String(e.phone ?? '').includes(String(enquirySearch ?? '')) ||
+        String(e.destination ?? '').toLowerCase().includes(String(enquirySearch ?? '').toLowerCase());
 
       const matchStatus = enquiryStatusFilter === 'All' || e.status === enquiryStatusFilter;
 
@@ -1470,13 +1476,61 @@ export default function AdminDashboardView({
   };
 
   const handleDeleteGalleryImage = async (id: string) => {
-    if (!confirm('Delete this image from public gallery?')) return;
-    try {
-      await deleteDoc(doc(db, 'gallery', id));
-      await onRefreshData();
-    } catch (err) {
-      console.error('Error deleting gallery item:', err);
+    const collectionName = 'gallery';
+    const docRef = doc(db, collectionName, id);
+    const currentUserEmail = auth.currentUser?.email?.trim().toLowerCase() || '';
+    const isAdminUser =
+      currentUserEmail === 'yash.km06@gmail.com' ||
+      currentUserEmail === 'admin@pravaahtravels.com' ||
+      currentUserEmail.endsWith('@pravaahtravels.com');
+
+    console.log('[MediaLibrary] Delete confirmation accepted', { id, collectionName, docPath: docRef.path, currentUserEmail, isAdminUser });
+    console.log('[MediaLibrary] Firestore delete started', { id, docPath: docRef.path, currentUserEmail, isAdminUser });
+
+    if (!auth.currentUser) {
+      alert('Please sign in to delete gallery images.');
+      return;
     }
+
+    if (!isAdminUser) {
+      alert('Only administrators can delete gallery images.');
+      return;
+    }
+
+    try {
+      const existingDoc = await getDoc(docRef);
+      console.log('[MediaLibrary] Document existence check', { id, docPath: docRef.path, exists: existingDoc.exists() });
+
+      if (!existingDoc.exists()) {
+        console.warn('[MediaLibrary] Document does not exist before delete', { id, docPath: docRef.path });
+        alert('The image document was not found in Firestore.');
+        return;
+      }
+
+      await deleteDoc(docRef);
+      console.log('[MediaLibrary] Firestore delete completed', { id, docPath: docRef.path });
+      console.log('[MediaLibrary] Calling onRefreshData()', { id, docPath: docRef.path });
+      await onRefreshData();
+      console.log('[MediaLibrary] Gallery refresh completed', { id, docPath: docRef.path });
+      alert('Image deleted successfully.');
+    } catch (err) {
+      const errorCode = err && typeof err === 'object' && 'code' in err ? String((err as { code?: unknown }).code ?? '') : '';
+      const errorMessage = err instanceof Error ? err.message : String(err ?? 'Unknown error');
+      const errorStack = err instanceof Error ? err.stack : '';
+      console.error('[MediaLibrary] Firestore delete failed', { id, docPath: docRef.path, code: errorCode, message: errorMessage, stack: errorStack, error: err });
+
+      if (errorCode === 'permission-denied') {
+        alert('Delete denied by Firestore rules. Sign in with an administrator account and ensure the rules allow gallery deletes.');
+      } else {
+        alert(`Failed to delete image. Firebase error: ${errorCode ? `${errorCode}: ` : ''}${errorMessage}`);
+      }
+    }
+  };
+
+  const handleDeleteGalleryImageClick = (id: string) => {
+    console.log('[MediaLibrary] Delete button clicked', { id });
+    if (!confirm('Delete this image from public gallery?')) return;
+    void handleDeleteGalleryImage(id);
   };
 
   const handleStartEditGalleryImage = (img: GalleryImage) => {
@@ -1749,9 +1803,9 @@ export default function AdminDashboardView({
     return gallery.filter((img) => {
       const term = mediaLibrarySearch.toLowerCase();
       const matchesSearch = !term ||
-        img.title.toLowerCase().includes(term) ||
-        img.category.toLowerCase().includes(term) ||
-        (img.album || '').toLowerCase().includes(term);
+        String(img.title ?? '').toLowerCase().includes(term) ||
+        String(img.category ?? '').toLowerCase().includes(term) ||
+        String(img.album ?? '').toLowerCase().includes(term);
       const matchesCategory = mediaLibraryCategory === 'All' || img.category === mediaLibraryCategory;
       return matchesSearch && matchesCategory;
     });
@@ -2203,7 +2257,7 @@ export default function AdminDashboardView({
                     <option value="Ladakh">Ladakh</option>
                     <option value="Uttarakhand">Uttarakhand</option>
                     {uniqueCategories
-                      .filter((cat) => !['Pilgrimage', 'Treks', 'Adventure', 'Himachal', 'Ladakh', 'Uttarakhand'].includes(cat))
+                      .filter((cat) => !['Pilgrimage', 'Treks', 'Adventure', 'Himachal', 'Ladakh', 'Uttarakhand'].includes(String(cat ?? '')))
                       .map((cat) => (
                         <option key={cat} value={cat}>
                           {cat}
@@ -2237,7 +2291,7 @@ export default function AdminDashboardView({
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => handleDeleteGalleryImage(img.id)}
+                          onClick={() => handleDeleteGalleryImageClick(img.id)}
                           className="p-2 bg-red-600 hover:bg-red-700 text-white rounded shadow transition cursor-pointer"
                           title="Delete Image"
                         >
@@ -2267,7 +2321,7 @@ export default function AdminDashboardView({
                           Edit
                         </button>
                         <button
-                          onClick={() => handleDeleteGalleryImage(img.id)}
+                          onClick={() => handleDeleteGalleryImageClick(img.id)}
                           className="text-[10px] text-red-600 hover:underline"
                         >
                           Delete
@@ -3582,3 +3636,5 @@ Spiti is indeed a treasure-house of natural and cultural delights..."
     </div>
   );
 }
+
+export default AdminDashboardView;

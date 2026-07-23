@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db, collection, getDocs, query, orderBy, deleteDoc, doc, getDoc, onSnapshot, where, addDoc } from './lib/firebase';
-import { SEED_GALLERY } from './lib/seedData';
 import { MessageCircle, Sparkles, Compass } from 'lucide-react';
-import { TravelPackage, Enquiry, GalleryImage, DestinationCategory, WebsiteCMSSettings, DEFAULT_WEBSITE_CMS, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem } from './types';
+import { TravelPackage, Enquiry, GalleryImage, DestinationCategory, WebsiteCMSSettings, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem } from './types';
 
 // Component imports
 import Header from './components/Header';
@@ -138,7 +137,7 @@ export default function App() {
   const [activityItems, setActivityItems] = useState<ActivityChildItem[]>([]);
   const [activityRecommendations, setActivityRecommendations] = useState<ActivityRecommendation[]>([]);
   const [featuredCategories, setFeaturedCategories] = useState<FeaturedCategoryItem[]>([]);
-  const [websiteCMS, setWebsiteCMS] = useState<WebsiteCMSSettings>(DEFAULT_WEBSITE_CMS);
+  const [websiteCMS, setWebsiteCMS] = useState<WebsiteCMSSettings>({} as WebsiteCMSSettings);
 
   // Loading states
   const [loadingData, setLoadingData] = useState(true);
@@ -214,17 +213,10 @@ export default function App() {
       })) as TravelPackage[];
       setPackages(fetchedPackages);
 
-      let fetchedGallery: GalleryImage[] = gallerySnapshot.docs.map((docSnap) => ({
+      const fetchedGallery: GalleryImage[] = gallerySnapshot.docs.map((docSnap) => ({
         id: docSnap.id,
         ...docSnap.data(),
       })) as GalleryImage[];
-      if (fetchedGallery.length === 0) {
-        fetchedGallery = SEED_GALLERY.map((img, idx) => ({
-          id: `seed-gallery-${idx}`,
-          order: idx,
-          ...img,
-        })) as unknown as GalleryImage[];
-      }
       fetchedGallery.sort((a, b) => {
         const aOrder = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER;
         const bOrder = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER;
@@ -234,9 +226,9 @@ export default function App() {
       setGallery(fetchedGallery);
 
       if (cmsSnap.exists()) {
-        setWebsiteCMS({ ...DEFAULT_WEBSITE_CMS, ...cmsSnap.data() } as WebsiteCMSSettings);
+        setWebsiteCMS(cmsSnap.data() as WebsiteCMSSettings);
       } else {
-        setWebsiteCMS(DEFAULT_WEBSITE_CMS);
+        setWebsiteCMS({} as WebsiteCMSSettings);
       }
 
       const fetchedActivities = activitiesSnapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as ActivityItem[];
@@ -767,7 +759,7 @@ export default function App() {
 
       {/* Hide footer on full-screen admin dashboard */}
       {currentView !== 'admin-dashboard' && (
-        <Footer onNavigate={handleNavigate} websiteCMS={websiteCMS} gallery={gallery} />
+        <Footer onNavigate={handleNavigate} websiteCMS={websiteCMS} gallery={gallery} loading={loadingData} />
       )}
 
       {/* Floating Action Buttons Vertical Stack */}

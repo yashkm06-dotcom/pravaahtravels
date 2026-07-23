@@ -6,9 +6,10 @@ interface FooterProps {
   onNavigate: (view: string, packageId?: string | null) => void;
   websiteCMS: WebsiteCMSSettings;
   gallery: GalleryImage[];
+  loading?: boolean;
 }
 
-export default function Footer({ onNavigate, websiteCMS, gallery }: FooterProps) {
+export default function Footer({ onNavigate, websiteCMS, gallery, loading = false }: FooterProps) {
   const currentYear = new Date().getFullYear();
   const isValidUrl = (url?: string) => {
     if (!url) return false;
@@ -19,18 +20,11 @@ export default function Footer({ onNavigate, websiteCMS, gallery }: FooterProps)
       return false;
     }
   };
-  const fallbackFooterGallery = [
-    'https://images.unsplash.com/photo-1626830503244-3d2ac0493ae0?auto=format&fit=crop&w=240&q=80',
-    'https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=240&q=80',
-    'https://images.unsplash.com/photo-1593693397690-362cb9666fc2?auto=format&fit=crop&w=240&q=80',
-    'https://images.unsplash.com/photo-1544085311-11a028465b03?auto=format&fit=crop&w=240&q=80',
-    'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=240&q=80',
-    'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=240&q=80',
-  ];
   const uniqueGalleryUrls = Array.from(
     new Set(gallery.map((item) => item.imageUrl).filter((src): src is string => Boolean(src)))
   );
-  const footerGallery = (uniqueGalleryUrls.length > 0 ? uniqueGalleryUrls : fallbackFooterGallery).slice(0, 6);
+  const footerGallery = uniqueGalleryUrls.slice(0, 6);
+  const safeFooterPhone = String(websiteCMS?.footerPhone ?? '');
   const socialLinks = [
     ['f', websiteCMS.socialFacebook],
     ['x', websiteCMS.socialX],
@@ -72,7 +66,7 @@ export default function Footer({ onNavigate, websiteCMS, gallery }: FooterProps)
               </li>
               <li className="flex items-center gap-3">
                 <Phone className="h-5 w-5 text-[#4DA528]" />
-                <a href={`tel:${websiteCMS.footerPhone.replace(/[^0-9+]/g, '')}`} className="transition hover:text-[#FF970D]">{websiteCMS.footerPhone}</a>
+                <a href={`tel:${safeFooterPhone.replace(/[^0-9+]/g, '')}`} className="transition hover:text-[#FF970D]">{safeFooterPhone}</a>
               </li>
               <li className="flex items-start gap-3">
                 <MapPin className="mt-1 h-5 w-5 shrink-0 text-[#4DA528]" />
@@ -104,22 +98,32 @@ export default function Footer({ onNavigate, websiteCMS, gallery }: FooterProps)
           <div>
             <h5 className="mb-8 text-[20px] font-bold">Gallery</h5>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {footerGallery.map((src, idx) => (
-                <button
-                  key={src}
-                  type="button"
-                  onClick={() => onNavigate('gallery')}
-                  className="group aspect-square cursor-pointer overflow-hidden rounded-md bg-white/10"
-                >
-                  <img
-                    src={src}
-                    alt={`Travel gallery ${idx + 1}`}
-                    className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
-                    referrerPolicy="no-referrer"
-                    onError={handleTravelImageError}
-                  />
-                </button>
-              ))}
+              {loading ? (
+                Array.from({ length: 6 }).map((_, idx) => (
+                  <div key={idx} className="aspect-square animate-pulse rounded-md bg-white/10" />
+                ))
+              ) : footerGallery.length > 0 ? (
+                footerGallery.map((src, idx) => (
+                  <button
+                    key={src}
+                    type="button"
+                    onClick={() => onNavigate('gallery')}
+                    className="group aspect-square cursor-pointer overflow-hidden rounded-md bg-white/10"
+                  >
+                    <img
+                      src={src}
+                      alt={`Travel gallery ${idx + 1}`}
+                      className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
+                      referrerPolicy="no-referrer"
+                      onError={handleTravelImageError}
+                    />
+                  </button>
+                ))
+              ) : (
+                <div className="col-span-2 rounded-md border border-white/10 bg-white/5 p-3 text-sm text-white/70 sm:col-span-3">
+                  No gallery images have been published yet.
+                </div>
+              )}
             </div>
           </div>
 

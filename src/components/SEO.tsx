@@ -25,7 +25,8 @@ export default function SEO({
 }: SEOProps) {
   useEffect(() => {
     // 1. Title
-    const formattedTitle = title.includes('Pravaah Travels') ? title : `${title} | Pravaah Travels`;
+    const safeTitle = String(title ?? '');
+    const formattedTitle = safeTitle.toLowerCase().includes('pravaah travels') ? safeTitle : `${safeTitle} | Pravaah Travels`;
     document.title = formattedTitle;
 
     // 2. Helper to set or create meta tag

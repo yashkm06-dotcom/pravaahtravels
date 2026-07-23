@@ -370,7 +370,7 @@ export default function PackageDetailView({
     onToggleWishlist(pkg);
     setSaveNotice({
       type: 'success',
-      message: wishlistPackageIds.includes(pkg.id) ? 'Removed from Wishlist' : 'Package added to Wishlist ❤️',
+      message: Array.isArray(wishlistPackageIds) && wishlistPackageIds.includes(String(pkg.id ?? '')) ? 'Removed from Wishlist' : 'Package added to Wishlist ❤️',
     });
     setSavingPackage(false);
     if (onPackageSaved) {
@@ -523,9 +523,9 @@ export default function PackageDetailView({
     { label: 'Destination', value: pkg.destination, icon: MapPin },
     { label: 'Duration', value: pkg.duration, icon: Calendar },
     { label: 'Group Size', value: pkg.maxGuests ? `Up to ${pkg.maxGuests}` : 'Flexible', icon: Users },
-    { label: 'Accommodation', value: pkg.inclusions?.includes('Hotel') ? 'Hotel stay included' : 'Premium stay', icon: Compass },
-    { label: 'Meals', value: pkg.inclusions?.includes('Meals') ? 'Included' : 'On request', icon: Check },
-    { label: 'Transport', value: pkg.inclusions?.includes('Transport') ? 'Private transfers' : 'Shared transfer', icon: Check },
+    { label: 'Accommodation', value: String(pkg.inclusions ?? '').toLowerCase().includes('hotel') ? 'Hotel stay included' : 'Premium stay', icon: Compass },
+    { label: 'Meals', value: String(pkg.inclusions ?? '').toLowerCase().includes('meals') ? 'Included' : 'On request', icon: Check },
+    { label: 'Transport', value: String(pkg.inclusions ?? '').toLowerCase().includes('transport') ? 'Private transfers' : 'Shared transfer', icon: Check },
     { label: 'Rating', value: `${(packageReviews.length > 0 ? packageReviews.reduce((sum: number, review: any) => sum + (Number(review.rating) || 0), 0) / packageReviews.length : 4.8).toFixed(1)} / 5`, icon: Star },
     { label: 'Starting Price', value: formatPrice(pkg.offerPrice || pkg.price), icon: Check },
   ];
@@ -1061,8 +1061,8 @@ export default function PackageDetailView({
                   disabled={savingPackage}
                   className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-[12px] border border-[#4DA528]/20 bg-[#fffaf1] px-5 py-3 text-[12px] font-extrabold uppercase tracking-[0.14em] text-[#4DA528] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#f3f7eb] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffaf1] disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  <Heart className={`h-4 w-4 transition ${wishlistPackageIds.includes(pkg.id) ? 'fill-rose-600 text-rose-600' : ''}`} />
-                  <span>{savingPackage ? 'Saving...' : wishlistPackageIds.includes(pkg.id) ? 'Remove from Wishlist' : 'Add to Wishlist'}</span>
+                  <Heart className={`h-4 w-4 transition ${Array.isArray(wishlistPackageIds) && wishlistPackageIds.includes(String(pkg.id ?? '')) ? 'fill-rose-600 text-rose-600' : ''}`} />
+                  <span>{savingPackage ? 'Saving...' : Array.isArray(wishlistPackageIds) && wishlistPackageIds.includes(String(pkg.id ?? '')) ? 'Remove from Wishlist' : 'Add to Wishlist'}</span>
                 </button>
                 {saveNotice && (
                   <div className={`rounded-[12px] border px-3 py-3 text-sm ${saveNotice.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>
@@ -1394,8 +1394,8 @@ export default function PackageDetailView({
               disabled={savingPackage}
               className="flex items-center justify-center gap-2 rounded-full border border-[#4DA528]/20 bg-[#fffaf1] px-3 py-2 text-[11px] font-extrabold uppercase tracking-[0.14em] text-[#4DA528]"
             >
-              <Heart className={`h-4 w-4 transition ${wishlistPackageIds.includes(pkg.id) ? 'fill-rose-600 text-rose-600' : ''}`} />
-              {wishlistPackageIds.includes(pkg.id) ? 'Saved' : 'Save'}
+              <Heart className={`h-4 w-4 transition ${Array.isArray(wishlistPackageIds) && wishlistPackageIds.includes(String(pkg.id ?? '')) ? 'fill-rose-600 text-rose-600' : ''}`} />
+              {Array.isArray(wishlistPackageIds) && wishlistPackageIds.includes(String(pkg.id ?? '')) ? 'Saved' : 'Save'}
             </button>
             <button
               type="button"

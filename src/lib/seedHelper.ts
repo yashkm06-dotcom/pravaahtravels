@@ -1,28 +1,14 @@
-import { db, collection, getDocs, writeBatch, doc } from './firebase';
-import { SEED_GALLERY } from './seedData';
+import { db, collection, getDocs } from './firebase';
 
 export async function checkAndSeedDatabase() {
   try {
-    // Check gallery
     const galleryCol = collection(db, 'gallery');
     const gallerySnapshot = await getDocs(galleryCol);
-    
+
     if (gallerySnapshot.empty) {
-      console.log('No gallery images found in Firestore. Seeding default gallery...');
-      const batch = writeBatch(db);
-      
-      SEED_GALLERY.forEach((item) => {
-        const docRef = doc(galleryCol);
-        batch.set(docRef, {
-          ...item,
-          createdAt: new Date().toISOString()
-        });
-      });
-      
-      await batch.commit();
-      console.log('Seeded default gallery successfully.');
+      console.log('No gallery images found in Firestore. Waiting for content to be published.');
     }
   } catch (error) {
-    console.error('Error seeding database:', error);
+    console.error('Error checking gallery data:', error);
   }
 }

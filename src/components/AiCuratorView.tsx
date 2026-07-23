@@ -189,7 +189,7 @@ export default function AiCuratorView({ onNavigateToHome }: AiCuratorViewProps) 
         email: enquiryEmail,
         destination: destination,
         travelDate: enquiryTravelDate,
-        travelers: companions.includes('Couple') ? 2 : companions.includes('Solo') ? 1 : 4,
+        travelers: String(companions ?? '').includes('Couple') ? 2 : String(companions ?? '').includes('Solo') ? 1 : 4,
         budget: `₹${Number(budget).toLocaleString('en-IN')}`,
         message: `🤖 STANDALONE AI CURATOR PACKAGE: "${aiResult.title}"\n` + 
                  `Duration: ${aiResult.duration}\n` +
@@ -231,7 +231,7 @@ export default function AiCuratorView({ onNavigateToHome }: AiCuratorViewProps) 
         email: enquiryEmail,
         destination: destination,
         travelDate: enquiryTravelDate,
-        travelers: companions.includes('Couple') ? 2 : companions.includes('Solo') ? 1 : 4,
+        travelers: String(companions ?? '').includes('Couple') ? 2 : String(companions ?? '').includes('Solo') ? 1 : 4,
         budget: `₹${Number(budget).toLocaleString('en-IN')}`,
         message: `🏔️ MANUAL CURATION FALLBACK REQUEST\n` + 
                  `Destination Spot: ${destination}\n` +

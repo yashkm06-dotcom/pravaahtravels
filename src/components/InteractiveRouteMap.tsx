@@ -52,7 +52,7 @@ export default function InteractiveRouteMap({
     let spotLabel = 'Day Stop';
     let spotType: 'hotel' | 'sightseeing' | 'activity' | 'view' = 'sightseeing';
 
-    const titleLower = dayItem.title.toLowerCase();
+    const titleLower = String(dayItem?.title ?? '').toLowerCase();
     if (titleLower.includes('arrival') || titleLower.includes('reach') || titleLower.includes('check')) {
       spotLabel = 'Hotel Check-in';
       spotType = 'hotel';

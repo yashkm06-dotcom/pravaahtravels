@@ -117,12 +117,12 @@ export default function PackagesView({
     const filtered = packages.filter((pkg) => {
       if (!pkg.active) return false;
 
-      const normalizedLocation = pkg.location || 'Uttarakhand';
+      const normalizedLocation = String(pkg.location ?? 'Uttarakhand');
       const searchValue = appliedFilters.searchQuery.trim().toLowerCase();
       const matchSearch = !searchValue ||
-        pkg.title.toLowerCase().includes(searchValue) ||
-        pkg.destination.toLowerCase().includes(searchValue) ||
-        pkg.shortDescription.toLowerCase().includes(searchValue);
+        String(pkg.title ?? '').toLowerCase().includes(searchValue) ||
+        String(pkg.destination ?? '').toLowerCase().includes(searchValue) ||
+        String(pkg.shortDescription ?? '').toLowerCase().includes(searchValue);
 
       const matchCategory = appliedFilters.category === 'All' || pkg.category === appliedFilters.category;
       const matchLocation = applyLocation === 'All' || normalizedLocation === applyLocation;
@@ -308,7 +308,7 @@ export default function PackagesView({
       onToggleWishlist(pkg);
       setSaveNotice({
         type: 'success',
-        message: wishlistPackageIds.includes(pkg.id) ? 'Removed from Wishlist' : 'Package added to Wishlist ❤️',
+        message: Array.isArray(wishlistPackageIds) && wishlistPackageIds.includes(String(pkg.id ?? '')) ? 'Removed from Wishlist' : 'Package added to Wishlist ❤️',
       });
       if (onPackageSaved) {
         onPackageSaved();
@@ -666,10 +666,10 @@ export default function PackagesView({
                           onToggleWishlist?.(pkg);
                         }}
                         className="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-[5px] border border-[#4DA528]/20 bg-[#fffaf1] text-[#4DA528] transition hover:-translate-y-0.5 hover:bg-[#f3f7eb] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/25"
-                        aria-label={wishlistPackageIds.includes(pkg.id) ? 'Remove package from wishlist' : 'Add package to wishlist'}
-                        title={wishlistPackageIds.includes(pkg.id) ? 'Remove from Wishlist' : 'Add to Wishlist'}
+                        aria-label={Array.isArray(wishlistPackageIds) && wishlistPackageIds.includes(String(pkg.id ?? '')) ? 'Remove package from wishlist' : 'Add package to wishlist'}
+                        title={Array.isArray(wishlistPackageIds) && wishlistPackageIds.includes(String(pkg.id ?? '')) ? 'Remove from Wishlist' : 'Add to Wishlist'}
                       >
-                        <Heart className={`h-4 w-4 transition hover:scale-110 ${wishlistPackageIds.includes(pkg.id) ? 'fill-rose-600 text-rose-600' : ''}`} />
+                        <Heart className={`h-4 w-4 transition hover:scale-110 ${Array.isArray(wishlistPackageIds) && wishlistPackageIds.includes(String(pkg.id ?? '')) ? 'fill-rose-600 text-rose-600' : ''}`} />
                       </button>
                       <button
                         type="button"

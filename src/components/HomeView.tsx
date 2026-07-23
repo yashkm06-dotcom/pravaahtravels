@@ -597,7 +597,7 @@ export default function HomeView({
         email: aiEnquiryData.email,
         destination: quizAnswers.destination,
         travelDate: aiEnquiryData.travelDate,
-        travelers: quizAnswers.companions.includes('Couple') ? 2 : 4,
+        travelers: String(quizAnswers.companions ?? '').includes('Couple') ? 2 : 4,
         budget: `₹${Number(quizAnswers.budget).toLocaleString('en-IN')}`,
         message: `🤖 PRAVAAH AI CUSTOM TRIP: "${aiResult.title}"\n` + 
                  `Duration: ${aiResult.duration}\n` +
@@ -708,16 +708,16 @@ export default function HomeView({
 
   const filteredCategoryPackages = useMemo(() => {
     const packagesSource = packageList || [];
-    const linkedPackageIds = activeFeaturedCategory?.packageIds || [];
+    const linkedPackageIds = Array.isArray(activeFeaturedCategory?.packageIds) ? activeFeaturedCategory.packageIds : [];
 
     if (linkedPackageIds.length > 0) {
-      return packagesSource.filter((pkg) => linkedPackageIds.includes(pkg.id));
+      return packagesSource.filter((pkg) => linkedPackageIds.includes(String(pkg.id ?? '')));
     }
 
     return packagesSource.filter((pkg) => {
       const matchesFeaturedCategory = activeFeaturedCategory
         ? (activeFeaturedCategory.category && pkg.category === activeFeaturedCategory.category)
-          || (activeFeaturedCategory.location && (pkg.location?.toLowerCase().includes(activeFeaturedCategory.location.toLowerCase()) || pkg.destination?.toLowerCase().includes(activeFeaturedCategory.location.toLowerCase())))
+          || (activeFeaturedCategory.location && (String(pkg.location ?? '').toLowerCase().includes(String(activeFeaturedCategory.location ?? '').toLowerCase()) || String(pkg.destination ?? '').toLowerCase().includes(String(activeFeaturedCategory.location ?? '').toLowerCase())))
         : false;
 
       const matchesPlannerCategory = plannerCategory ? pkg.category === plannerCategory : false;
@@ -1092,7 +1092,7 @@ export default function HomeView({
                     ) : (
                       <div className="grid grid-cols-1 items-stretch gap-7 sm:grid-cols-2 xl:grid-cols-4">
                         {featuredCarouselPackages.length > 0 ? featuredCarouselPackages.map((pkg, idx) => {
-                          const isWishlisted = wishlistPackageIds.includes(pkg.id);
+                          const isWishlisted = Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(pkg.id ?? '')) : false;
                           return (
                             <div key={pkg.id} className="h-full">
                               <PackageCard
@@ -1107,7 +1107,7 @@ export default function HomeView({
                             </div>
                           );
                         }) : filteredCategoryPackages.slice(0, 4).map((pkg, idx) => {
-                          const isWishlisted = wishlistPackageIds.includes(pkg.id);
+                          const isWishlisted = Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(pkg.id ?? '')) : false;
                           return (
                             <div key={pkg.id} className="h-full">
                               <PackageCard
@@ -1187,9 +1187,9 @@ export default function HomeView({
                             if (linkedPackage) onToggleWishlist?.(linkedPackage);
                           }}
                           className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 transition hover:bg-[#4DA528] hover:text-white"
-                          title={linkedPackage ? (wishlistPackageIds.includes(linkedPackage.id) ? 'Remove from Wishlist' : 'Add to Wishlist') : 'Link a package to enable wishlist'}
+                          title={linkedPackage ? (Array.isArray(wishlistPackageIds) && wishlistPackageIds.includes(String(linkedPackage.id ?? '')) ? 'Remove from Wishlist' : 'Add to Wishlist') : 'Link a package to enable wishlist'}
                         >
-                          <Heart className={`h-4 w-4 transition ${linkedPackage && wishlistPackageIds.includes(linkedPackage.id) ? 'fill-rose-600 text-rose-600' : 'text-rose-500'}`} />
+                          <Heart className={`h-4 w-4 transition ${linkedPackage && Array.isArray(wishlistPackageIds) && wishlistPackageIds.includes(String(linkedPackage.id ?? '')) ? 'fill-rose-600 text-rose-600' : 'text-rose-500'}`} />
                         </button>
                       </div>
                       <span className="map mt-4 flex items-center gap-2 text-[14px] font-medium text-stone-500">
@@ -1229,7 +1229,7 @@ export default function HomeView({
               </div>
             ) : (
               filteredActivityPackages.map((pkg, idx) => {
-                const isWishlisted = wishlistPackageIds.includes(pkg.id);
+                const isWishlisted = Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(pkg.id ?? '')) : false;
                 return (
                   <article key={pkg.id} className="tour-listing wow fadeInUp animated group flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-1" data-wow-delay={`${(idx + 1) / 10}s`}>
                     <button type="button" onClick={() => onNavigate('package-detail', pkg.id)} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">

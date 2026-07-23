@@ -27,7 +27,8 @@ export async function logAnalyticsEvent(
     // Avoid double logging page view in the same session tab
     if (eventType === 'page_view') {
       const loggedViews = JSON.parse(sessionStorage.getItem('pravaah_logged_page_views') || '[]');
-      if (loggedViews.includes(targetId)) {
+      const normalizedTargetId = String(targetId ?? '');
+      if (Array.isArray(loggedViews) && loggedViews.includes(normalizedTargetId)) {
         return; // Already logged this view in this session
       }
       loggedViews.push(targetId);
