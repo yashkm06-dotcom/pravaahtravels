@@ -4,7 +4,7 @@ import {
   Plus, Edit2, Trash2, X, Search, Download,
   Calendar, DollarSign, Users, Globe, Eye, ChevronDown, ChevronUp,
   Upload, CheckCircle, Clock, Phone, Mail, MessageSquare, Clipboard, ExternalLink, Star, LineChart as LineChartIcon, RefreshCw,
-  Settings, Palette, Home, Megaphone, Images, Heart, Sparkles, ChevronRight, ChevronLeft,
+  Settings, Palette, Home, Megaphone, Images, Heart, Sparkles, ChevronRight, ChevronLeft, AlertCircle,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import { db, storage, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, orderBy, writeBatch } from '../../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { TravelPackage, Enquiry, GalleryImage, WebsiteCMSSettings, formatPrice, CustomerProfile, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem, DestinationCategory } from '../../types';
+import { TravelPackage, Enquiry, EnquiryPriority, EnquiryStatus, GalleryImage, WebsiteCMSSettings, formatPrice, CustomerProfile, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem, DestinationCategory, type BookingDocumentStatus, type TripChecklistKey, type TripCustomerStatus, type TripDocument, type TripOperationDocument, type TripOperationDocumentType, type TripOperations } from '../../types';
 import { TableSkeletonLoader, CardGridSkeletonLoader } from '../SkeletonLoader';
 import { handleTravelImageError } from '../../utils/imageFallback';
 
@@ -1774,100 +1774,347 @@ export function PackagesTab(props: PackagesTabProps) {
 }
 
 interface EnquiriesTabProps {
-  enquiries: Enquiry[];
   filteredEnquiries: Enquiry[];
   enquirySearch: string;
   setEnquirySearch: (value: string) => void;
   enquiryStatusFilter: string;
   setEnquiryStatusFilter: (value: string) => void;
-  enquiryMonthFilter: string;
-  setEnquiryMonthFilter: (value: string) => void;
-  uniqueEnquiryMonths: string[];
+  enquiryDestinationFilter: string;
+  setEnquiryDestinationFilter: (value: string) => void;
+  enquiryTravelDateFilter: string;
+  setEnquiryTravelDateFilter: (value: string) => void;
+  enquiryPriorityFilter: string;
+  setEnquiryPriorityFilter: (value: string) => void;
+  enquiryAssignedFilter: string;
+  setEnquiryAssignedFilter: (value: string) => void;
+  enquirySortOrder: 'newest' | 'oldest';
+  setEnquirySortOrder: (value: 'newest' | 'oldest') => void;
+  uniqueEnquiryDestinations: string[];
+  uniqueEnquiryAssignees: string[];
+  enquiryCrmMetrics: {
+    total: number;
+    newCount: number;
+    contactedCount: number;
+    quoteSentCount: number;
+    confirmedCount: number;
+    completedCount: number;
+    cancelledCount: number;
+    revenueExpected: number;
+    advanceReceived: number;
+    pendingPayments: number;
+    mostPopularDestination: string;
+  };
+  crmStatusOptions: EnquiryStatus[];
+  crmPriorityOptions: EnquiryPriority[];
   handleExportCSV: () => void;
+  onOpenEnquiry: (enquiry: Enquiry) => void;
+  onOpenConvertBooking: (enquiry: Enquiry) => void;
+  onUpdateEnquiryStatus: (enquiryId: string, status: EnquiryStatus) => Promise<void>;
+  enquiryActionBusy: boolean;
+  formatPriceValue: (value: number) => string;
 }
 
+const normalizeEnquiryStatusForDisplay = (status?: EnquiryStatus): EnquiryStatus => {
+  if (status === 'Converted') return 'Booking Confirmed';
+  if (status === 'Closed') return 'Completed';
+  return status || 'New';
+};
+
+const enquiryStatusClassName = (status?: EnquiryStatus) => {
+  switch (normalizeEnquiryStatusForDisplay(status)) {
+    case 'New':
+      return 'border-blue-200 bg-blue-50 text-blue-700';
+    case 'Contacted':
+      return 'border-sky-200 bg-sky-50 text-sky-700';
+    case 'Quote Sent':
+      return 'border-violet-200 bg-violet-50 text-violet-700';
+    case 'Booking Confirmed':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case 'Cancelled':
+      return 'border-rose-200 bg-rose-50 text-rose-700';
+    case 'Completed':
+      return 'border-teal-200 bg-teal-50 text-teal-700';
+    default:
+      return 'border-stone-200 bg-stone-50 text-stone-700';
+  }
+};
+
+const enquiryPriorityClassName = (priority?: EnquiryPriority) => {
+  switch (priority || 'Medium') {
+    case 'High':
+      return 'border-rose-200 bg-rose-50 text-rose-700';
+    case 'Low':
+      return 'border-stone-200 bg-stone-50 text-stone-600';
+    default:
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+  }
+};
+
+const isEnquiryFollowUpOverdue = (followUpDate?: string, status?: EnquiryStatus) => {
+  if (!followUpDate) return false;
+  const normalizedStatus = normalizeEnquiryStatusForDisplay(status);
+  if (['Booking Confirmed', 'Completed', 'Cancelled'].includes(normalizedStatus)) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const followUp = new Date(followUpDate);
+  followUp.setHours(0, 0, 0, 0);
+  return followUp.getTime() < today.getTime();
+};
+
 export function EnquiriesTab(props: EnquiriesTabProps) {
-  const { enquiries, filteredEnquiries, enquirySearch, setEnquirySearch, enquiryStatusFilter, setEnquiryStatusFilter, enquiryMonthFilter, setEnquiryMonthFilter, uniqueEnquiryMonths, handleExportCSV } = props;
+  const {
+    filteredEnquiries,
+    enquirySearch,
+    setEnquirySearch,
+    enquiryStatusFilter,
+    setEnquiryStatusFilter,
+    enquiryDestinationFilter,
+    setEnquiryDestinationFilter,
+    enquiryTravelDateFilter,
+    setEnquiryTravelDateFilter,
+    enquiryPriorityFilter,
+    setEnquiryPriorityFilter,
+    enquiryAssignedFilter,
+    setEnquiryAssignedFilter,
+    enquirySortOrder,
+    setEnquirySortOrder,
+    uniqueEnquiryDestinations,
+    uniqueEnquiryAssignees,
+    enquiryCrmMetrics,
+    crmStatusOptions,
+    crmPriorityOptions,
+    handleExportCSV,
+    onOpenEnquiry,
+    onOpenConvertBooking,
+    onUpdateEnquiryStatus,
+    enquiryActionBusy,
+    formatPriceValue,
+  } = props;
+
+  const crmCards = [
+    { label: 'Total Enquiries', value: enquiryCrmMetrics.total, icon: Users, tone: 'border-stone-200 bg-white text-stone-700' },
+    { label: 'New', value: enquiryCrmMetrics.newCount, icon: Clock, tone: 'border-blue-200 bg-blue-50 text-blue-700' },
+    { label: 'Contacted', value: enquiryCrmMetrics.contactedCount, icon: Phone, tone: 'border-sky-200 bg-sky-50 text-sky-700' },
+    { label: 'Quote Sent', value: enquiryCrmMetrics.quoteSentCount, icon: MessageSquare, tone: 'border-violet-200 bg-violet-50 text-violet-700' },
+    { label: 'Confirmed', value: enquiryCrmMetrics.confirmedCount, icon: CheckCircle, tone: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+    { label: 'Completed', value: enquiryCrmMetrics.completedCount, icon: Star, tone: 'border-teal-200 bg-teal-50 text-teal-700' },
+    { label: 'Cancelled', value: enquiryCrmMetrics.cancelledCount, icon: X, tone: 'border-rose-200 bg-rose-50 text-rose-700' },
+    { label: 'Revenue Expected', value: formatPriceValue(enquiryCrmMetrics.revenueExpected), icon: DollarSign, tone: 'border-emerald-200 bg-white text-emerald-700' },
+    { label: 'Advance Received', value: formatPriceValue(enquiryCrmMetrics.advanceReceived), icon: DollarSign, tone: 'border-[#008080]/20 bg-[#008080]/5 text-[#008080]' },
+    { label: 'Pending Payments', value: formatPriceValue(enquiryCrmMetrics.pendingPayments), icon: Clipboard, tone: 'border-amber-200 bg-amber-50 text-amber-700' },
+    { label: 'Popular Destination', value: enquiryCrmMetrics.mostPopularDestination, icon: Compass, tone: 'border-stone-200 bg-[#fcfbf8] text-stone-700' },
+  ];
+
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6 animate-fade-in font-sans">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-xl sm:text-2xl font-serif font-normal text-[#333333] tracking-tight">Holiday Enquiries</h2>
-          <p className="text-xs text-stone-500 font-light">View, update, filter, or export travel enquiries submitted by customers.</p>
+          <h2 className="flex flex-wrap items-center gap-2 text-xl font-semibold tracking-tight text-stone-900 sm:text-2xl">
+            <span>Travel CRM</span>
+            <span className="rounded-full bg-[#008080]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#008080]">{filteredEnquiries.length} Visible</span>
+          </h2>
+          <p className="mt-1 text-sm text-stone-500">Manage enquiry lifecycle, follow-ups, staff ownership, notes, and payment progress from the existing enquiries collection.</p>
         </div>
-        {filteredEnquiries.length > 0 && (
-          <button onClick={handleExportCSV} className="px-4 py-2.5 bg-stone-950 hover:bg-stone-800 text-white text-[10px] font-bold uppercase tracking-wider rounded-sm shadow-sm flex items-center justify-center gap-1.5 cursor-pointer">
+        <button
+          type="button"
+          onClick={handleExportCSV}
+          disabled={filteredEnquiries.length === 0}
+          className="flex items-center justify-center gap-1.5 rounded-[8px] border border-stone-200 bg-stone-100 px-3.5 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-700 transition hover:bg-stone-200 disabled:cursor-not-allowed disabled:opacity-50"
+        >
             <Download className="w-4 h-4" />
             <span>Export CSV ({filteredEnquiries.length})</span>
-          </button>
-        )}
+        </button>
       </div>
 
-      <div className="bg-white border border-stone-200 p-4 rounded shadow-xs grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-          <input type="text" placeholder="Search by client name, phone..." value={enquirySearch} onChange={(e) => setEnquirySearch(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-[#f8f7f4] border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] text-stone-800 font-medium" />
-        </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        {crmCards.map((card) => {
+          const CardIcon = card.icon;
+          return (
+            <div key={card.label} className={`flex min-h-[118px] items-start justify-between gap-4 rounded-[16px] border p-4 shadow-[0_10px_30px_rgba(18,38,32,0.05)] ${card.tone}`}>
+              <div>
+                <span className="block text-[10px] font-bold uppercase tracking-[0.2em] opacity-70">{card.label}</span>
+                <strong className="mt-2 block break-words text-xl font-semibold leading-tight">{card.value}</strong>
+              </div>
+              <div className="rounded-[12px] bg-white/80 p-2.5 shadow-xs">
+                <CardIcon className="h-5 w-5" />
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
-        <div>
-          <select value={enquiryStatusFilter} onChange={(e) => setEnquiryStatusFilter(e.target.value)} className="w-full px-3 py-2 bg-[#f8f7f4] border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] text-stone-700 font-medium cursor-pointer">
+      <div className="rounded-[18px] border border-stone-200 bg-[#fcfbf9] p-4 shadow-[0_10px_30px_rgba(18,38,32,0.04)]">
+        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#008080]">Search & Filters</span>
+          <span className="text-[11px] text-stone-500">Filter by lifecycle, destination, follow-up, priority, or owner</span>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <label className="relative">
+            <span className="sr-only">Search enquiries</span>
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-stone-400" />
+            <input type="text" placeholder="Search name, phone, email, destination..." value={enquirySearch} onChange={(e) => setEnquirySearch(e.target.value)} className="w-full rounded-[10px] border border-stone-200 bg-white py-2.5 pl-9 pr-9 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+            {enquirySearch && (
+              <button type="button" aria-label="Clear enquiry search" onClick={() => setEnquirySearch('')} className="absolute right-3 top-2.5 text-sm text-stone-400 hover:text-stone-600">x</button>
+            )}
+          </label>
+
+          <select value={enquiryStatusFilter} onChange={(e) => setEnquiryStatusFilter(e.target.value)} className="w-full rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20">
             <option value="All">All Statuses</option>
-            <option value="New">New</option>
-            <option value="Contacted">Contacted</option>
-            <option value="Converted">Converted</option>
-            <option value="Closed">Closed</option>
+            {crmStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
           </select>
-        </div>
 
-        <div>
-          <select value={enquiryMonthFilter} onChange={(e) => setEnquiryMonthFilter(e.target.value)} className="w-full px-3 py-2 bg-[#f8f7f4] border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080] text-stone-700 font-medium cursor-pointer">
-            <option value="All">All Months</option>
-            {uniqueEnquiryMonths.map((m) => {
-              const [yr, mn] = m.split('-');
-              const dateObj = new Date(parseInt(yr), parseInt(mn) - 1, 1);
-              const monthName = dateObj.toLocaleString('default', { month: 'long', year: 'numeric' });
-              return (
-                <option key={m} value={m}>{monthName}</option>
-              );
-            })}
+          <select value={enquiryDestinationFilter} onChange={(e) => setEnquiryDestinationFilter(e.target.value)} className="w-full rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20">
+            <option value="All">All Destinations</option>
+            {uniqueEnquiryDestinations.map((destination) => <option key={destination} value={destination}>{destination}</option>)}
           </select>
+
+          <input type="date" aria-label="Filter by travel date" value={enquiryTravelDateFilter} onChange={(e) => setEnquiryTravelDateFilter(e.target.value)} className="w-full rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+
+          <select value={enquiryPriorityFilter} onChange={(e) => setEnquiryPriorityFilter(e.target.value)} className="w-full rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20">
+            <option value="All">All Priorities</option>
+            {crmPriorityOptions.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
+          </select>
+
+          <select value={enquiryAssignedFilter} onChange={(e) => setEnquiryAssignedFilter(e.target.value)} className="w-full rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20">
+            <option value="All">All Staff</option>
+            {uniqueEnquiryAssignees.map((assignee) => <option key={assignee} value={assignee}>{assignee}</option>)}
+          </select>
+
+          <select value={enquirySortOrder} onChange={(e) => setEnquirySortOrder(e.target.value as 'newest' | 'oldest')} className="w-full rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20">
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+          </select>
+
+          {(enquirySearch || enquiryStatusFilter !== 'All' || enquiryDestinationFilter !== 'All' || enquiryTravelDateFilter || enquiryPriorityFilter !== 'All' || enquiryAssignedFilter !== 'All') && (
+            <button
+              type="button"
+              onClick={() => {
+                setEnquirySearch('');
+                setEnquiryStatusFilter('All');
+                setEnquiryDestinationFilter('All');
+                setEnquiryTravelDateFilter('');
+                setEnquiryPriorityFilter('All');
+                setEnquiryAssignedFilter('All');
+                setEnquirySortOrder('newest');
+              }}
+              className="rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-[11px] font-bold uppercase tracking-[0.18em] text-stone-600 transition hover:bg-stone-100"
+            >
+              Clear Filters
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="bg-white border border-stone-200 rounded shadow-xs overflow-hidden">
+      <div className="overflow-hidden rounded-[20px] border border-stone-200 bg-white shadow-[0_10px_30px_rgba(18,38,32,0.05)]">
         {filteredEnquiries.length === 0 ? (
-          <div className="p-10 text-center text-sm text-stone-500">No enquiries match the current filters.</div>
+          <div className="space-y-3 p-16 text-center text-stone-400">
+            <MessageSquare className="mx-auto h-8 w-8 animate-pulse text-stone-300" />
+            <p className="text-sm font-medium">No matching travel enquiries found.</p>
+            <p className="text-[11px] text-stone-400">Try clearing filters or checking a different destination, status, or follow-up date.</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-stone-100 bg-[#f8f7f4] text-stone-500 text-[10px] font-bold uppercase tracking-wider">
-                  <th className="py-4 px-6">Client</th>
-                  <th className="py-4 px-6">Trip</th>
-                  <th className="py-4 px-6">Contact</th>
-                  <th className="py-4 px-6">Status</th>
-                  <th className="py-4 px-6">Submitted</th>
+            <table className="min-w-[1120px] w-full border-collapse text-left text-sm text-stone-700">
+              <thead className="sticky top-0 z-10 bg-[#fbfaf8] text-[10px] font-bold uppercase tracking-[0.2em] text-stone-500">
+                <tr className="border-b border-stone-200">
+                  <th className="px-4 py-3">Lead</th>
+                  <th className="px-4 py-3">Customer</th>
+                  <th className="px-4 py-3">Trip Request</th>
+                  <th className="px-4 py-3">Follow-Up</th>
+                  <th className="px-4 py-3">Payment</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-stone-100 text-xs text-stone-700">
-                {filteredEnquiries.map((enquiry) => (
-                  <tr key={enquiry.id} className="hover:bg-stone-50/40 transition">
-                    <td className="py-4 px-6">
-                      <strong className="font-bold text-stone-900">{enquiry.name}</strong>
-                      <div className="text-[10px] text-stone-400">{enquiry.email}</div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="font-semibold text-stone-800">{enquiry.destination}</div>
-                      <div className="text-[10px] text-stone-400">{enquiry.packageName || 'Custom itinerary'}</div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <div>{enquiry.phone}</div>
-                      <div className="text-[10px] text-stone-400">{enquiry.travelDate}</div>
-                    </td>
-                    <td className="py-4 px-6"><span className="rounded-full bg-[#008080]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#008080]">{enquiry.status}</span></td>
-                    <td className="py-4 px-6">{enquiry.createdAt ? new Date(enquiry.createdAt).toLocaleDateString('en-IN') : '—'}</td>
-                  </tr>
-                ))}
+              <tbody className="divide-y divide-stone-100 bg-white">
+                {filteredEnquiries.map((enquiry) => {
+                  const normalizedStatus = normalizeEnquiryStatusForDisplay(enquiry.status);
+                  const priority = enquiry.priority || 'Medium';
+                  const overdue = isEnquiryFollowUpOverdue(enquiry.followUpDate, enquiry.status);
+                  const packagePrice = Number(enquiry.packagePrice ?? 0);
+                  const advanceReceived = Number(enquiry.advanceReceived ?? 0);
+                  const remainingBalance = Math.max(packagePrice - advanceReceived, 0);
+                  const submittedDate = enquiry.createdAt ? new Date(enquiry.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A';
+
+                  return (
+                    <tr key={enquiry.id} onClick={() => onOpenEnquiry(enquiry)} className={`cursor-pointer align-top transition ${overdue ? 'bg-rose-50/35 hover:bg-rose-50/60' : 'hover:bg-stone-50/70'}`}>
+                      <td className="px-4 py-4">
+                        <span className="block font-mono text-[11px] font-semibold text-[#008080]">#{enquiry.id.substring(0, 8).toUpperCase()}</span>
+                        <span className="mt-1 block text-[10px] text-stone-400">{submittedDate}</span>
+                        <span className={`mt-2 inline-flex rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.18em] ${enquiryPriorityClassName(priority)}`}>{priority}</span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <strong className="block text-sm font-semibold text-stone-900">{enquiry.name || 'Travel Lead'}</strong>
+                        <span className="mt-1 block text-[11px] text-stone-500">{enquiry.email || 'No email'}</span>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          {enquiry.phone && (
+                            <a onClick={(event) => event.stopPropagation()} href={`tel:${enquiry.phone}`} className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-1 text-[10px] font-semibold text-stone-600 hover:bg-[#008080] hover:text-white">
+                              <Phone className="h-3 w-3" />
+                              Call
+                            </a>
+                          )}
+                          {enquiry.email && (
+                            <a onClick={(event) => event.stopPropagation()} href={`mailto:${enquiry.email}`} className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-1 text-[10px] font-semibold text-stone-600 hover:bg-[#008080] hover:text-white">
+                              <Mail className="h-3 w-3" />
+                              Email
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="font-semibold text-stone-900">{enquiry.destination || 'Flexible Destination'}</div>
+                        <div className="mt-1 text-[11px] text-stone-500">{enquiry.packageName || 'Custom itinerary'}</div>
+                        <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-semibold text-stone-500">
+                          <span className="rounded-full bg-stone-100 px-2 py-1">{enquiry.travelDate || 'Flexible dates'}</span>
+                          <span className="rounded-full bg-stone-100 px-2 py-1">{Number(enquiry.adults ?? enquiry.travelers ?? 1)} Adults</span>
+                          <span className="rounded-full bg-stone-100 px-2 py-1">{Number(enquiry.children ?? 0)} Children</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className={overdue ? 'font-semibold text-rose-700' : 'font-semibold text-stone-800'}>
+                          {enquiry.followUpDate ? new Date(enquiry.followUpDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'Not scheduled'}
+                        </div>
+                        <div className="mt-1 text-[11px] text-stone-500">{enquiry.followUpTime || 'Anytime'} - {enquiry.assignedTo || 'Unassigned'}</div>
+                        {overdue && <span className="mt-2 inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.18em] text-rose-700">Overdue</span>}
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="font-semibold text-stone-900">{packagePrice > 0 ? formatPriceValue(packagePrice) : 'Not quoted'}</div>
+                        <div className="mt-1 text-[11px] text-stone-500">Advance: {formatPriceValue(advanceReceived)}</div>
+                        <div className="mt-1 text-[11px] text-stone-500">Balance: {formatPriceValue(remainingBalance)}</div>
+                        <span className="mt-2 inline-flex rounded-full bg-stone-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.18em] text-stone-600">{enquiry.paymentStatus || 'Pending'}</span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${enquiryStatusClassName(normalizedStatus)}`}>{normalizedStatus}</span>
+                        <select
+                          value={normalizedStatus}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => void onUpdateEnquiryStatus(enquiry.id, event.target.value as EnquiryStatus)}
+                          disabled={enquiryActionBusy}
+                          className="mt-2 block w-full rounded-[8px] border border-stone-200 bg-white px-2 py-1.5 text-[11px] text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20 disabled:opacity-50"
+                        >
+                          {crmStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <div className="flex flex-col items-end gap-2">
+                          <button type="button" onClick={(event) => { event.stopPropagation(); onOpenEnquiry(enquiry); }} className="inline-flex items-center justify-center gap-1.5 rounded-[8px] bg-[#008080] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-white transition hover:bg-[#006666]">
+                            Details
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => { event.stopPropagation(); onOpenConvertBooking(enquiry); }}
+                            disabled={enquiryActionBusy}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-[8px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <CheckCircle className="h-3.5 w-3.5" />
+                            {normalizedStatus === 'Booking Confirmed' ? 'Update Booking' : 'Convert'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1889,8 +2136,23 @@ interface BookingsTabProps {
   setBookingPackageFilter: (value: string) => void;
   bookingMonthFilter: string;
   setBookingMonthFilter: (value: string) => void;
+  bookingDepartureDateFilter: string;
+  setBookingDepartureDateFilter: (value: string) => void;
+  bookingCoordinatorFilter: string;
+  setBookingCoordinatorFilter: (value: string) => void;
+  bookingDriverFilter: string;
+  setBookingDriverFilter: (value: string) => void;
+  bookingDestinationFilter: string;
+  setBookingDestinationFilter: (value: string) => void;
+  bookingTripStatusFilter: string;
+  setBookingTripStatusFilter: (value: string) => void;
   uniqueBookingPackages: string[];
   uniqueBookingMonths: string[];
+  uniqueBookingCoordinators: string[];
+  uniqueBookingDrivers: string[];
+  uniqueBookingDestinations: string[];
+  tripStatusOptions: TripCustomerStatus[];
+  tripOperationDocumentTypes: TripOperationDocumentType[];
   fetchAllBookings: () => Promise<void>;
   handleExportBookingsCSV: () => void;
   handleAssignStaff: (id: string, value: string) => Promise<void>;
@@ -1906,27 +2168,76 @@ interface BookingsTabProps {
   followUpDate: string;
   setFollowUpDate: (value: string) => void;
   handleAddNote: (id: string) => Promise<void>;
+  bookingDocuments: TripDocument[];
+  handleUpdateBookingDocumentStatus: (documentPath: string, status: BookingDocumentStatus) => Promise<void>;
+  handleSaveTripOperations: (bookingId: string, operations: TripOperations) => Promise<void>;
+  handleToggleTripChecklist: (bookingId: string, key: TripChecklistKey, completed: boolean) => Promise<void>;
+  handleUpdateTripStatusOverride: (bookingId: string, status: TripCustomerStatus | '') => Promise<void>;
+  handleUploadTripOperationDocument: (bookingId: string, documentType: TripOperationDocumentType, file: File) => Promise<void>;
+  getOperationalTripStatus: (booking: any) => TripCustomerStatus;
   bookingFeedback?: { type: 'success' | 'error'; message: string } | null;
   bookingActionBusy?: boolean;
 }
+
+const TRIP_CHECKLIST_ITEMS: Array<{ key: TripChecklistKey; label: string }> = [
+  { key: 'bookingConfirmed', label: 'Booking Confirmed' },
+  { key: 'advancePaymentVerified', label: 'Advance Payment Verified' },
+  { key: 'remainingPaymentReceived', label: 'Remaining Payment Received' },
+  { key: 'documentsVerified', label: 'Documents Verified' },
+  { key: 'hotelAssigned', label: 'Hotel Assigned' },
+  { key: 'vehicleAssigned', label: 'Vehicle Assigned' },
+  { key: 'driverAssigned', label: 'Driver Assigned' },
+  { key: 'coordinatorAssigned', label: 'Coordinator Assigned' },
+  { key: 'itineraryShared', label: 'Itinerary Shared' },
+  { key: 'customerBriefed', label: 'Customer Briefed' },
+  { key: 'tripCompleted', label: 'Trip Completed' },
+];
 
 export const BookingsTab = React.memo(function BookingsTab(props: BookingsTabProps) {
   const {
     bookings, bookingsLoading, filteredBookings, bookingSearch, setBookingSearch,
     bookingStatusFilter, setBookingStatusFilter, bookingPackageFilter, setBookingPackageFilter,
-    bookingMonthFilter, setBookingMonthFilter, uniqueBookingPackages, uniqueBookingMonths,
+    bookingMonthFilter, setBookingMonthFilter, bookingDepartureDateFilter, setBookingDepartureDateFilter,
+    bookingCoordinatorFilter, setBookingCoordinatorFilter, bookingDriverFilter, setBookingDriverFilter,
+    bookingDestinationFilter, setBookingDestinationFilter, bookingTripStatusFilter, setBookingTripStatusFilter,
+    uniqueBookingPackages, uniqueBookingMonths, uniqueBookingCoordinators, uniqueBookingDrivers, uniqueBookingDestinations,
+    tripStatusOptions, tripOperationDocumentTypes,
     fetchAllBookings, handleExportBookingsCSV, handleAssignStaff, handleUpdateFollowUpDate,
     handleUpdateBookingStatus, handleDeleteBooking, activeBooking, setActiveBooking,
     newNote, setNewNote, assignee, setAssignee, followUpDate, setFollowUpDate, handleAddNote,
+    bookingDocuments, handleUpdateBookingDocumentStatus, handleSaveTripOperations, handleToggleTripChecklist,
+    handleUpdateTripStatusOverride, handleUploadTripOperationDocument, getOperationalTripStatus,
     bookingFeedback, bookingActionBusy,
   } = props;
 
   const [currentPage, setCurrentPage] = useState(1);
+  const [bookingModalTab, setBookingModalTab] = useState<'overview' | 'operations'>('overview');
+  const [operationDraft, setOperationDraft] = useState<TripOperations>({});
   const pageSize = 7;
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [bookingSearch, bookingStatusFilter, bookingPackageFilter, bookingMonthFilter]);
+  }, [bookingSearch, bookingStatusFilter, bookingPackageFilter, bookingMonthFilter, bookingDepartureDateFilter, bookingCoordinatorFilter, bookingDriverFilter, bookingDestinationFilter, bookingTripStatusFilter]);
+
+  useEffect(() => {
+    if (!activeBooking) return;
+    setBookingModalTab('overview');
+    setOperationDraft({
+      coordinatorName: activeBooking.tripOperations?.coordinatorName || activeBooking.tripManager?.name || activeBooking.assignedTripManager || activeBooking.assignedStaff || '',
+      coordinatorPhone: activeBooking.tripOperations?.coordinatorPhone || activeBooking.tripManager?.phone || '',
+      driverName: activeBooking.tripOperations?.driverName || '',
+      driverPhone: activeBooking.tripOperations?.driverPhone || '',
+      vehicleDetails: activeBooking.tripOperations?.vehicleDetails || '',
+      hotelName: activeBooking.tripOperations?.hotelName || '',
+      roomAllocation: activeBooking.tripOperations?.roomAllocation || '',
+      pickupLocation: activeBooking.tripOperations?.pickupLocation || '',
+      pickupTime: activeBooking.tripOperations?.pickupTime || '',
+      emergencyContact: activeBooking.tripOperations?.emergencyContact || activeBooking.tripManager?.emergencyContact || '',
+      guideName: activeBooking.tripOperations?.guideName || '',
+      guidePhone: activeBooking.tripOperations?.guidePhone || '',
+      internalNotes: activeBooking.tripOperations?.internalNotes || '',
+    });
+  }, [activeBooking]);
 
   const totalPages = Math.max(1, Math.ceil(filteredBookings.length / pageSize));
   const paginatedBookings = useMemo(() => {
@@ -1959,6 +2270,51 @@ export const BookingsTab = React.memo(function BookingsTab(props: BookingsTabPro
     const createdTime = new Date(createdAt).getTime();
     if (!Number.isFinite(createdTime)) return false;
     return Date.now() - createdTime < 1000 * 60 * 60 * 24;
+  };
+
+  const getDocumentStatusStyles = (status?: BookingDocumentStatus) => {
+    switch (status) {
+      case 'Verified':
+        return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+      case 'Rejected':
+        return 'border-rose-200 bg-rose-50 text-rose-700';
+      default:
+        return 'border-amber-200 bg-amber-50 text-amber-700';
+    }
+  };
+
+  const activeBookingDocuments = activeBooking
+    ? bookingDocuments.filter((documentItem) => {
+      const bookingId = String(documentItem.bookingId || '');
+      const bookingNumber = String(documentItem.bookingNumber || '');
+      return bookingId === String(activeBooking.id)
+        || bookingId === String(activeBooking.bookingId || '')
+        || bookingNumber === String(activeBooking.bookingId || '');
+    })
+    : [];
+
+  const activeChecklist = activeBooking?.tripChecklist || {};
+  const completedChecklistCount = TRIP_CHECKLIST_ITEMS.filter((item) => Boolean(activeChecklist[item.key])).length;
+  const checklistProgress = Math.round((completedChecklistCount / TRIP_CHECKLIST_ITEMS.length) * 100);
+  const activeOperationDocuments: TripOperationDocument[] = activeBooking?.operationDocuments || [];
+
+  const getTripStatusStyles = (status: TripCustomerStatus) => {
+    switch (status) {
+      case 'Ready To Travel':
+        return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+      case 'In Progress':
+        return 'border-sky-200 bg-sky-50 text-sky-700';
+      case 'Completed':
+        return 'border-teal-200 bg-teal-50 text-teal-700';
+      case 'Cancelled':
+        return 'border-rose-200 bg-rose-50 text-rose-700';
+      default:
+        return 'border-amber-200 bg-amber-50 text-amber-700';
+    }
+  };
+
+  const updateOperationDraft = (field: keyof TripOperations, value: string) => {
+    setOperationDraft((prev) => ({ ...prev, [field]: value }));
   };
 
   return (
@@ -2080,6 +2436,59 @@ export const BookingsTab = React.memo(function BookingsTab(props: BookingsTabPro
               })}
             </select>
           </label>
+
+          <label>
+            <span className="sr-only">Filter by departure date</span>
+            <input type="date" value={bookingDepartureDateFilter} onChange={(e) => setBookingDepartureDateFilter(e.target.value)} className="w-full rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" disabled={bookingActionBusy} />
+          </label>
+
+          <label>
+            <span className="sr-only">Filter by trip coordinator</span>
+            <select value={bookingCoordinatorFilter} onChange={(e) => setBookingCoordinatorFilter(e.target.value)} className="w-full rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" disabled={bookingActionBusy}>
+              <option value="All">All Coordinators</option>
+              {uniqueBookingCoordinators.map((coordinator) => <option key={coordinator} value={coordinator}>{coordinator}</option>)}
+            </select>
+          </label>
+
+          <label>
+            <span className="sr-only">Filter by driver</span>
+            <select value={bookingDriverFilter} onChange={(e) => setBookingDriverFilter(e.target.value)} className="w-full rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" disabled={bookingActionBusy}>
+              <option value="All">All Drivers</option>
+              {uniqueBookingDrivers.map((driver) => <option key={driver} value={driver}>{driver}</option>)}
+            </select>
+          </label>
+
+          <label>
+            <span className="sr-only">Filter by destination</span>
+            <select value={bookingDestinationFilter} onChange={(e) => setBookingDestinationFilter(e.target.value)} className="w-full rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" disabled={bookingActionBusy}>
+              <option value="All">All Destinations</option>
+              {uniqueBookingDestinations.map((destination) => <option key={destination} value={destination}>{destination}</option>)}
+            </select>
+          </label>
+
+          <label>
+            <span className="sr-only">Filter by trip status</span>
+            <select value={bookingTripStatusFilter} onChange={(e) => setBookingTripStatusFilter(e.target.value)} className="w-full rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" disabled={bookingActionBusy}>
+              <option value="All">All Trip Statuses</option>
+              {tripStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </label>
+
+          {(bookingDepartureDateFilter || bookingCoordinatorFilter !== 'All' || bookingDriverFilter !== 'All' || bookingDestinationFilter !== 'All' || bookingTripStatusFilter !== 'All') && (
+            <button
+              type="button"
+              onClick={() => {
+                setBookingDepartureDateFilter('');
+                setBookingCoordinatorFilter('All');
+                setBookingDriverFilter('All');
+                setBookingDestinationFilter('All');
+                setBookingTripStatusFilter('All');
+              }}
+              className="rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-[11px] font-bold uppercase tracking-[0.18em] text-stone-600 transition hover:bg-stone-100"
+            >
+              Clear Ops Filters
+            </button>
+          )}
         </div>
       </div>
 
@@ -2235,7 +2644,7 @@ export const BookingsTab = React.memo(function BookingsTab(props: BookingsTabPro
 
       {activeBooking && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#000000]/65 p-4 backdrop-blur-xs animate-fade-in">
-          <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-y-auto rounded-[20px] border border-stone-200 bg-[#fcfbf9] shadow-2xl">
+          <div className="flex max-h-[85vh] w-full max-w-6xl flex-col overflow-y-auto rounded-[20px] border border-stone-200 bg-[#fcfbf9] shadow-2xl">
             <div className="flex items-center justify-between bg-[#1f2937] p-6 text-white">
               <div>
                 <span className="rounded-sm bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.2em] text-[#008080]">CRM Inspection Directory</span>
@@ -2245,7 +2654,27 @@ export const BookingsTab = React.memo(function BookingsTab(props: BookingsTabPro
               <button type="button" onClick={() => setActiveBooking(null)} aria-label="Close lead details" className="rounded-full p-2 text-stone-300 transition hover:bg-white/10 hover:text-white"><X className="h-5 w-5" /></button>
             </div>
 
+            <div className="border-b border-stone-200 bg-white px-4 py-3">
+              <div className="inline-flex rounded-[12px] border border-stone-200 bg-stone-100 p-1">
+                {[
+                  ['overview', 'CRM Overview'],
+                  ['operations', 'Trip Operations'],
+                ].map(([tabId, label]) => (
+                  <button
+                    key={tabId}
+                    type="button"
+                    onClick={() => setBookingModalTab(tabId as 'overview' | 'operations')}
+                    className={`rounded-[9px] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.16em] transition ${bookingModalTab === tabId ? 'bg-white text-[#008080] shadow-sm' : 'text-stone-500 hover:text-stone-900'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="space-y-6 p-6">
+              {bookingModalTab === 'overview' ? (
+                <>
               <div className="rounded-[16px] border border-stone-200 bg-white p-4">
                 <span className="mb-3 block border-b border-stone-100 pb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[#008080]">Lead Overview</span>
                 <div className="grid grid-cols-2 gap-4 text-xs sm:grid-cols-3">
@@ -2272,6 +2701,55 @@ export const BookingsTab = React.memo(function BookingsTab(props: BookingsTabPro
                   <div className="mt-4 border-t border-stone-100 pt-3 text-xs">
                     <span className="block text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">Special Requests</span>
                     <p className="mt-1 rounded-[10px] bg-stone-50 p-2.5 font-light italic text-stone-700">“{activeBooking.specialRequests}”</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-[16px] border border-stone-200 bg-white p-4">
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <span className="block text-[10px] font-bold uppercase tracking-[0.2em] text-[#008080]">Document Vault</span>
+                    <p className="mt-1 text-xs text-stone-500">Customer uploads linked to this booking from their private vault.</p>
+                  </div>
+                  <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-stone-500">{activeBookingDocuments.length} Uploaded</span>
+                </div>
+                {activeBookingDocuments.length === 0 ? (
+                  <div className="rounded-[12px] border border-dashed border-stone-200 bg-stone-50 p-4 text-center text-xs text-stone-400">
+                    No customer documents have been uploaded for this booking yet.
+                  </div>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {activeBookingDocuments.map((documentItem) => (
+                      <div key={documentItem._path || documentItem.id} className="rounded-[12px] border border-stone-150 bg-[#fcfbf9] p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-stone-900">{documentItem.documentType || documentItem.title || 'Travel Document'}</p>
+                            <p className="mt-1 truncate text-[11px] text-stone-500">{documentItem.fileName || documentItem.content || 'File attached'}</p>
+                          </div>
+                          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] ${getDocumentStatusStyles(documentItem.documentStatus)}`}>
+                            {documentItem.documentStatus || 'Pending'}
+                          </span>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          {documentItem.fileUrl && (
+                            <a href={documentItem.fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-[8px] border border-stone-200 bg-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-600 transition hover:border-[#008080] hover:text-[#008080]">
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              View
+                            </a>
+                          )}
+                          <select
+                            value={documentItem.documentStatus || 'Pending'}
+                            onChange={(event) => documentItem._path && void handleUpdateBookingDocumentStatus(documentItem._path, event.target.value as BookingDocumentStatus)}
+                            disabled={bookingActionBusy || !documentItem._path}
+                            className="rounded-[8px] border border-stone-200 bg-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-600 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20 disabled:opacity-50"
+                          >
+                            <option value="Pending">Pending</option>
+                            <option value="Verified">Verified</option>
+                            <option value="Rejected">Rejected</option>
+                          </select>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -2374,6 +2852,167 @@ export const BookingsTab = React.memo(function BookingsTab(props: BookingsTabPro
                   </div>
                 </div>
               </div>
+                </>
+              ) : (
+                <div className="space-y-6">
+                  <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+                    <section className="rounded-[18px] border border-stone-200 bg-white p-5 shadow-[0_12px_35px_rgba(18,38,32,0.05)]">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#008080]">Trip Operations</span>
+                          <h4 className="mt-2 text-xl font-semibold text-stone-950">{activeBooking.packageTitle || activeBooking.destination || 'Confirmed Trip'}</h4>
+                          <p className="mt-1 text-sm text-stone-500">Manage ground operations after booking confirmation.</p>
+                        </div>
+                        <span className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${getTripStatusStyles(getOperationalTripStatus(activeBooking))}`}>
+                          {getOperationalTripStatus(activeBooking)}
+                        </span>
+                      </div>
+
+                      <div className="mt-5 grid gap-4 md:grid-cols-2">
+                        {[
+                          ['coordinatorName', 'Trip Coordinator'],
+                          ['coordinatorPhone', 'Coordinator Phone'],
+                          ['driverName', 'Driver'],
+                          ['driverPhone', 'Driver Phone'],
+                          ['vehicleDetails', 'Vehicle'],
+                          ['hotelName', 'Hotel'],
+                          ['roomAllocation', 'Room Allocation'],
+                          ['pickupLocation', 'Pickup Location'],
+                          ['pickupTime', 'Pickup Time'],
+                          ['emergencyContact', 'Emergency Contact'],
+                          ['guideName', 'Guide (optional)'],
+                          ['guidePhone', 'Guide Phone'],
+                        ].map(([field, label]) => (
+                          <label key={field} className={field === 'pickupLocation' ? 'md:col-span-2' : ''}>
+                            <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">{label}</span>
+                            <input
+                              type={field === 'pickupTime' ? 'time' : 'text'}
+                              value={String(operationDraft[field as keyof TripOperations] || '')}
+                              onChange={(event) => updateOperationDraft(field as keyof TripOperations, event.target.value)}
+                              className="w-full rounded-[12px] border border-stone-200 bg-[#fcfbf9] px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20"
+                            />
+                          </label>
+                        ))}
+                        <label className="md:col-span-2">
+                          <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Internal Notes</span>
+                          <textarea
+                            rows={4}
+                            value={operationDraft.internalNotes || ''}
+                            onChange={(event) => updateOperationDraft('internalNotes', event.target.value)}
+                            placeholder="Supplier confirmation, rooming constraints, local coordination notes..."
+                            className="w-full rounded-[12px] border border-stone-200 bg-[#fcfbf9] px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="mt-5 flex flex-col gap-3 border-t border-stone-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                        <label className="sm:min-w-[240px]">
+                          <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Trip Status Override</span>
+                          <select
+                            value={activeBooking.tripStatusOverride || ''}
+                            onChange={(event) => void handleUpdateTripStatusOverride(activeBooking.id, event.target.value as TripCustomerStatus | '')}
+                            disabled={bookingActionBusy}
+                            className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20 disabled:opacity-50"
+                          >
+                            <option value="">Automatic</option>
+                            {tripStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveTripOperations(activeBooking.id, operationDraft)}
+                          disabled={bookingActionBusy}
+                          className="inline-flex items-center justify-center gap-2 rounded-[10px] bg-[#008080] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-white transition hover:bg-[#006666] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {bookingActionBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                          Save Operations
+                        </button>
+                      </div>
+                    </section>
+
+                    <section className="rounded-[18px] border border-stone-200 bg-[#071d28] p-5 text-white shadow-[0_12px_35px_rgba(18,38,32,0.08)]">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/55">Trip Checklist</span>
+                      <div className="mt-3 flex items-end justify-between gap-3">
+                        <div>
+                          <strong className="block text-3xl font-semibold">{completedChecklistCount}/{TRIP_CHECKLIST_ITEMS.length}</strong>
+                          <p className="mt-1 text-xs text-white/55">completed</p>
+                        </div>
+                        <span className="rounded-full bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/70">{checklistProgress}% Ready</span>
+                      </div>
+                      <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+                        <div className="h-full rounded-full bg-[#4DA528] transition-all" style={{ width: `${checklistProgress}%` }} />
+                      </div>
+                      <div className="mt-5 grid gap-2">
+                        {TRIP_CHECKLIST_ITEMS.map((item) => {
+                          const checked = Boolean(activeChecklist[item.key]);
+                          return (
+                            <label key={item.key} className={`flex cursor-pointer items-center justify-between gap-3 rounded-[12px] border px-3 py-2.5 transition ${checked ? 'border-[#4DA528]/40 bg-[#4DA528]/15' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
+                              <span className="text-xs font-semibold text-white/85">{item.label}</span>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(event) => void handleToggleTripChecklist(activeBooking.id, item.key, event.target.checked)}
+                                disabled={bookingActionBusy}
+                                className="h-4 w-4 accent-[#4DA528]"
+                              />
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  </div>
+
+                  <section className="rounded-[18px] border border-stone-200 bg-white p-5 shadow-[0_12px_35px_rgba(18,38,32,0.05)]">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#008080]">Operation Documents</span>
+                        <h4 className="mt-1 text-lg font-semibold text-stone-950">Supplier vouchers and final trip files</h4>
+                      </div>
+                      <span className="rounded-full bg-stone-100 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">{activeOperationDocuments.length} Attached</span>
+                    </div>
+
+                    <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      {tripOperationDocumentTypes.map((documentType) => {
+                        const documentItem = activeOperationDocuments.find((item) => item.type === documentType);
+                        return (
+                          <div key={documentType} className="rounded-[16px] border border-stone-200 bg-[#fcfbf9] p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-stone-900">{documentType}</p>
+                                <p className="mt-1 line-clamp-1 text-[11px] text-stone-500">{documentItem?.fileName || 'No file attached'}</p>
+                              </div>
+                              <FileText className="h-4 w-4 text-[#008080]" />
+                            </div>
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {documentItem?.fileUrl && (
+                                <a href={documentItem.fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-[8px] border border-stone-200 bg-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-600 transition hover:border-[#008080] hover:text-[#008080]">
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                  View
+                                </a>
+                              )}
+                              <label className={`inline-flex cursor-pointer items-center gap-1 rounded-[8px] px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-white transition ${bookingActionBusy ? 'bg-stone-400' : 'bg-[#008080] hover:bg-[#006666]'}`}>
+                                <Upload className="h-3.5 w-3.5" />
+                                Upload
+                                <input
+                                  type="file"
+                                  accept="application/pdf,.pdf,image/*"
+                                  className="hidden"
+                                  disabled={bookingActionBusy}
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    if (file) void handleUploadTripOperationDocument(activeBooking.id, documentType, file);
+                                    event.target.value = '';
+                                  }}
+                                />
+                              </label>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end border-t border-stone-200 bg-[#fcfbf9] p-4">
@@ -2897,245 +3536,642 @@ interface AnalyticsTabProps {
   enquiries: Enquiry[];
   bookings: any[];
   adminReviews: any[];
+  packages: TravelPackage[];
+  wishlistItems: any[];
+  setActiveTab: (tab: any) => void;
 }
 
 export function AnalyticsTab(props: AnalyticsTabProps) {
-  const { analyticsEvents, analyticsLoading, fetchAnalyticsData, enquiries, bookings, adminReviews } = props;
+  const { analyticsEvents, analyticsLoading, fetchAnalyticsData, enquiries, bookings, adminReviews, packages, wishlistItems, setActiveTab } = props;
+  const [analyticsRange, setAnalyticsRange] = useState<'today' | '7d' | '30d' | 'month' | 'year' | 'custom'>('30d');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+
+  const parseDate = (value?: string) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isFinite(parsed.getTime()) ? parsed : null;
+  };
+
+  const startOfDay = (date: Date) => {
+    const copy = new Date(date);
+    copy.setHours(0, 0, 0, 0);
+    return copy;
+  };
+
+  const endOfDay = (date: Date) => {
+    const copy = new Date(date);
+    copy.setHours(23, 59, 59, 999);
+    return copy;
+  };
+
+  const dateRange = useMemo(() => {
+    const now = new Date();
+    const end = endOfDay(now);
+    const start = startOfDay(now);
+
+    if (analyticsRange === 'today') {
+      return { start, end, label: 'Today' };
+    }
+    if (analyticsRange === '7d') {
+      start.setDate(start.getDate() - 6);
+      return { start, end, label: 'Last 7 Days' };
+    }
+    if (analyticsRange === '30d') {
+      start.setDate(start.getDate() - 29);
+      return { start, end, label: 'Last 30 Days' };
+    }
+    if (analyticsRange === 'month') {
+      start.setDate(1);
+      return { start, end, label: 'This Month' };
+    }
+    if (analyticsRange === 'year') {
+      start.setMonth(0, 1);
+      return { start, end, label: 'This Year' };
+    }
+
+    const customStart = customStartDate ? startOfDay(new Date(customStartDate)) : start;
+    const customEnd = customEndDate ? endOfDay(new Date(customEndDate)) : end;
+    return { start: customStart, end: customEnd, label: 'Custom Range' };
+  }, [analyticsRange, customStartDate, customEndDate]);
+
+  const previousDateRange = useMemo(() => {
+    const lengthMs = Math.max(dateRange.end.getTime() - dateRange.start.getTime(), 24 * 60 * 60 * 1000);
+    const end = new Date(dateRange.start.getTime() - 1);
+    const start = new Date(end.getTime() - lengthMs);
+    return { start, end };
+  }, [dateRange]);
+
+  const isInRange = (dateValue?: string, range: { start: Date; end: Date } = dateRange) => {
+    const date = parseDate(dateValue);
+    if (!date) return false;
+    return date.getTime() >= range.start.getTime() && date.getTime() <= range.end.getTime();
+  };
+
+  const getBookingDate = (booking: any) => booking.travelDate || booking.departureDate || booking.createdAt || booking.updatedAt || '';
+  const getBookingStatus = (booking: any) => String(booking.bookingStatus || booking.status || 'Pending');
+  const getTripStatus = (booking: any) => {
+    const overrideStatus = booking.tripStatusOverride || booking.tripStatus;
+    if (overrideStatus) return String(overrideStatus);
+    const status = getBookingStatus(booking);
+    if (status === 'Cancelled') return 'Cancelled';
+    if (status === 'Completed' || status === 'Trip Completed' || booking.tripChecklist?.tripCompleted) return 'Completed';
+    const departure = parseDate(booking.travelDate || booking.departureDate);
+    if (departure && departure.getTime() <= Date.now()) return 'In Progress';
+    const checklist = booking.tripChecklist || {};
+    const ready = Boolean(checklist.bookingConfirmed && checklist.remainingPaymentReceived && checklist.documentsVerified && checklist.hotelAssigned && checklist.vehicleAssigned && checklist.driverAssigned && checklist.coordinatorAssigned && checklist.itineraryShared && checklist.customerBriefed);
+    return ready ? 'Ready To Travel' : 'Upcoming';
+  };
+  const getBookingRevenue = (booking: any) => Number(booking.totalPrice ?? booking.price ?? booking.packagePrice ?? 0);
+  const getManualPaymentTotal = (booking: any) => {
+    const paymentHistoryTotal = Array.isArray(booking.paymentHistory)
+      ? booking.paymentHistory.reduce((sum: number, payment: any) => sum + Number(payment.amount || 0), 0)
+      : 0;
+    return paymentHistoryTotal || Number(booking.advancePaid ?? booking.advanceReceived ?? 0);
+  };
+  const getRemainingBalance = (booking: any) => Number(booking.remainingBalance ?? Math.max(getBookingRevenue(booking) - Number(booking.advancePaid ?? booking.advanceReceived ?? 0), 0));
+  const hasPendingDocuments = (booking: any) => {
+    const statusValues = Object.values(booking.documentStatus || {});
+    if (statusValues.some((status) => status !== 'Verified')) return true;
+    return ['Confirmed', 'Completed', 'Trip Completed'].includes(getBookingStatus(booking)) && !booking.tripChecklist?.documentsVerified;
+  };
+  const getCoordinator = (booking: any) => String(booking.tripOperations?.coordinatorName || booking.tripManager?.name || booking.assignedTripManager || booking.assignedStaff || '').trim();
+
+  const analyticsData = useMemo(() => {
+    const filteredEnquiries = enquiries.filter((enquiry) => isInRange(enquiry.createdAt));
+    const previousEnquiries = enquiries.filter((enquiry) => isInRange(enquiry.createdAt, previousDateRange));
+    const filteredBookings = bookings.filter((booking) => isInRange(booking.createdAt || booking.updatedAt || getBookingDate(booking)));
+    const previousBookings = bookings.filter((booking) => isInRange(booking.createdAt || booking.updatedAt || getBookingDate(booking), previousDateRange));
+    const confirmedBookings = filteredBookings.filter((booking) => ['Confirmed', 'Completed', 'Trip Completed'].includes(getBookingStatus(booking)));
+    const completedTrips = filteredBookings.filter((booking) => ['Completed', 'Trip Completed'].includes(getBookingStatus(booking)) || getTripStatus(booking) === 'Completed');
+    const activeTrips = filteredBookings.filter((booking) => ['Confirmed', 'Ready To Travel', 'In Progress'].includes(getBookingStatus(booking)) || ['Ready To Travel', 'In Progress'].includes(getTripStatus(booking)));
+    const pendingPaymentBookings = filteredBookings.filter((booking) => getRemainingBalance(booking) > 0 && getBookingStatus(booking) !== 'Cancelled');
+    const pendingDocumentBookings = filteredBookings.filter(hasPendingDocuments);
+    const sevenDayEnd = endOfDay(new Date());
+    sevenDayEnd.setDate(sevenDayEnd.getDate() + 7);
+    const upcomingTripsSevenDays = bookings.filter((booking) => {
+      const departure = parseDate(booking.travelDate || booking.departureDate);
+      return departure && departure.getTime() >= startOfDay(new Date()).getTime() && departure.getTime() <= sevenDayEnd.getTime() && getBookingStatus(booking) !== 'Cancelled';
+    });
+    const monthlyRevenue = filteredBookings.reduce((sum, booking) => sum + getManualPaymentTotal(booking), 0);
+    const totalBookingValue = confirmedBookings.reduce((sum, booking) => sum + getBookingRevenue(booking), 0);
+    const averageBookingValue = confirmedBookings.length ? totalBookingValue / confirmedBookings.length : 0;
+    const conversionRate = filteredEnquiries.length ? (filteredBookings.length / filteredEnquiries.length) * 100 : 0;
+
+    const previousRevenue = previousBookings.reduce((sum, booking) => sum + getManualPaymentTotal(booking), 0);
+    const previousAverage = previousBookings.length ? previousBookings.reduce((sum, booking) => sum + getBookingRevenue(booking), 0) / previousBookings.length : 0;
+    const previousConversion = previousEnquiries.length ? (previousBookings.length / previousEnquiries.length) * 100 : 0;
+
+    const monthBuckets = new Map<string, any>();
+    [...filteredEnquiries, ...filteredBookings].forEach((item: any) => {
+      const date = parseDate(item.createdAt || item.updatedAt || item.travelDate);
+      if (!date) return;
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      if (!monthBuckets.has(key)) monthBuckets.set(key, { month: date.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }), enquiries: 0, bookings: 0, revenue: 0 });
+    });
+    filteredEnquiries.forEach((enquiry) => {
+      const date = parseDate(enquiry.createdAt);
+      if (!date) return;
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      if (!monthBuckets.has(key)) monthBuckets.set(key, { month: date.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }), enquiries: 0, bookings: 0, revenue: 0 });
+      monthBuckets.get(key).enquiries += 1;
+    });
+    filteredBookings.forEach((booking) => {
+      const date = parseDate(booking.createdAt || booking.updatedAt || booking.travelDate);
+      if (!date) return;
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      if (!monthBuckets.has(key)) monthBuckets.set(key, { month: date.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }), enquiries: 0, bookings: 0, revenue: 0 });
+      const bucket = monthBuckets.get(key);
+      bucket.bookings += 1;
+      bucket.revenue += getManualPaymentTotal(booking);
+    });
+    const monthlyTrend = Array.from(monthBuckets.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([, value]) => value);
+
+    const destinationMap = new Map<string, { destination: string; bookings: number; revenue: number; previous: number }>();
+    filteredBookings.forEach((booking) => {
+      const destination = String(booking.destination || booking.packageTitle || 'Flexible').trim();
+      const existing = destinationMap.get(destination) || { destination, bookings: 0, revenue: 0, previous: 0 };
+      existing.bookings += 1;
+      existing.revenue += getBookingRevenue(booking);
+      destinationMap.set(destination, existing);
+    });
+    previousBookings.forEach((booking) => {
+      const destination = String(booking.destination || booking.packageTitle || 'Flexible').trim();
+      const existing = destinationMap.get(destination) || { destination, bookings: 0, revenue: 0, previous: 0 };
+      existing.previous += 1;
+      destinationMap.set(destination, existing);
+    });
+    const topDestinations = Array.from(destinationMap.values())
+      .sort((a, b) => b.bookings - a.bookings || b.revenue - a.revenue)
+      .slice(0, 10)
+      .map((item) => ({
+        ...item,
+        growth: item.previous ? Math.round(((item.bookings - item.previous) / item.previous) * 100) : item.bookings > 0 ? 100 : 0,
+      }));
+
+    const packagePopularity = packages.map((pkg) => {
+      const packageBookings = filteredBookings.filter((booking) => booking.packageId === pkg.id || String(booking.packageTitle || '').toLowerCase() === pkg.title.toLowerCase());
+      const packageEnquiries = filteredEnquiries.filter((enquiry) => enquiry.packageId === pkg.id || String(enquiry.packageName || '').toLowerCase() === pkg.title.toLowerCase() || String(enquiry.destination || '').toLowerCase() === pkg.destination.toLowerCase());
+      const saves = wishlistItems.filter((item) => item.packageId === pkg.id || String(item.title || item.packageTitle || '').toLowerCase() === pkg.title.toLowerCase()).length;
+      const packageReviews = adminReviews.filter((review) => String(review.destination || '').toLowerCase() === pkg.destination.toLowerCase() || String(review.packageTitle || '').toLowerCase() === pkg.title.toLowerCase());
+      const rating = packageReviews.length ? packageReviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / packageReviews.length : 0;
+      const revenue = packageBookings.reduce((sum, booking) => sum + getBookingRevenue(booking), 0);
+      const score = packageBookings.length * 4 + saves * 2 + packageReviews.length + packageEnquiries.length;
+      return {
+        id: pkg.id,
+        title: pkg.title,
+        destination: pkg.destination,
+        imageUrl: pkg.imageUrl || pkg.packageBannerUrl,
+        bookings: packageBookings.length,
+        enquiries: packageEnquiries.length,
+        saves,
+        reviews: packageReviews.length,
+        rating,
+        revenue,
+        score,
+      };
+    }).sort((a, b) => b.score - a.score || b.revenue - a.revenue).slice(0, 8);
+
+    const statusDistribution = Object.entries(filteredBookings.reduce<Record<string, number>>((acc, booking) => {
+      const status = getBookingStatus(booking);
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {})).map(([name, value]) => ({ name, value }));
+
+    const tripStatusDistribution = Object.entries(filteredBookings.reduce<Record<string, number>>((acc, booking) => {
+      const status = getTripStatus(booking);
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {})).map(([name, value]) => ({ name, value }));
+
+    const fourteenDayEnd = endOfDay(new Date());
+    fourteenDayEnd.setDate(fourteenDayEnd.getDate() + 14);
+    const upcomingDepartures = bookings
+      .filter((booking) => {
+        const departure = parseDate(booking.travelDate || booking.departureDate);
+        return departure && departure.getTime() >= startOfDay(new Date()).getTime() && departure.getTime() <= fourteenDayEnd.getTime() && getBookingStatus(booking) !== 'Cancelled';
+      })
+      .sort((a, b) => new Date(a.travelDate || a.departureDate).getTime() - new Date(b.travelDate || b.departureDate).getTime())
+      .slice(0, 12);
+
+    const workload = Object.values(bookings.reduce<Record<string, { name: string; assigned: number; upcoming: number; completed: number }>>((acc, booking) => {
+      const coordinator = getCoordinator(booking);
+      if (!coordinator) return acc;
+      const existing = acc[coordinator] || { name: coordinator, assigned: 0, upcoming: 0, completed: 0 };
+      existing.assigned += 1;
+      const status = getTripStatus(booking);
+      if (status === 'Completed') existing.completed += 1;
+      if (status === 'Upcoming' || status === 'Ready To Travel' || status === 'In Progress') existing.upcoming += 1;
+      acc[coordinator] = existing;
+      return acc;
+    }, {})).sort((a, b) => b.assigned - a.assigned);
+
+    const pendingReviews = adminReviews.filter((review) => !review.status || review.status === 'Pending').length;
+    const tripsTomorrow = bookings.filter((booking) => {
+      const departure = parseDate(booking.travelDate || booking.departureDate);
+      if (!departure) return false;
+      const tomorrow = startOfDay(new Date());
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      return departure.toDateString() === tomorrow.toDateString() && getBookingStatus(booking) !== 'Cancelled';
+    }).length;
+
+    return {
+      filteredEnquiries,
+      filteredBookings,
+      confirmedBookings,
+      activeTrips,
+      completedTrips,
+      pendingPaymentBookings,
+      pendingDocumentBookings,
+      upcomingTripsSevenDays,
+      monthlyRevenue,
+      averageBookingValue,
+      conversionRate,
+      previousRevenue,
+      previousAverage,
+      previousConversion,
+      monthlyTrend,
+      topDestinations,
+      packagePopularity,
+      statusDistribution,
+      tripStatusDistribution,
+      upcomingDepartures,
+      workload,
+      pendingReviews,
+      tripsTomorrow,
+    };
+  }, [adminReviews, bookings, dateRange, enquiries, packages, previousDateRange, wishlistItems]);
+
+  const getTrend = (current: number, previous: number) => {
+    if (!previous && current > 0) return '+100%';
+    if (!previous) return '0%';
+    const delta = Math.round(((current - previous) / previous) * 100);
+    return `${delta >= 0 ? '+' : ''}${delta}%`;
+  };
+
+  const kpiCards = [
+    { label: 'Total Enquiries', value: analyticsData.filteredEnquiries.length, trend: getTrend(analyticsData.filteredEnquiries.length, enquiries.filter((enquiry) => isInRange(enquiry.createdAt, previousDateRange)).length), icon: MessageSquare, tone: 'from-sky-500/18 to-white', status: 'Lead flow' },
+    { label: 'Total Bookings', value: analyticsData.filteredBookings.length, trend: getTrend(analyticsData.filteredBookings.length, bookings.filter((booking) => isInRange(booking.createdAt || booking.updatedAt || getBookingDate(booking), previousDateRange)).length), icon: Calendar, tone: 'from-[#008080]/18 to-white', status: 'Pipeline' },
+    { label: 'Active Trips', value: analyticsData.activeTrips.length, trend: 'Live', icon: Compass, tone: 'from-emerald-500/18 to-white', status: 'Operating' },
+    { label: 'Completed Trips', value: analyticsData.completedTrips.length, trend: 'Closed', icon: CheckCircle, tone: 'from-teal-500/18 to-white', status: 'Delivered' },
+    { label: 'Pending Payments', value: analyticsData.pendingPaymentBookings.length, trend: formatPrice(analyticsData.pendingPaymentBookings.reduce((sum, booking) => sum + getRemainingBalance(booking), 0)), icon: DollarSign, tone: 'from-amber-500/20 to-white', status: 'Collect' },
+    { label: 'Pending Documents', value: analyticsData.pendingDocumentBookings.length, trend: 'Verify', icon: FileText, tone: 'from-rose-500/16 to-white', status: 'Risk' },
+    { label: 'Upcoming 7 Days', value: analyticsData.upcomingTripsSevenDays.length, trend: 'Departures', icon: Clock, tone: 'from-violet-500/16 to-white', status: 'Prepare' },
+    { label: 'Monthly Revenue', value: formatPrice(analyticsData.monthlyRevenue), trend: getTrend(analyticsData.monthlyRevenue, analyticsData.previousRevenue), icon: LineChartIcon, tone: 'from-[#071d28]/12 to-white', status: 'Manual paid' },
+    { label: 'Avg Booking Value', value: formatPrice(analyticsData.averageBookingValue), trend: getTrend(analyticsData.averageBookingValue, analyticsData.previousAverage), icon: Star, tone: 'from-orange-500/16 to-white', status: 'Value' },
+    { label: 'Conversion Rate', value: `${analyticsData.conversionRate.toFixed(1)}%`, trend: getTrend(analyticsData.conversionRate, analyticsData.previousConversion), icon: Sparkles, tone: 'from-[#4DA528]/18 to-white', status: 'Enq → Book' },
+  ];
+
+  const actionItems = [
+    { label: `${analyticsData.pendingPaymentBookings.length} Pending Payments`, description: 'Collect or reconcile remaining balances', icon: DollarSign, tone: 'border-amber-200 bg-amber-50 text-amber-700', action: () => setActiveTab('bookings') },
+    { label: `${analyticsData.pendingDocumentBookings.length} Pending Documents`, description: 'Review customer document verification status', icon: FileText, tone: 'border-rose-200 bg-rose-50 text-rose-700', action: () => setActiveTab('bookings') },
+    { label: `${analyticsData.tripsTomorrow} Trips Depart Tomorrow`, description: 'Confirm pickup, coordinator and vouchers', icon: Clock, tone: 'border-sky-200 bg-sky-50 text-sky-700', action: () => setActiveTab('bookings') },
+    { label: `${analyticsData.pendingReviews} Reviews Awaiting Moderation`, description: 'Approve or edit customer stories', icon: Star, tone: 'border-violet-200 bg-violet-50 text-violet-700', action: () => setActiveTab('reviews') },
+  ];
+
+  const handleExportAnalyticsCSV = () => {
+    const rows = [
+      ['Metric', 'Value'],
+      ...kpiCards.map((card) => [card.label, String(card.value)]),
+      [],
+      ['Top Destination', 'Bookings', 'Revenue', 'Growth'],
+      ...analyticsData.topDestinations.map((item) => [item.destination, item.bookings, item.revenue, `${item.growth}%`]),
+      [],
+      ['Package', 'Bookings', 'Wishlist Saves', 'Reviews', 'Revenue'],
+      ...analyticsData.packagePopularity.map((item) => [item.title, item.bookings, item.saves, item.reviews, item.revenue]),
+    ];
+    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `pravaah_business_analytics_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportAnalyticsPDF = () => {
+    const reportWindow = window.open('', '_blank', 'noopener,noreferrer');
+    if (!reportWindow) return;
+    const topDestinationRows = analyticsData.topDestinations.map((item) => `<tr><td>${item.destination}</td><td>${item.bookings}</td><td>${formatPrice(item.revenue)}</td><td>${item.growth}%</td></tr>`).join('');
+    const kpiRows = kpiCards.map((card) => `<tr><td>${card.label}</td><td>${card.value}</td><td>${card.trend}</td></tr>`).join('');
+    reportWindow.document.write(`
+      <html>
+        <head>
+          <title>Pravaah Business Analytics</title>
+          <style>
+            body { font-family: Inter, Arial, sans-serif; color: #1c1917; padding: 32px; }
+            h1 { margin-bottom: 4px; }
+            p { color: #78716c; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border-bottom: 1px solid #e7e5e4; padding: 10px; text-align: left; font-size: 12px; }
+            th { text-transform: uppercase; letter-spacing: 0.12em; color: #0f766e; }
+          </style>
+        </head>
+        <body>
+          <h1>Pravaah Travels Business Analytics</h1>
+          <p>${dateRange.label} • Generated ${new Date().toLocaleString('en-IN')}</p>
+          <h2>KPI Summary</h2>
+          <table><thead><tr><th>Metric</th><th>Value</th><th>Trend</th></tr></thead><tbody>${kpiRows}</tbody></table>
+          <h2>Top Destinations</h2>
+          <table><thead><tr><th>Destination</th><th>Bookings</th><th>Revenue</th><th>Growth</th></tr></thead><tbody>${topDestinationRows}</tbody></table>
+        </body>
+      </html>
+    `);
+    reportWindow.document.close();
+    reportWindow.focus();
+    reportWindow.print();
+  };
+
+  const chartColors = ['#008080', '#4DA528', '#FF970D', '#6366f1', '#ec4899', '#14b8a6', '#f59e0b'];
 
   return (
     <div className="space-y-8 animate-fade-in font-sans">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-serif font-normal text-stone-900 tracking-tight flex items-center gap-2">
-            <span>Performance & Analytics Dashboard</span>
-            <span className="text-xs font-mono font-normal bg-teal-500/10 text-[#008080] px-2 py-0.5 rounded-full">Live Stream Active</span>
-          </h2>
-          <p className="text-xs text-stone-500 font-light mt-0.5">Real-time visual reports of unique visits, package interest, destination telemetry, and conversion rates.</p>
-        </div>
-        <button onClick={() => void fetchAnalyticsData()} className="px-3.5 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 text-[10px] font-bold uppercase tracking-wider rounded-sm flex items-center justify-center gap-1.5 transition">
-          <RefreshCw className={`w-3.5 h-3.5 ${analyticsLoading ? 'animate-spin' : ''}`} />
-          <span>Refresh Telemetry</span>
-        </button>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-        <div className="bg-white border border-stone-200 rounded-lg p-4 shadow-3xs flex flex-col justify-between space-y-1">
-          <span className="text-[9px] font-bold uppercase tracking-widest text-stone-400">Total Visits</span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-xl font-bold text-stone-850">{new Set(analyticsEvents.map(e => e.sessionId)).size || 124}</span>
-            <span className="text-[10px] text-emerald-600 font-semibold font-mono">+12%</span>
-          </div>
-          <span className="text-[9px] text-stone-400 font-light font-mono">Unique Sessions</span>
-        </div>
-        <div className="bg-white border border-stone-200 rounded-lg p-4 shadow-3xs flex flex-col justify-between space-y-1">
-          <span className="text-[9px] font-bold uppercase tracking-widest text-stone-400">Page Views</span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-xl font-bold text-stone-850">{analyticsEvents.filter(e => e.eventType === 'page_view').length || 412}</span>
-            <span className="text-[10px] text-emerald-600 font-semibold font-mono">+18%</span>
-          </div>
-          <span className="text-[9px] text-stone-400 font-light font-mono">Total impressions</span>
-        </div>
-        <div className="bg-white border border-stone-200 rounded-lg p-4 shadow-3xs flex flex-col justify-between space-y-1">
-          <span className="text-[9px] font-bold uppercase tracking-widest text-stone-400">Package Hits</span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-xl font-bold text-stone-850">{analyticsEvents.filter(e => e.eventType === 'package_view').length || 238}</span>
-            <span className="text-[10px] text-teal-600 font-semibold font-mono">Top Intent</span>
-          </div>
-          <span className="text-[9px] text-stone-400 font-light font-mono">Catalog views</span>
-        </div>
-        <div className="bg-white border border-stone-200 rounded-lg p-4 shadow-3xs flex flex-col justify-between space-y-1">
-          <span className="text-[9px] font-bold uppercase tracking-widest text-stone-400">Destination Views</span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-xl font-bold text-stone-850">{analyticsEvents.filter(e => e.eventType === 'destination_view').length || 189}</span>
-            <span className="text-[10px] text-indigo-600 font-semibold font-mono">Explore Tab</span>
-          </div>
-          <span className="text-[9px] text-stone-400 font-light font-mono">Location checks</span>
-        </div>
-        <div className="bg-white border border-stone-200 rounded-lg p-4 shadow-3xs flex flex-col justify-between space-y-1">
-          <span className="text-[9px] font-bold uppercase tracking-widest text-stone-400">Enquiries</span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-xl font-bold text-stone-850">{enquiries.length}</span>
-            <span className="text-[10px] text-[#008080] font-semibold font-mono">{Math.round((enquiries.length / (new Set(analyticsEvents.map(e => e.sessionId)).size || 124)) * 100)}% Conv</span>
-          </div>
-          <span className="text-[9px] text-stone-400 font-light font-mono">Lead submissions</span>
-        </div>
-        <div className="bg-white border border-stone-200 rounded-lg p-4 shadow-3xs flex flex-col justify-between space-y-1">
-          <span className="text-[9px] font-bold uppercase tracking-widest text-stone-400">Bookings</span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-xl font-bold text-stone-850">{bookings.length}</span>
-            <span className="text-[10px] text-emerald-600 font-semibold font-mono">{bookings.filter(b => b.status === 'Confirmed').length} Conf</span>
-          </div>
-          <span className="text-[9px] text-stone-400 font-light font-mono">Customized requests</span>
-        </div>
-        <div className="bg-white border border-stone-200 rounded-lg p-4 shadow-3xs flex flex-col justify-between space-y-1">
-          <span className="text-[9px] font-bold uppercase tracking-widest text-stone-400">Reviews</span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-xl font-bold text-stone-850">{adminReviews.length}</span>
-            <span className="text-[10px] text-amber-500 font-semibold font-mono">★ {adminReviews.length ? (adminReviews.reduce((acc: number, r: any) => acc + (r.rating || 5), 0) / adminReviews.length).toFixed(1) : '5.0'}</span>
-          </div>
-          <span className="text-[9px] text-stone-400 font-light font-mono">Traveler stories</span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white border border-stone-200 rounded-xl p-5 shadow-3xs lg:col-span-2 space-y-4">
+      <div className="relative overflow-hidden rounded-[28px] bg-[#071d28] p-6 text-white shadow-[0_24px_70px_rgba(7,29,40,0.18)] sm:p-8">
+        <div className="absolute inset-0 bg-linear-to-r from-[#071d28] via-[#103238] to-[#4DA528]/60" />
+        <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full border border-white/10 bg-white/8" />
+        <div className="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-800">Traffic & Content Interactions Trend</h3>
-            <p className="text-[10px] text-stone-400 font-light">Compares overall impressions, package views, and destination visits</p>
+            <span className="inline-flex rounded-full bg-white/12 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/70">Owner Intelligence</span>
+            <h2 className="mt-4 max-w-3xl text-3xl font-extrabold tracking-tight sm:text-4xl">Business Analytics Dashboard</h2>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-white/68">Revenue, conversion, trip readiness, package demand, and team workload from existing Firestore data.</p>
+            <p className="mt-2 text-xs text-white/45">{analyticsEvents.length} telemetry events synced for supporting context.</p>
           </div>
-          <div className="h-64">
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={() => void fetchAnalyticsData()} className="inline-flex items-center justify-center gap-2 rounded-[10px] border border-white/15 bg-white/10 px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.16em] text-white transition hover:bg-white/18">
+              <RefreshCw className={`h-4 w-4 ${analyticsLoading ? 'animate-spin' : ''}`} />
+              Sync
+            </button>
+            <button onClick={handleExportAnalyticsCSV} className="inline-flex items-center justify-center gap-2 rounded-[10px] bg-white px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.16em] text-stone-900 transition hover:bg-white/90">
+              <Download className="h-4 w-4" />
+              CSV
+            </button>
+            <button onClick={handleExportAnalyticsPDF} className="inline-flex items-center justify-center gap-2 rounded-[10px] bg-[#4DA528] px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.16em] text-white transition hover:bg-[#FF970D]">
+              <FileText className="h-4 w-4" />
+              PDF
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <section className="rounded-[22px] border border-stone-200 bg-white p-4 shadow-[0_14px_40px_rgba(18,38,32,0.05)]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#008080]">Quick Filters</span>
+            <p className="mt-1 text-sm text-stone-500">Current period: {dateRange.label}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {[
+              ['today', 'Today'],
+              ['7d', 'Last 7 Days'],
+              ['30d', 'Last 30 Days'],
+              ['month', 'This Month'],
+              ['year', 'This Year'],
+              ['custom', 'Custom'],
+            ].map(([value, label]) => (
+              <button key={value} type="button" onClick={() => setAnalyticsRange(value as typeof analyticsRange)} className={`rounded-full px-4 py-2 text-[10px] font-bold uppercase tracking-[0.16em] transition ${analyticsRange === value ? 'bg-[#008080] text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {analyticsRange === 'custom' && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <input type="date" value={customStartDate} onChange={(event) => setCustomStartDate(event.target.value)} className="rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+            <input type="date" value={customEndDate} onChange={(event) => setCustomEndDate(event.target.value)} className="rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+          </div>
+        )}
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        {kpiCards.map((card) => {
+          const CardIcon = card.icon;
+          const positive = String(card.trend).startsWith('+') || ['Live', 'Closed', 'Departures', 'Verify', 'Collect'].includes(String(card.trend));
+          return (
+            <div key={card.label} className={`rounded-[20px] border border-stone-200 bg-linear-to-br ${card.tone} p-5 shadow-[0_14px_38px_rgba(18,38,32,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_24px_55px_rgba(18,38,32,0.12)]`}>
+              <div className="flex items-start justify-between gap-3">
+                <span className="flex h-11 w-11 items-center justify-center rounded-[15px] bg-white text-[#008080] shadow-sm">
+                  <CardIcon className="h-5 w-5" />
+                </span>
+                <span className={`rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.16em] ${positive ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{card.trend}</span>
+              </div>
+              <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.18em] text-stone-500">{card.label}</p>
+              <strong className="mt-2 block text-2xl font-extrabold tracking-tight text-stone-950">{card.value}</strong>
+              <p className="mt-2 text-xs text-stone-500">{card.status}</p>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[0.75fr_1.25fr]">
+        <div className="rounded-[22px] border border-stone-200 bg-white p-5 shadow-[0_14px_40px_rgba(18,38,32,0.05)]">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#008080]">Action Center</span>
+              <h3 className="mt-1 text-lg font-semibold text-stone-950">Needs attention</h3>
+            </div>
+            <AlertCircle className="h-5 w-5 text-amber-500" />
+          </div>
+          <div className="space-y-3">
+            {actionItems.map((item) => {
+              const ItemIcon = item.icon;
+              return (
+                <button key={item.label} type="button" onClick={item.action} className={`flex w-full items-start gap-3 rounded-[16px] border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${item.tone}`}>
+                  <ItemIcon className="mt-0.5 h-5 w-5 shrink-0" />
+                  <span>
+                    <strong className="block text-sm">{item.label}</strong>
+                    <span className="mt-1 block text-xs opacity-75">{item.description}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="rounded-[22px] border border-stone-200 bg-white p-5 shadow-[0_14px_40px_rgba(18,38,32,0.05)]">
+          <div className="mb-4">
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#008080]">Upcoming Departures</span>
+            <h3 className="mt-1 text-lg font-semibold text-stone-950">Next 14 days</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-[720px] w-full text-left text-sm">
+              <thead className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">
+                <tr className="border-b border-stone-100">
+                  <th className="py-3">Package</th>
+                  <th className="py-3">Departure</th>
+                  <th className="py-3">Travellers</th>
+                  <th className="py-3">Coordinator</th>
+                  <th className="py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-100">
+                {analyticsData.upcomingDepartures.length === 0 ? (
+                  <tr><td colSpan={5} className="py-8 text-center text-sm text-stone-400">No departures scheduled in the next 14 days.</td></tr>
+                ) : analyticsData.upcomingDepartures.map((booking) => (
+                  <tr key={booking.id}>
+                    <td className="py-3 font-semibold text-stone-900">{booking.packageTitle || booking.destination || 'Custom Trip'}</td>
+                    <td className="py-3 text-stone-600">{booking.travelDate || booking.departureDate || 'Flexible'}</td>
+                    <td className="py-3 text-stone-600">{booking.guests || booking.travelers || 1}</td>
+                    <td className="py-3 text-stone-600">{getCoordinator(booking) || 'Unassigned'}</td>
+                    <td className="py-3"><span className="rounded-full bg-[#008080]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#008080]">{getTripStatus(booking)}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className="rounded-[22px] border border-stone-200 bg-white p-5 shadow-[0_14px_40px_rgba(18,38,32,0.05)] xl:col-span-2">
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-stone-800">Monthly Revenue, Enquiries & Bookings</h3>
+            <p className="mt-1 text-xs text-stone-400">Manual payment trend compared with lead and booking volume.</p>
+          </div>
+          <div className="mt-5 h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={(() => {
-                const trafficByDate: { [date: string]: { page_views: number; package_views: number; destination_views: number } } = {};
-                if (analyticsEvents.length === 0) {
-                  return [
-                    { date: 'Jul 09', page_views: 45, package_views: 20, destination_views: 15 },
-                    { date: 'Jul 10', page_views: 52, package_views: 28, destination_views: 18 },
-                    { date: 'Jul 11', page_views: 61, package_views: 32, destination_views: 22 },
-                    { date: 'Jul 12', page_views: 58, package_views: 30, destination_views: 25 },
-                    { date: 'Jul 13', page_views: 74, package_views: 41, destination_views: 31 },
-                    { date: 'Jul 14', page_views: 82, package_views: 47, destination_views: 38 },
-                    { date: 'Jul 15', page_views: 90, package_views: 54, destination_views: 44 },
-                  ];
-                }
-                analyticsEvents.forEach((e: any) => {
-                  if (!e.createdAt) return;
-                  const dateStr = new Date(e.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-                  if (!trafficByDate[dateStr]) trafficByDate[dateStr] = { page_views: 0, package_views: 0, destination_views: 0 };
-                  if (e.eventType === 'page_view') trafficByDate[dateStr].page_views++;
-                  else if (e.eventType === 'package_view') trafficByDate[dateStr].package_views++;
-                  else if (e.eventType === 'destination_view') trafficByDate[dateStr].destination_views++;
-                });
-                return Object.entries(trafficByDate).map(([date, counts]) => ({ date, ...counts })).slice(-10);
-              })()} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f1f1" />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#888' }} />
+              <LineChart data={analyticsData.monthlyTrend} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#eee8df" />
+                <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#888' }} />
                 <YAxis tick={{ fontSize: 10, fill: '#888' }} />
                 <Tooltip contentStyle={{ fontSize: 11, fontFamily: 'sans-serif' }} />
                 <Legend wrapperStyle={{ fontSize: 10, fontFamily: 'sans-serif', paddingTop: 10 }} />
-                <Line type="monotone" dataKey="page_views" name="Page Views" stroke="#008080" strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="package_views" name="Package Catalog Hits" stroke="#ec4899" strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="destination_views" name="Destination Hits" stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="revenue" name="Revenue" stroke="#008080" strokeWidth={3} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="enquiries" name="Enquiries" stroke="#FF970D" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="bookings" name="Bookings" stroke="#4DA528" strokeWidth={2} dot={{ r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="bg-white border border-stone-200 rounded-xl p-5 shadow-3xs space-y-4">
+        <div className="rounded-[22px] border border-stone-200 bg-white p-5 shadow-[0_14px_40px_rgba(18,38,32,0.05)]">
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-800">Most Searched Regions</h3>
-            <p className="text-[10px] text-stone-400 font-light">Destinations holding the highest organic view count</p>
+            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-stone-800">Status Distribution</h3>
+            <p className="mt-1 text-xs text-stone-400">Booking and trip operating state.</p>
           </div>
-          <div className="h-64 flex flex-col justify-between">
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
             <div className="h-44">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={(() => {
-                    const destinationViewCounts: Record<string, number> = {};
-                    analyticsEvents.forEach((e: any) => {
-                      if (e.eventType === 'destination_view' && e.targetName) {
-                        destinationViewCounts[e.targetName] = (destinationViewCounts[e.targetName] || 0) + 1;
-                      }
-                    });
-                    const results = Object.entries(destinationViewCounts).map(([name, count]) => ({ name, value: count })).sort((a, b) => b.value - a.value).slice(0, 5);
-                    if (results.length === 0) return [
-                      { name: 'Spiti Valley', value: 45 },
-                      { name: 'Ladakh Plateau', value: 38 },
-                      { name: 'Uttarakhand Chardham', value: 31 },
-                      { name: 'Kashmir Meadows', value: 24 },
-                      { name: 'Himachal Offbeat', value: 18 },
-                    ];
-                    return results;
-                  })()} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={4} dataKey="value">
-                    {['#008080', '#14b8a6', '#6366f1', '#ec4899', '#f59e0b'].map((color, index) => <Cell key={`cell-${index}`} fill={color} />)}
+                  <Pie data={analyticsData.statusDistribution} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={4} dataKey="value">
+                    {analyticsData.statusDistribution.map((_, index) => <Cell key={`booking-status-${index}`} fill={chartColors[index % chartColors.length]} />)}
                   </Pie>
                   <Tooltip contentStyle={{ fontSize: 11 }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-[10px] text-stone-500 font-medium">
-              {(() => {
-                const destinationViewCounts: Record<string, number> = {};
-                analyticsEvents.forEach((e: any) => {
-                  if (e.eventType === 'destination_view' && e.targetName) destinationViewCounts[e.targetName] = (destinationViewCounts[e.targetName] || 0) + 1;
-                });
-                const results = Object.entries(destinationViewCounts).map(([name, count]) => ({ name, value: count })).sort((a, b) => b.value - a.value).slice(0, 5);
-                const items = results.length ? results : [
-                  { name: 'Spiti Valley', value: 45 },
-                  { name: 'Ladakh Plateau', value: 38 },
-                  { name: 'Uttarakhand Chardham', value: 31 },
-                  { name: 'Kashmir Meadows', value: 24 },
-                  { name: 'Himachal Offbeat', value: 18 },
-                ];
-                const colors = ['bg-[#008080]', 'bg-teal-500', 'bg-indigo-500', 'bg-pink-500', 'bg-amber-500'];
-                return items.map((it, idx) => <div key={idx} className="flex items-center gap-1.5 truncate"><span className={`w-2.5 h-2.5 rounded-full ${colors[idx]} shrink-0`} /><span className="truncate">{it.name} ({it.value})</span></div>);
-              })()}
+            <div className="h-44">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={analyticsData.tripStatusDistribution} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={4} dataKey="value">
+                    {analyticsData.tripStatusDistribution.map((_, index) => <Cell key={`trip-status-${index}`} fill={chartColors[(index + 2) % chartColors.length]} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white border border-stone-200 rounded-xl p-5 shadow-3xs lg:col-span-2 space-y-4">
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className="rounded-[22px] border border-stone-200 bg-white p-5 shadow-[0_14px_40px_rgba(18,38,32,0.05)] xl:col-span-2">
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-800">Popular Holiday Packages Interest</h3>
-            <p className="text-[10px] text-stone-400 font-light">Shows unique visitor bookmark and click actions per travel package</p>
+            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-stone-800">Package Popularity</h3>
+            <p className="mt-1 text-xs text-stone-400">Weighted by bookings, wishlist saves, reviews, and enquiries.</p>
           </div>
-          <div className="h-64">
+          <div className="mt-5 h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={(() => {
-                const packageViewCounts: { [name: string]: number } = {};
-                analyticsEvents.forEach((e: any) => {
-                  if (e.eventType === 'package_view' && e.targetName) packageViewCounts[e.targetName] = (packageViewCounts[e.targetName] || 0) + 1;
-                });
-                const results = Object.entries(packageViewCounts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 6);
-                if (results.length === 0) return [
-                  { name: 'Spiti Jeep Safari', count: 32 },
-                  { name: 'Leh Ladakh Odyssey', count: 28 },
-                  { name: 'Chardham Yatra Spl', count: 24 },
-                  { name: 'Kedarnath Heli Tour', count: 19 },
-                  { name: 'Kinnaur Offbeat Tour', count: 15 },
-                  { name: 'Zanskar Expedition', count: 11 },
-                ];
-                return results;
-              })()} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f1f1" />
-                <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#888' }} />
+              <BarChart data={analyticsData.packagePopularity} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#eee8df" />
+                <XAxis dataKey="title" tick={{ fontSize: 9, fill: '#888' }} />
                 <YAxis tick={{ fontSize: 10, fill: '#888' }} />
                 <Tooltip contentStyle={{ fontSize: 11 }} />
-                <Bar dataKey="count" name="Interactions" fill="#14b8a6">
-                  <Cell fill="#008080" />
-                  <Cell fill="#0d9488" />
-                  <Cell fill="#14b8a6" />
-                  <Cell fill="#2dd4bf" />
-                  <Cell fill="#5eead4" />
-                  <Cell fill="#99f6e4" />
-                </Bar>
+                <Legend wrapperStyle={{ fontSize: 10 }} />
+                <Bar dataKey="bookings" name="Bookings" fill="#008080" />
+                <Bar dataKey="saves" name="Wishlist" fill="#4DA528" />
+                <Bar dataKey="enquiries" name="Enquiries" fill="#FF970D" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="bg-white border border-stone-200 rounded-xl p-5 shadow-3xs space-y-4 flex flex-col justify-between">
-          <div className="space-y-1">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-800">Live Telemetry Feed</h3>
-            <p className="text-[10px] text-stone-400 font-light">Real-time user engagement actions processed securely</p>
+        <div className="rounded-[22px] border border-stone-200 bg-white p-5 shadow-[0_14px_40px_rgba(18,38,32,0.05)]">
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-stone-800">Team Workload</h3>
+            <p className="mt-1 text-xs text-stone-400">Assigned trip coordinators.</p>
           </div>
-          <div className="flex-1 overflow-y-auto max-h-56 mt-4 space-y-3 pr-1">
-            {analyticsEvents.length === 0 ? (
-              <div className="text-center py-12 text-stone-400 text-xs italic">No active session logs in database yet. Browsing actions will show up in real-time here.</div>
-            ) : analyticsEvents.slice(-8).reverse().map((ev: any) => (
-              <div key={ev.id} className="flex gap-2 text-[10px] border-b border-stone-50 pb-2">
-                <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${ev.eventType === 'page_view' ? 'bg-teal-500' : ev.eventType === 'package_view' ? 'bg-pink-500' : 'bg-indigo-500'}`} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-stone-700 font-medium truncate">{ev.eventType === 'page_view' && <span>Visited <b>{ev.targetName || ev.targetId}</b> page</span>}{ev.eventType === 'package_view' && <span>Inspected package: <b>{ev.targetName}</b></span>}{ev.eventType === 'destination_view' && <span>Checked region: <b>{ev.targetName}</b></span>}</p>
-                  <span className="text-[9px] text-stone-400 block font-mono">Session: {ev.sessionId ? ev.sessionId.substring(5, 12) + '...' : 'Guest'} • {ev.createdAt ? new Date(ev.createdAt).toLocaleTimeString() : 'now'}</span>
+          <div className="mt-5 space-y-3">
+            {analyticsData.workload.length === 0 ? (
+              <p className="rounded-[16px] border border-dashed border-stone-200 bg-stone-50 p-5 text-center text-sm text-stone-400">No trip coordinators assigned yet.</p>
+            ) : analyticsData.workload.map((member) => (
+              <div key={member.name} className="rounded-[16px] border border-stone-200 bg-[#fcfbf9] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <strong className="text-sm text-stone-950">{member.name}</strong>
+                  <span className="rounded-full bg-[#008080]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#008080]">{member.assigned} Trips</span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-stone-600">
+                  <span>Upcoming: <strong>{member.upcoming}</strong></span>
+                  <span>Completed: <strong>{member.completed}</strong></span>
                 </div>
               </div>
             ))}
           </div>
         </div>
-      </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div className="rounded-[22px] border border-stone-200 bg-white p-5 shadow-[0_14px_40px_rgba(18,38,32,0.05)]">
+          <div className="mb-4">
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#008080]">Top Destinations</span>
+            <h3 className="mt-1 text-lg font-semibold text-stone-950">Top 10 by bookings</h3>
+          </div>
+          <div className="space-y-3">
+            {analyticsData.topDestinations.length === 0 ? (
+              <p className="rounded-[16px] border border-dashed border-stone-200 bg-stone-50 p-5 text-center text-sm text-stone-400">No booking destinations in this range.</p>
+            ) : analyticsData.topDestinations.map((item, index) => (
+              <div key={item.destination} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[16px] border border-stone-200 bg-[#fcfbf9] p-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#008080]/10 text-sm font-bold text-[#008080]">{index + 1}</span>
+                <div>
+                  <p className="font-semibold text-stone-950">{item.destination}</p>
+                  <p className="mt-1 text-xs text-stone-500">{item.bookings} bookings • {formatPrice(item.revenue)}</p>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${item.growth >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{item.growth >= 0 ? '+' : ''}{item.growth}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-[22px] border border-stone-200 bg-white p-5 shadow-[0_14px_40px_rgba(18,38,32,0.05)]">
+          <div className="mb-4">
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#008080]">Most Popular Packages</span>
+            <h3 className="mt-1 text-lg font-semibold text-stone-950">Demand ranking</h3>
+          </div>
+          <div className="space-y-3">
+            {analyticsData.packagePopularity.length === 0 ? (
+              <p className="rounded-[16px] border border-dashed border-stone-200 bg-stone-50 p-5 text-center text-sm text-stone-400">No package activity in this range.</p>
+            ) : analyticsData.packagePopularity.map((item) => (
+              <div key={item.id} className="grid grid-cols-[64px_1fr] gap-3 rounded-[16px] border border-stone-200 bg-[#fcfbf9] p-3">
+                <img src={item.imageUrl} alt={item.title} onError={handleTravelImageError} className="h-16 w-16 rounded-[12px] object-cover" loading="lazy" referrerPolicy="no-referrer" />
+                <div className="min-w-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-stone-950">{item.title}</p>
+                      <p className="mt-1 text-xs text-stone-500">{item.destination}</p>
+                    </div>
+                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-700">★ {item.rating ? item.rating.toFixed(1) : 'N/A'}</span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-[11px] text-stone-500">
+                    <span>Bookings <strong className="text-stone-900">{item.bookings}</strong></span>
+                    <span>Saves <strong className="text-stone-900">{item.saves}</strong></span>
+                    <span>Revenue <strong className="text-stone-900">{formatPrice(item.revenue)}</strong></span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

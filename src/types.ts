@@ -59,7 +59,33 @@ export interface TravelPackage {
   createdAt: string;
 }
 
-export type EnquiryStatus = 'New' | 'Contacted' | 'Converted' | 'Closed';
+export type EnquiryStatus =
+  | 'New'
+  | 'Contacted'
+  | 'Quote Sent'
+  | 'Booking Confirmed'
+  | 'Cancelled'
+  | 'Completed'
+  | 'Converted'
+  | 'Closed';
+
+export type EnquiryPriority = 'Low' | 'Medium' | 'High';
+export type EnquiryPaymentStatus = 'Pending' | 'Partial' | 'Paid';
+
+export interface EnquiryNote {
+  id: string;
+  text: string;
+  createdAt: string;
+  author?: string;
+}
+
+export interface EnquiryTimelineItem {
+  id: string;
+  label: string;
+  note?: string;
+  createdAt: string;
+  author?: string;
+}
 
 export interface Enquiry {
   id: string;
@@ -74,6 +100,37 @@ export interface Enquiry {
   packageId?: string;
   packageName?: string; // Cache for easy dashboard view
   status: EnquiryStatus;
+  adults?: number;
+  children?: number;
+  travelType?: string;
+  preferredContactMethod?: string;
+  preferredContact?: string;
+  priority?: EnquiryPriority;
+  followUpDate?: string;
+  followUpTime?: string;
+  assignedTo?: string;
+  packagePrice?: number;
+  advanceReceived?: number;
+  paymentStatus?: EnquiryPaymentStatus;
+  adminNotes?: EnquiryNote[];
+  statusTimeline?: EnquiryTimelineItem[];
+  convertedBookingId?: string;
+  convertedBookingNumber?: string;
+  bookingId?: string;
+  conversion?: {
+    packageId?: string;
+    packageTitle?: string;
+    departureDate?: string;
+    travellers?: number;
+    totalCost?: number;
+    advancePaid?: number;
+    remainingBalance?: number;
+    assignedTripManager?: string;
+    internalNotes?: string;
+    convertedAt?: string;
+    convertedBy?: string;
+  };
+  updatedAt?: string;
   createdAt: string;
 }
 
@@ -203,6 +260,88 @@ export const DEFAULT_WEBSITE_CMS: WebsiteCMSSettings = {
 
 export type BookingStatus = 'Pending' | 'Contacted' | 'Confirmed' | 'Completed' | 'Cancelled';
 export type PaymentStatus = 'Unpaid' | 'Paid' | 'Refunded';
+export type BookingDocumentType = 'Passport' | 'Aadhaar' | 'Visa' | 'Medical Certificate' | 'Travel Insurance' | 'Emergency Contact';
+export type BookingDocumentStatus = 'Pending' | 'Verified' | 'Rejected';
+export type TripCustomerStatus = 'Upcoming' | 'Ready To Travel' | 'In Progress' | 'Completed' | 'Cancelled';
+export type TripOperationDocumentType = 'Final Itinerary' | 'Hotel Voucher' | 'Transport Voucher' | 'Meeting Instructions';
+export type TripChecklistKey =
+  | 'bookingConfirmed'
+  | 'advancePaymentVerified'
+  | 'remainingPaymentReceived'
+  | 'documentsVerified'
+  | 'hotelAssigned'
+  | 'vehicleAssigned'
+  | 'driverAssigned'
+  | 'coordinatorAssigned'
+  | 'itineraryShared'
+  | 'customerBriefed'
+  | 'tripCompleted';
+
+export interface BookingPaymentHistoryItem {
+  id: string;
+  label: string;
+  amount: number;
+  status: string;
+  createdAt: string;
+  method?: string;
+  receivedBy?: string;
+}
+
+export interface TripManagerContact {
+  name?: string;
+  phone?: string;
+  email?: string;
+  emergencyContact?: string;
+}
+
+export interface TripOperations {
+  coordinatorName?: string;
+  coordinatorPhone?: string;
+  driverName?: string;
+  driverPhone?: string;
+  vehicleDetails?: string;
+  hotelName?: string;
+  roomAllocation?: string;
+  pickupLocation?: string;
+  pickupTime?: string;
+  emergencyContact?: string;
+  guideName?: string;
+  guidePhone?: string;
+  internalNotes?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface TripOperationDocument {
+  id: string;
+  type: TripOperationDocumentType;
+  title: string;
+  fileName: string;
+  fileUrl: string;
+  uploadedAt: string;
+  uploadedBy?: string;
+}
+
+export interface TripDocument {
+  id: string;
+  userId: string;
+  bookingId: string;
+  bookingNumber?: string;
+  documentType: BookingDocumentType;
+  documentStatus: BookingDocumentStatus;
+  title?: string;
+  content?: string;
+  category?: PrivateVaultDoc['category'];
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  uploadedAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+  _path?: string;
+}
 
 export interface CustomerBooking {
   id: string;
@@ -217,6 +356,35 @@ export interface CustomerBooking {
   travelers: number;
   status: BookingStatus;
   paymentStatus: PaymentStatus;
+  bookingId?: string;
+  bookingStatus?: string;
+  customerId?: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  imageUrl?: string;
+  packageImageUrl?: string;
+  duration?: string;
+  guests?: number;
+  totalPrice?: number;
+  advancePaid?: number;
+  advanceReceived?: number;
+  remainingBalance?: number;
+  paymentDueDate?: string;
+  paymentHistory?: BookingPaymentHistoryItem[];
+  bookingTimeline?: Array<{ title?: string; label?: string; note?: string; createdAt?: string; status?: string }>;
+  tripManager?: TripManagerContact;
+  tripOperations?: TripOperations;
+  tripChecklist?: Partial<Record<TripChecklistKey, boolean>>;
+  operationDocuments?: TripOperationDocument[];
+  tripStatus?: TripCustomerStatus;
+  tripStatusOverride?: TripCustomerStatus | '';
+  assignedTripManager?: string;
+  assignedStaff?: string;
+  documentStatus?: Partial<Record<BookingDocumentType, BookingDocumentStatus>>;
+  enquiryId?: string;
+  convertedFromEnquiryId?: string;
+  reviewSubmitted?: boolean;
   specialRequests?: string;
   createdAt: string;
 }

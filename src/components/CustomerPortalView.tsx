@@ -1,9 +1,9 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { 
   User, Calendar, Lock, Shield, Sparkles, CheckCircle, CreditCard, 
   Plus, Trash2, ChevronDown, MapPin, LogOut, RefreshCw, 
   Check, X, Info, AlertCircle, Compass, Star,
-  CloudSun, AlertTriangle, Thermometer, Briefcase, Map, Heart, MessageCircle
+  AlertTriangle, Briefcase, Heart, MessageCircle, FileText, Download, Upload, Phone, Mail
 } from 'lucide-react';
 import { 
   signInWithEmailAndPassword, 
@@ -18,8 +18,9 @@ import {
   updateProfile,
   type User as FirebaseUser
 } from 'firebase/auth';
-import { auth, db, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, getDoc, setDoc, serverTimestamp, onSnapshot } from '../lib/firebase';
-import { formatPrice } from '../types';
+import { auth, db, storage, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, getDoc, setDoc, serverTimestamp, onSnapshot } from '../lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { formatPrice, type BookingDocumentStatus, type BookingDocumentType, type TripCustomerStatus, type TripOperationDocument } from '../types';
 import { triggerSystemEmail } from '../lib/emailClient';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 import { SkeletonBookingCard } from './SkeletonLoader';
@@ -76,6 +77,8 @@ const normalizeBookingRecord = (booking: any) => {
   const bookingStatus = String(booking?.bookingStatus || booking?.status || 'Pending').trim();
   const guests = Number((booking?.guests ?? booking?.travelers ?? ((booking?.adults || 0) + (booking?.children || 0))) || 1);
   const totalPrice = Number(booking?.totalPrice ?? booking?.price ?? 0);
+  const advancePaid = Number(booking?.advancePaid ?? booking?.advanceReceived ?? 0);
+  const remainingBalance = Number(booking?.remainingBalance ?? Math.max(totalPrice - advancePaid, 0));
   const createdAt = booking?.createdAt || new Date().toISOString();
   const updatedAt = booking?.updatedAt || createdAt;
 
@@ -88,14 +91,87 @@ const normalizeBookingRecord = (booking: any) => {
     phone: booking?.phone || booking?.customerPhone || '',
     packageId: booking?.packageId || '',
     packageTitle: booking?.packageTitle || booking?.destination || 'Custom Package',
+    destination: booking?.destination || '',
+    duration: booking?.duration || booking?.packageDuration || '',
+    packageImageUrl: booking?.packageImageUrl || booking?.imageUrl || '',
     travelDate: booking?.travelDate || '',
     guests,
+    travelers: Number(booking?.travelers ?? guests),
     totalPrice,
+    price: Number(booking?.price ?? totalPrice),
+    advancePaid,
+    remainingBalance,
+    paymentDueDate: booking?.paymentDueDate || '',
+    paymentHistory: booking?.paymentHistory || [],
+    documentStatus: booking?.documentStatus || {},
+    tripOperations: booking?.tripOperations || {},
+    operationDocuments: booking?.operationDocuments || [],
+    tripStatusOverride: booking?.tripStatusOverride || '',
+    tripStatus: booking?.tripStatus || '',
+    tripManager: booking?.tripManager || {
+      name: booking?.assignedTripManager || booking?.assignedStaff || '',
+      phone: booking?.tripManagerPhone || '',
+      email: booking?.tripManagerEmail || '',
+      emergencyContact: booking?.emergencyContact || '',
+    },
     bookingStatus,
+    paymentStatus: booking?.paymentStatus || 'Pending',
     createdAt,
     updatedAt,
     notes: booking?.notes || [],
   };
+};
+
+const BOOKING_DOCUMENT_TYPES: BookingDocumentType[] = ['Passport', 'Aadhaar', 'Visa', 'Medical Certificate', 'Travel Insurance', 'Emergency Contact'];
+
+const normalizePaymentStatus = (status?: string) => {
+  const cleanStatus = String(status || 'Pending');
+  if (cleanStatus === 'Paid') return 'Paid';
+  if (cleanStatus === 'Partial') return 'Partial';
+  if (cleanStatus === 'Refunded') return 'Refunded';
+  if (cleanStatus === 'Unpaid') return 'Pending';
+  return cleanStatus || 'Pending';
+};
+
+const getPaymentStatusClasses = (status?: string) => {
+  switch (normalizePaymentStatus(status)) {
+    case 'Paid':
+      return 'bg-emerald-100 text-emerald-700';
+    case 'Partial':
+      return 'bg-sky-100 text-sky-700';
+    case 'Refunded':
+      return 'bg-stone-100 text-stone-600';
+    default:
+      return 'bg-amber-100 text-amber-700';
+  }
+};
+
+const getDocumentStatusClasses = (status?: BookingDocumentStatus) => {
+  switch (status) {
+    case 'Verified':
+      return 'bg-emerald-100 text-emerald-700';
+    case 'Rejected':
+      return 'bg-rose-100 text-rose-700';
+    default:
+      return 'bg-amber-100 text-amber-700';
+  }
+};
+
+const TRIP_STATUS_OPTIONS: TripCustomerStatus[] = ['Upcoming', 'Ready To Travel', 'In Progress', 'Completed', 'Cancelled'];
+
+const getTripStatusClasses = (status: TripCustomerStatus) => {
+  switch (status) {
+    case 'Ready To Travel':
+      return 'bg-emerald-100 text-emerald-700';
+    case 'In Progress':
+      return 'bg-sky-100 text-sky-700';
+    case 'Completed':
+      return 'bg-teal-100 text-teal-700';
+    case 'Cancelled':
+      return 'bg-rose-100 text-rose-700';
+    default:
+      return 'bg-amber-100 text-amber-700';
+  }
 };
 
 const getBookingStatusBadgeClasses = (bookingStatus: string) => {
@@ -118,6 +194,666 @@ const getBookingWhatsAppUrl = (booking: any) => {
   const packageTitle = booking?.packageTitle || 'your package';
   const message = `Hello Pravaah Travels,%0AI have submitted my booking.%0ABooking ID: ${bookingId}%0APackage: ${packageTitle}%0APlease confirm my booking.`;
   return `https://wa.me/919999999999?text=${message}`;
+};
+
+type PopularRouteRegion = 'Uttarakhand' | 'Himachal' | 'Kashmir' | 'Ladakh' | 'Sikkim';
+
+interface TrekRouteDefinition {
+  id: string;
+  name: string;
+  region: PopularRouteRegion;
+  latitude: number;
+  longitude: number;
+  elevation: string;
+  aliases: string[];
+  helicopterApplicable?: boolean;
+}
+
+interface RouteWeatherIntel {
+  routeId: string;
+  condition: string;
+  temperature: string;
+  feelsLike: string;
+  wind: string;
+  rainProbability: string;
+  snowProbability: string;
+  snowAlert: string;
+  routeStatus: string;
+  landslideRisk: 'Low' | 'Moderate' | 'High';
+  helicopterStatus: string;
+  bestTrekWindow: string;
+  packingSuggestions: string;
+  permitInformation: string;
+  lastUpdated: string;
+  source: string;
+}
+
+interface RouteWeatherState {
+  loading?: boolean;
+  data?: RouteWeatherIntel;
+  error?: string;
+}
+
+const ROUTE_WEATHER_CACHE_MS = 10 * 60 * 1000;
+const routeWeatherCache = new Map<string, { expiresAt: number; data: RouteWeatherIntel }>();
+
+const POPULAR_TREK_ROUTES: TrekRouteDefinition[] = [
+  {
+    id: 'kedarnath-trek',
+    name: 'Kedarnath Trek Route',
+    region: 'Uttarakhand',
+    latitude: 30.7346,
+    longitude: 79.0669,
+    elevation: '3,583 m',
+    aliases: ['kedarnath', 'gaurikund', 'sonprayag', 'rudraprayag', 'uttarakhand', 'char dham', 'chardham'],
+    helicopterApplicable: true,
+  },
+  {
+    id: 'badrinath-mana',
+    name: 'Badrinath - Mana Route',
+    region: 'Uttarakhand',
+    latitude: 30.7433,
+    longitude: 79.4938,
+    elevation: '3,300 m',
+    aliases: ['badrinath', 'mana', 'joshimath', 'chamoli', 'uttarakhand', 'char dham', 'chardham'],
+  },
+  {
+    id: 'hemkund-valley-flowers',
+    name: 'Hemkund Sahib - Valley of Flowers',
+    region: 'Uttarakhand',
+    latitude: 30.7005,
+    longitude: 79.6151,
+    elevation: '4,329 m',
+    aliases: ['hemkund', 'valley of flowers', 'ghangaria', 'govindghat', 'uttarakhand'],
+    helicopterApplicable: true,
+  },
+  {
+    id: 'gangotri-gaumukh',
+    name: 'Gangotri - Gaumukh Trail',
+    region: 'Uttarakhand',
+    latitude: 30.9944,
+    longitude: 78.9398,
+    elevation: '4,023 m',
+    aliases: ['gangotri', 'gaumukh', 'gomukh', 'tapovan', 'uttarakhand', 'char dham', 'chardham'],
+  },
+  {
+    id: 'yamunotri-route',
+    name: 'Yamunotri Dham Route',
+    region: 'Uttarakhand',
+    latitude: 31.014,
+    longitude: 78.46,
+    elevation: '3,293 m',
+    aliases: ['yamunotri', 'janki chatti', 'barkot', 'uttarakhand', 'char dham', 'chardham'],
+  },
+  {
+    id: 'triund-dharamshala',
+    name: 'Triund - Dharamshala Trail',
+    region: 'Himachal',
+    latitude: 32.255,
+    longitude: 76.331,
+    elevation: '2,850 m',
+    aliases: ['triund', 'dharamshala', 'mcleodganj', 'kangra', 'himachal'],
+  },
+  {
+    id: 'hampta-pass',
+    name: 'Hampta Pass Trek',
+    region: 'Himachal',
+    latitude: 32.281,
+    longitude: 77.432,
+    elevation: '4,270 m',
+    aliases: ['hampta', 'manali', 'chandratal', 'himachal'],
+  },
+  {
+    id: 'rohtang-manali',
+    name: 'Manali - Rohtang Pass',
+    region: 'Himachal',
+    latitude: 32.371,
+    longitude: 77.246,
+    elevation: '3,978 m',
+    aliases: ['rohtang', 'manali', 'atal tunnel', 'solang', 'himachal'],
+  },
+  {
+    id: 'spiti-kaza',
+    name: 'Spiti Valley - Kaza Route',
+    region: 'Himachal',
+    latitude: 32.225,
+    longitude: 78.071,
+    elevation: '3,800 m',
+    aliases: ['spiti', 'kaza', 'key monastery', 'chandratal', 'himachal'],
+  },
+  {
+    id: 'amarnath-pahalgam',
+    name: 'Amarnath - Pahalgam Route',
+    region: 'Kashmir',
+    latitude: 34.214,
+    longitude: 75.501,
+    elevation: '3,888 m',
+    aliases: ['amarnath', 'pahalgam', 'baltal', 'kashmir'],
+    helicopterApplicable: true,
+  },
+  {
+    id: 'gulmarg-route',
+    name: 'Gulmarg Alpine Route',
+    region: 'Kashmir',
+    latitude: 34.048,
+    longitude: 74.38,
+    elevation: '2,650 m',
+    aliases: ['gulmarg', 'apharwat', 'kashmir'],
+  },
+  {
+    id: 'sonamarg-zojila',
+    name: 'Sonamarg - Zoji La Route',
+    region: 'Kashmir',
+    latitude: 34.274,
+    longitude: 75.296,
+    elevation: '3,528 m',
+    aliases: ['sonamarg', 'zoji', 'zojila', 'kashmir', 'ladakh'],
+  },
+  {
+    id: 'khardung-la',
+    name: 'Leh - Khardung La',
+    region: 'Ladakh',
+    latitude: 34.278,
+    longitude: 77.604,
+    elevation: '5,359 m',
+    aliases: ['khardung', 'leh', 'nubra', 'ladakh'],
+  },
+  {
+    id: 'pangong-route',
+    name: 'Leh - Pangong Lake Route',
+    region: 'Ladakh',
+    latitude: 33.759,
+    longitude: 78.667,
+    elevation: '4,225 m',
+    aliases: ['pangong', 'chang la', 'leh', 'ladakh'],
+  },
+  {
+    id: 'markha-valley',
+    name: 'Markha Valley Trek',
+    region: 'Ladakh',
+    latitude: 33.988,
+    longitude: 77.745,
+    elevation: '5,200 m',
+    aliases: ['markha', 'hemmis', 'leh', 'ladakh'],
+  },
+  {
+    id: 'goecha-la',
+    name: 'Goecha La Trek',
+    region: 'Sikkim',
+    latitude: 27.369,
+    longitude: 88.224,
+    elevation: '4,940 m',
+    aliases: ['goecha', 'yuksom', 'kanchenjunga', 'sikkim'],
+  },
+  {
+    id: 'nathula-route',
+    name: 'Gangtok - Nathula Pass',
+    region: 'Sikkim',
+    latitude: 27.386,
+    longitude: 88.831,
+    elevation: '4,310 m',
+    aliases: ['nathula', 'gangtok', 'tsomgo', 'sikkim'],
+  },
+  {
+    id: 'gurudongmar-route',
+    name: 'Lachen - Gurudongmar Lake',
+    region: 'Sikkim',
+    latitude: 28.025,
+    longitude: 88.705,
+    elevation: '5,430 m',
+    aliases: ['gurudongmar', 'lachen', 'north sikkim', 'sikkim'],
+  },
+];
+
+const normalizeRouteText = (value: unknown) => String(value ?? '')
+  .toLowerCase()
+  .replace(/[^a-z0-9\s-]/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const weatherCodeToCondition = (code?: number) => {
+  if (code === undefined) return 'Weather unavailable';
+  if ([0].includes(code)) return 'Clear sky';
+  if ([1, 2, 3].includes(code)) return 'Partly cloudy';
+  if ([45, 48].includes(code)) return 'Foggy';
+  if ([51, 53, 55, 56, 57].includes(code)) return 'Drizzle';
+  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return 'Rain expected';
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return 'Snowfall likely';
+  if ([95, 96, 99].includes(code)) return 'Thunderstorm risk';
+  return 'Variable mountain weather';
+};
+
+const getLandslideRisk = (precipitationSum: number, rainProbability: number, currentRain: number): RouteWeatherIntel['landslideRisk'] => {
+  if (precipitationSum >= 35 || rainProbability >= 75 || currentRain >= 8) return 'High';
+  if (precipitationSum >= 12 || rainProbability >= 45 || currentRain >= 2) return 'Moderate';
+  return 'Low';
+};
+
+const getSnowAlert = (snowfall: number, temperature: number, rainProbability: number) => {
+  if (snowfall > 0) return `Active snowfall signal (${snowfall.toFixed(1)} cm forecast)`;
+  if (temperature <= 2 && rainProbability >= 35) return 'Possible snow/ice at higher elevation';
+  return 'No snowfall signal from weather model';
+};
+
+const getRouteStatusLabel = (risk: RouteWeatherIntel['landslideRisk']) => {
+  if (risk === 'High') return 'Official status unavailable.';
+  if (risk === 'Moderate') return 'Official status unavailable.';
+  return 'Official status unavailable.';
+};
+
+const getHelicopterStatusLabel = (route: TrekRouteDefinition, windSpeed: number, rainProbability: number) => {
+  if (!route.helicopterApplicable) return 'Not applicable for this route';
+  if (windSpeed >= 35 || rainProbability >= 65) return 'Official status unavailable.';
+  return 'Official status unavailable.';
+};
+
+const getSnowProbabilityLabel = (snowfall: number, temperature: number, rainProbability: number) => {
+  if (snowfall > 0) return 'Snowfall expected';
+  if (temperature <= 2 && rainProbability >= 35) return 'Possible at higher elevation';
+  return 'Low signal';
+};
+
+const getBestTrekWindowLabel = (risk: RouteWeatherIntel['landslideRisk'], condition: string) => {
+  const normalized = condition.toLowerCase();
+  if (risk === 'High' || normalized.includes('thunderstorm')) return 'Wait for a calmer weather window';
+  if (risk === 'Moderate' || normalized.includes('rain') || normalized.includes('snow')) return 'Late morning after a local route check';
+  return 'Morning departures look most comfortable';
+};
+
+const getPackingSuggestionsLabel = (risk: RouteWeatherIntel['landslideRisk'], snowAlert: string, rainProbability: number, temperature: number) => {
+  if (snowAlert.toLowerCase().includes('active') || snowAlert.toLowerCase().includes('possible')) {
+    return 'Thermal layers, waterproof boots, gloves, sunglasses, and a compact rain shell.';
+  }
+  if (risk !== 'Low' || rainProbability >= 45) {
+    return 'Rain shell, dry bags, warm layer, trekking pole, and traction-friendly shoes.';
+  }
+  if (temperature <= 8) {
+    return 'Warm fleece, wind layer, sunscreen, sunglasses, and hydration salts.';
+  }
+  return 'Light layers, sunscreen, sunglasses, reusable bottle, and comfortable trail shoes.';
+};
+
+const fetchRouteWeather = async (route: TrekRouteDefinition, signal?: AbortSignal): Promise<RouteWeatherIntel> => {
+  const cached = routeWeatherCache.get(route.id);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+
+  const params = new URLSearchParams({
+    latitude: String(route.latitude),
+    longitude: String(route.longitude),
+    current: 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,rain,snowfall,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m',
+    daily: 'precipitation_probability_max,precipitation_sum,snowfall_sum,wind_speed_10m_max',
+    forecast_days: '1',
+    timezone: 'auto',
+    wind_speed_unit: 'kmh',
+  });
+
+  const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params.toString()}`, { signal });
+  if (!response.ok) {
+    throw new Error('Weather feed unavailable');
+  }
+
+  const payload = await response.json();
+  const current = payload.current || {};
+  const daily = payload.daily || {};
+  const temperature = Number(current.temperature_2m ?? 0);
+  const feelsLike = Number(current.apparent_temperature ?? temperature);
+  const windSpeed = Number(current.wind_speed_10m ?? daily.wind_speed_10m_max?.[0] ?? 0);
+  const windGust = Number(current.wind_gusts_10m ?? windSpeed);
+  const rainProbability = Number(current.precipitation_probability ?? daily.precipitation_probability_max?.[0] ?? 0);
+  const precipitationSum = Number(daily.precipitation_sum?.[0] ?? current.precipitation ?? 0);
+  const currentRain = Number(current.rain ?? current.precipitation ?? 0);
+  const snowfall = Number(current.snowfall ?? daily.snowfall_sum?.[0] ?? 0);
+  const landslideRisk = getLandslideRisk(precipitationSum, rainProbability, currentRain);
+  const condition = weatherCodeToCondition(Number(current.weather_code ?? daily.weather_code?.[0]));
+  const snowAlert = getSnowAlert(snowfall, temperature, rainProbability);
+
+  const data: RouteWeatherIntel = {
+    routeId: route.id,
+    condition,
+    temperature: `${Math.round(temperature)}°C`,
+    feelsLike: `${Math.round(feelsLike)}°C`,
+    wind: `${Math.round(windSpeed)} km/h${windGust > windSpeed ? `, gusts ${Math.round(windGust)} km/h` : ''}`,
+    rainProbability: `${Math.round(rainProbability)}%`,
+    snowProbability: getSnowProbabilityLabel(snowfall, temperature, rainProbability),
+    snowAlert,
+    routeStatus: getRouteStatusLabel(landslideRisk),
+    landslideRisk,
+    helicopterStatus: getHelicopterStatusLabel(route, windSpeed, rainProbability),
+    bestTrekWindow: getBestTrekWindowLabel(landslideRisk, condition),
+    packingSuggestions: getPackingSuggestionsLabel(landslideRisk, snowAlert, rainProbability, temperature),
+    permitInformation: 'Official status unavailable.',
+    lastUpdated: current.time ? new Date(current.time).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+    source: 'Forecast feed',
+  };
+
+  routeWeatherCache.set(route.id, {
+    expiresAt: Date.now() + ROUTE_WEATHER_CACHE_MS,
+    data,
+  });
+  return data;
+};
+
+const findMatchingRoutes = (rawText: unknown) => {
+  const text = normalizeRouteText(rawText);
+  if (!text) return [];
+  return POPULAR_TREK_ROUTES.filter((route) => {
+    const routeName = normalizeRouteText(route.name);
+    return routeName.includes(text) || route.aliases.some((alias) => {
+      const normalizedAlias = normalizeRouteText(alias);
+      return text.includes(normalizedAlias) || normalizedAlias.includes(text);
+    });
+  });
+};
+
+const getRiskBadgeClasses = (risk?: RouteWeatherIntel['landslideRisk']) => {
+  switch (risk) {
+    case 'High':
+      return 'border-rose-200 bg-rose-50 text-rose-700';
+    case 'Moderate':
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+    default:
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  }
+};
+
+const getRouteDisplayName = (route: TrekRouteDefinition) => route.name
+  .replace(/\s+(Trek Route|Dham Route|Route|Trek|Trail)$/i, '')
+  .trim();
+
+const getWeatherEmoji = (data?: RouteWeatherIntel, hasError = false) => {
+  if (hasError) return '⛰';
+  const condition = data?.condition.toLowerCase() || '';
+  if (condition.includes('snow')) return '❄';
+  if (condition.includes('thunderstorm')) return '⛈';
+  if (condition.includes('rain') || condition.includes('drizzle')) return '🌧';
+  if (condition.includes('fog')) return '🌫';
+  if (condition.includes('cloud')) return '⛅';
+  if (condition.includes('clear')) return '☀';
+  return data ? '🌤' : '🏔';
+};
+
+const getRouteStatusTone = (data?: RouteWeatherIntel, hasError = false) => {
+  if (hasError) return { label: 'Paused', classes: 'border-stone-200 bg-stone-100 text-stone-600', dot: 'bg-stone-400' };
+  if (!data) return { label: 'Updating', classes: 'border-sky-200 bg-sky-50 text-sky-700', dot: 'bg-sky-500' };
+  const snowAlert = data.snowAlert.toLowerCase();
+  if (snowAlert.includes('active') || snowAlert.includes('possible')) {
+    return { label: 'Snow Zone', classes: 'border-sky-200 bg-sky-50 text-sky-700', dot: 'bg-sky-500' };
+  }
+  if (data.landslideRisk === 'High' || data.landslideRisk === 'Moderate' || data.condition.toLowerCase().includes('rain')) {
+    return { label: 'Rain Alert', classes: 'border-amber-200 bg-amber-50 text-amber-700', dot: 'bg-amber-500' };
+  }
+  return { label: 'Stable', classes: 'border-emerald-200 bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' };
+};
+
+const getRouteImage = () => getTravelImage();
+
+const getPackingChips = (data?: RouteWeatherIntel) => {
+  const fallback = ['🧥 Jacket', '🥾 Trek Shoes', '☀ Sunglasses', '💧 Water'];
+  if (!data) return fallback;
+
+  const suggestions = data.packingSuggestions.toLowerCase();
+  const chips = new Set<string>();
+  if (suggestions.includes('thermal') || suggestions.includes('warm') || suggestions.includes('fleece')) chips.add('🧥 Jacket');
+  if (suggestions.includes('boots') || suggestions.includes('shoes')) chips.add('🥾 Trek Shoes');
+  if (suggestions.includes('gloves')) chips.add('🧤 Gloves');
+  if (suggestions.includes('sunglasses')) chips.add('☀ Sunglasses');
+  if (suggestions.includes('rain')) chips.add('🌧 Rain Shell');
+  if (suggestions.includes('hydration') || suggestions.includes('bottle')) chips.add('💧 Water');
+  if (suggestions.includes('pole')) chips.add('🦯 Trek Pole');
+  return Array.from(chips).slice(0, 6);
+};
+
+const RouteCardSkeleton = () => (
+  <div className="min-w-[245px] rounded-[24px] border border-white/70 bg-white/75 p-3 shadow-[0_16px_42px_rgba(18,38,32,0.08)] backdrop-blur md:min-w-0">
+    <div className="animate-pulse space-y-4">
+      <div className="h-24 rounded-[20px] bg-stone-200" />
+      <div className="h-4 w-28 rounded-full bg-stone-200" />
+      <div className="h-8 w-full rounded-full bg-stone-100" />
+    </div>
+  </div>
+);
+
+const RouteWeatherCard = ({
+  route,
+  state,
+  compact = false,
+  onView,
+}: {
+  route: TrekRouteDefinition;
+  state?: RouteWeatherState;
+  compact?: boolean;
+  onView: () => void;
+}) => {
+  if (state?.loading) {
+    return <RouteCardSkeleton />;
+  }
+
+  const data = state?.data;
+  const statusTone = getRouteStatusTone(data, Boolean(state?.error));
+  const displayName = getRouteDisplayName(route);
+  const handleCompactKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (!compact) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onView();
+    }
+  };
+
+  return (
+    <article
+      role={compact ? 'button' : undefined}
+      tabIndex={compact ? 0 : undefined}
+      onClick={compact ? onView : undefined}
+      onKeyDown={handleCompactKeyDown}
+      className={`group relative flex shrink-0 flex-col overflow-hidden rounded-[24px] border border-white/70 bg-white/85 p-3 shadow-[0_16px_42px_rgba(18,38,32,0.08)] backdrop-blur transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_55px_rgba(18,38,32,0.16)] focus:outline-none focus:ring-2 focus:ring-[#4DA528]/45 ${compact ? 'min-w-[190px] cursor-pointer sm:min-w-[205px]' : 'min-w-[250px] md:min-w-0'}`}
+    >
+      <div className={`relative overflow-hidden rounded-[20px] ${compact ? 'h-32' : 'h-36'}`}>
+        <img
+          src={getRouteImage()}
+          alt=""
+          className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={handleTravelImageError}
+        />
+        <div className="absolute inset-0 bg-linear-to-t from-stone-950/75 via-stone-950/25 to-white/10" />
+        <div className="absolute left-3 top-3 flex items-center gap-2">
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-[0.12em] backdrop-blur ${statusTone.classes}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${statusTone.dot}`} />
+            {statusTone.label}
+          </span>
+        </div>
+        <div className="absolute right-3 top-3 rounded-full bg-white/20 px-2.5 py-1 text-2xl leading-none text-white shadow-sm backdrop-blur">
+          {getWeatherEmoji(data, Boolean(state?.error))}
+        </div>
+        <div className="absolute inset-x-0 bottom-0 p-3 text-white">
+          <h4 className={`${compact ? 'text-base' : 'text-lg'} font-extrabold leading-tight drop-shadow`}>{displayName}</h4>
+          <div className="mt-1 flex items-center justify-between gap-3">
+            <span className="text-2xl font-extrabold tracking-tight">{data?.temperature || '--'}</span>
+            <span className="truncate text-[11px] font-bold text-white/78">{route.region}</span>
+          </div>
+        </div>
+      </div>
+
+      {!compact && (
+        <div className="mt-3 flex items-center gap-1 text-xs font-semibold text-stone-500">
+          <MapPin className="h-3.5 w-3.5 text-[#4DA528]" />
+          <span>{route.elevation}</span>
+        </div>
+      )}
+
+      {!compact && (
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={onView}
+            className="rounded-full bg-stone-950 px-2.5 py-2 text-[10px] font-extrabold uppercase tracking-[0.12em] text-white transition hover:bg-[#4DA528]"
+          >
+            📍 View
+          </button>
+          <button
+            type="button"
+            className="rounded-full border border-stone-200 bg-white px-2.5 py-2 text-[10px] font-extrabold uppercase tracking-[0.12em] text-stone-700 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+          >
+            ❤️ Save
+          </button>
+          <button
+            type="button"
+            className="rounded-full border border-stone-200 bg-white px-2.5 py-2 text-[10px] font-extrabold uppercase tracking-[0.12em] text-stone-700 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+          >
+            🔔 Follow
+          </button>
+        </div>
+      )}
+
+      {state?.error && !compact && (
+        <p className="mt-3 text-xs leading-5 text-stone-500">Live weather is unavailable right now. Please check again shortly.</p>
+      )}
+    </article>
+  );
+};
+
+const RouteDetailModal = ({
+  route,
+  state,
+  onClose,
+}: {
+  route: TrekRouteDefinition;
+  state?: RouteWeatherState;
+  onClose: () => void;
+}) => {
+  const data = state?.data;
+  const statusTone = getRouteStatusTone(data, Boolean(state?.error));
+  const displayName = getRouteDisplayName(route);
+  const packingChips = getPackingChips(data);
+  const informationItems = [
+    ['Road Status', data?.routeStatus || 'Official status unavailable.'],
+    ['Permit Status', data?.permitInformation || 'Official status unavailable.'],
+    ['Helicopter Status', data?.helicopterStatus || (route.helicopterApplicable ? 'Official status unavailable.' : 'Not applicable for this route')],
+  ];
+  const infoTiles = [
+    ['🌬 Wind', data?.wind || '--'],
+    ['🌧 Rain', data?.rainProbability || '--'],
+    ['❄ Snow', data?.snowProbability || '--'],
+    ['🧭 Best Trek Window', data?.bestTrekWindow || 'Weather update unavailable'],
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-[9999] flex items-end justify-center overflow-hidden bg-stone-950/68 p-0 backdrop-blur-md sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="expedition-route-title"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[90vh] w-full flex-col overflow-hidden rounded-t-[30px] border border-white/70 bg-[#fbfaf5] shadow-2xl sm:max-w-2xl sm:rounded-[30px]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-white/70 bg-white/80 px-5 py-4 backdrop-blur sm:px-6">
+          <div>
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#4DA528]">Journey Conditions</p>
+            <h3 id="expedition-route-title" className="mt-1 text-xl font-extrabold text-stone-950">{displayName}</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-stone-200 bg-white p-2 text-stone-500 transition hover:bg-stone-100"
+            aria-label="Close route details"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-5 sm:p-6">
+          <div className="relative overflow-hidden rounded-[26px] bg-[#081E2A] p-5 text-white shadow-[0_22px_55px_rgba(8,30,42,0.2)]">
+            <img
+              src={getRouteImage()}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover opacity-35"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              onError={handleTravelImageError}
+            />
+            <div className="absolute inset-0 bg-linear-to-br from-[#081E2A] via-[#081E2A]/86 to-[#4DA528]/55" />
+            <div className="relative flex items-start justify-between gap-5">
+              <div>
+                <span className="inline-flex rounded-full bg-white/14 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/78">{route.region}</span>
+                <div className="mt-5 flex items-end gap-4">
+                  <div className="text-6xl leading-none drop-shadow">{getWeatherEmoji(data, Boolean(state?.error))}</div>
+                  <div>
+                    <p className="text-5xl font-extrabold tracking-tight">{data?.temperature || '--'}</p>
+                    <p className="mt-1 text-sm font-semibold text-white/78">{data?.condition || 'Weather update unavailable'}</p>
+                  </div>
+                </div>
+                <p className="mt-4 flex items-center gap-1.5 text-sm font-semibold text-white/72">
+                  <MapPin className="h-4 w-4" />
+                  <span>{route.elevation}</span>
+                </p>
+              </div>
+              <span className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.14em] ${statusTone.classes}`}>
+                <span className={`h-2 w-2 rounded-full ${statusTone.dot}`} />
+                {statusTone.label}
+              </span>
+            </div>
+          </div>
+
+          {state?.error ? (
+            <div className="mt-4 rounded-[18px] border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
+              Weather updates are unavailable right now. Please try again shortly.
+            </div>
+          ) : null}
+
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            {infoTiles.map(([label, value]) => (
+              <div key={label} className="rounded-[20px] border border-stone-200 bg-white p-4 shadow-[0_12px_35px_rgba(18,38,32,0.05)]">
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-stone-400">{label}</p>
+                <p className="mt-2 text-sm font-extrabold leading-6 text-stone-950">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 rounded-[22px] border border-stone-200 bg-white p-5 shadow-[0_12px_35px_rgba(18,38,32,0.05)]">
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-400">Packing Suggestions</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {packingChips.map((chip) => (
+                <span key={chip} className="rounded-full border border-stone-200 bg-[#fffdf8] px-3 py-2 text-xs font-extrabold text-stone-800 shadow-sm">
+                  {chip}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-[22px] border border-stone-200 bg-white p-5 shadow-[0_12px_35px_rgba(18,38,32,0.05)]">
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-400">Travel Information</p>
+            <div className="mt-4 grid gap-3">
+              {informationItems.map(([label, value]) => (
+                <div key={label} className="flex items-start justify-between gap-4 rounded-[16px] bg-[#f6f7f2] px-4 py-3">
+                  <span className="text-xs font-extrabold uppercase tracking-[0.14em] text-stone-500">{label}</span>
+                  <span className="max-w-[55%] text-right text-sm font-semibold leading-6 text-stone-950">{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.14em] text-stone-400">
+            <span>Last Updated</span>
+            <span>{data?.lastUpdated || 'Pending'}</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="mt-5 w-full rounded-full bg-stone-950 px-5 py-3 text-xs font-extrabold uppercase tracking-[0.16em] text-white transition hover:bg-[#4DA528] sm:hidden"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavigate, onNavigateToPackages, savedPackagesRefreshKey = 0 }: CustomerPortalViewProps) {
@@ -148,11 +884,8 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
   const [bookings, setBookings] = useState<any[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [selectedBookingDetails, setSelectedBookingDetails] = useState<any | null>(null);
-
-  // Real-time travel/weather alerts state
-  const [weatherAlert, setWeatherAlert] = useState<any | null>(null);
-  const [weatherLoading, setWeatherLoading] = useState(false);
-  const [weatherError, setWeatherError] = useState('');
+  const [tripSearch, setTripSearch] = useState('');
+  const [documentUploadingKey, setDocumentUploadingKey] = useState<string | null>(null);
 
   // Booking Modal
   const [showNewBookingModal, setShowNewBookingModal] = useState(false);
@@ -221,6 +954,15 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
   // Saved Packages States
   const [savedPackages, setSavedPackages] = useState<any[]>([]);
   const [savedPackagesLoading, setSavedPackagesLoading] = useState(false);
+  const [recentEnquiries, setRecentEnquiries] = useState<any[]>([]);
+
+  // Live Trek & Route Intelligence
+  const [personalizedWeatherByRouteId, setPersonalizedWeatherByRouteId] = useState<Record<string, RouteWeatherState>>({});
+  const [popularWeatherByRouteId, setPopularWeatherByRouteId] = useState<Record<string, RouteWeatherState>>({});
+  const [popularRoutesActivated, setPopularRoutesActivated] = useState(false);
+  const [routeWeatherOffline, setRouteWeatherOffline] = useState(false);
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  const popularRoutesRef = useRef<HTMLDivElement | null>(null);
 
   // Profile States
   const [profileName, setProfileName] = useState('');
@@ -320,6 +1062,9 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
         fetchSavedAiItineraries(currentUser.uid);
         fetchSavedPackages(currentUser.uid);
         fetchUserProfile(currentUser.uid);
+        fetchRecentCustomerEnquiries(currentUser.email || '');
+      } else {
+        setRecentEnquiries([]);
       }
     });
     return () => unsub();
@@ -335,71 +1080,166 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
     return () => unsubscribe?.();
   }, [savedPackagesRefreshKey, user?.uid]);
 
-  // Compute next upcoming trip helper
-  const getNextUpcomingTrip = () => {
-    if (!bookings || bookings.length === 0) return null;
+  const personalizedRoutes = useMemo(() => {
+    const routeMap = new Map<string, TrekRouteDefinition>();
+    const addInterestRoutes = (value: unknown) => {
+      findMatchingRoutes(value).forEach((route) => {
+        if (!routeMap.has(route.id)) {
+          routeMap.set(route.id, route);
+        }
+      });
+    };
+
     const now = new Date();
-    
-    // Filter active bookings (not cancelled) with a travelDate
-    const active = bookings.filter(b => (b.bookingStatus || b.status || 'Pending') !== 'Cancelled' && b.travelDate);
-    if (active.length === 0) return null;
+    const isActiveBooking = (booking: any) => {
+      const status = String(booking?.bookingStatus || booking?.status || 'Pending');
+      return !['Cancelled', 'Completed'].includes(status);
+    };
+    const isUpcomingBooking = (booking: any) => {
+      if (!isActiveBooking(booking) || !booking?.travelDate) return false;
+      const travelDate = new Date(booking.travelDate);
+      travelDate.setHours(23, 59, 59, 999);
+      return travelDate.getTime() >= now.getTime();
+    };
 
-    // Sort by travelDate ascending
-    const sorted = [...active].sort((a: any, b: any) => {
-      const dateA = new Date(a.travelDate).getTime();
-      const dateB = new Date(b.travelDate).getTime();
-      return dateA - dateB;
+    const addBooking = (booking: any) => {
+      addInterestRoutes(booking.destination);
+      addInterestRoutes(booking.packageTitle);
+    };
+
+    bookings.filter(isActiveBooking).forEach(addBooking);
+    bookings.filter(isUpcomingBooking).forEach(addBooking);
+    savedPackages.forEach((saved) => {
+      addInterestRoutes(saved.destination);
+      addInterestRoutes(saved.title);
+    });
+    vaultDocs
+      .filter((item: any) => item?.type === 'saved_package')
+      .forEach((saved: any) => {
+        addInterestRoutes(saved.destination);
+        addInterestRoutes(saved.title);
+      });
+    recentEnquiries.forEach((enquiry: any) => {
+      addInterestRoutes(enquiry.destination);
+      addInterestRoutes(enquiry.packageName);
     });
 
-    // Find the first one that is today or in the future
-    const futureTrip = sorted.find((b: any) => {
-      const tDate = new Date(b.travelDate);
-      tDate.setHours(23, 59, 59, 999);
-      return tDate.getTime() >= now.getTime();
-    });
+    return Array.from(routeMap.values()).slice(0, 4);
+  }, [bookings, savedPackages, vaultDocs, recentEnquiries]);
 
-    // Fallback to closest trip
-    return futureTrip || sorted[0] || null;
-  };
+  const popularRoutes = useMemo(() => {
+    const personalizedIds = new Set(personalizedRoutes.map((route) => route.id));
+    return POPULAR_TREK_ROUTES.filter((route) => !personalizedIds.has(route.id));
+  }, [personalizedRoutes]);
 
-  const nextTrip = getNextUpcomingTrip();
+  const personalizedRouteIds = personalizedRoutes.map((route) => route.id).join('|');
+  const popularRouteIds = popularRoutes.map((route) => route.id).join('|');
 
-  // Fetch weather alerts for the next upcoming trip
   useEffect(() => {
-    if (!nextTrip || !nextTrip.destination) {
-      setWeatherAlert(null);
+    const syncOnlineState = () => setRouteWeatherOffline(typeof navigator !== 'undefined' && !navigator.onLine);
+    syncOnlineState();
+    window.addEventListener('online', syncOnlineState);
+    window.addEventListener('offline', syncOnlineState);
+    return () => {
+      window.removeEventListener('online', syncOnlineState);
+      window.removeEventListener('offline', syncOnlineState);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (personalizedRoutes.length === 0) {
+      setPersonalizedWeatherByRouteId({});
       return;
     }
 
     const controller = new AbortController();
-
-    const fetchWeather = async () => {
-      setWeatherLoading(true);
-      setWeatherError('');
-      try {
-        console.log(`[CLIENT] Fetching real-time travel alerts for: ${nextTrip.destination}`);
-        const response = await fetch(`/api/weather-alerts?destination=${encodeURIComponent(nextTrip.destination)}`, {
-          signal: controller.signal,
-        });
-        if (!response.ok) {
-          throw new Error('Could not retrieve regional weather.');
+    setPersonalizedWeatherByRouteId((prev) => {
+      const next = { ...prev };
+      personalizedRoutes.forEach((route) => {
+        if (!next[route.id]?.data) {
+          next[route.id] = { loading: true };
         }
-        const data = await response.json();
-        if (controller.signal.aborted) return;
-        setWeatherAlert(data);
-      } catch (err: any) {
-        if (controller.signal.aborted) return;
-        console.warn('Error fetching travel weather:', err);
-        setWeatherError(err.message || 'Failed to load live travel alerts.');
-      } finally {
-        if (controller.signal.aborted) return;
-        setWeatherLoading(false);
-      }
-    };
+      });
+      return next;
+    });
 
-    fetchWeather();
+    personalizedRoutes.forEach((route) => {
+      fetchRouteWeather(route, controller.signal)
+        .then((data) => {
+          if (controller.signal.aborted) return;
+          setPersonalizedWeatherByRouteId((prev) => ({ ...prev, [route.id]: { data } }));
+        })
+        .catch((error: any) => {
+          if (controller.signal.aborted) return;
+          setPersonalizedWeatherByRouteId((prev) => ({
+            ...prev,
+            [route.id]: { error: error?.message || 'Weather unavailable' },
+          }));
+        });
+    });
+
     return () => controller.abort();
-  }, [nextTrip?.destination]);
+  }, [personalizedRouteIds]);
+
+  useEffect(() => {
+    if (popularRoutesActivated) return;
+    const node = popularRoutesRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      setPopularRoutesActivated(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setPopularRoutesActivated(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: '240px' });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [popularRoutesActivated]);
+
+  useEffect(() => {
+    if (!popularRoutesActivated || popularRoutes.length === 0) return;
+
+    const controller = new AbortController();
+    setPopularWeatherByRouteId((prev) => {
+      const next = { ...prev };
+      popularRoutes.forEach((route) => {
+        if (!next[route.id]?.data) {
+          next[route.id] = { loading: true };
+        }
+      });
+      return next;
+    });
+
+    popularRoutes.forEach((route) => {
+      fetchRouteWeather(route, controller.signal)
+        .then((data) => {
+          if (controller.signal.aborted) return;
+          setPopularWeatherByRouteId((prev) => ({ ...prev, [route.id]: { data } }));
+        })
+        .catch((error: any) => {
+          if (controller.signal.aborted) return;
+          setPopularWeatherByRouteId((prev) => ({
+            ...prev,
+            [route.id]: { error: error?.message || 'Weather unavailable' },
+          }));
+        });
+    });
+
+    return () => controller.abort();
+  }, [popularRoutesActivated, popularRouteIds]);
+
+  useEffect(() => {
+    if (!selectedRouteId || typeof document === 'undefined') return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [selectedRouteId]);
 
   // Check for email sign-in link on mount
   useEffect(() => {
@@ -581,15 +1421,27 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
     setBookingsLoading(true);
     setPortalError('');
     try {
-      const q = query(
-        collection(db, 'bookings'),
-        where('userId', '==', uid)
-      );
-      const snapshot = await getDocs(q);
-      const fetched = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const currentEmail = (auth.currentUser?.email || user?.email || '').trim();
+      const emailCandidates = Array.from(new Set([currentEmail, currentEmail.toLowerCase()].filter(Boolean)));
+      const bookingQueries = [
+        query(collection(db, 'bookings'), where('userId', '==', uid)),
+        query(collection(db, 'bookings'), where('customerId', '==', uid)),
+        ...emailCandidates.flatMap((email) => [
+          query(collection(db, 'bookings'), where('customerEmail', '==', email)),
+          query(collection(db, 'bookings'), where('email', '==', email)),
+        ]),
+      ];
+      const snapshots = await Promise.all(bookingQueries.map((bookingQuery) => getDocs(bookingQuery)));
+      const bookingMap = new Map<string, any>();
+      snapshots.forEach((snapshot) => {
+        snapshot.docs.forEach((bookingDoc) => {
+          bookingMap.set(bookingDoc.id, {
+            id: bookingDoc.id,
+            ...bookingDoc.data()
+          });
+        });
+      });
+      const fetched = Array.from(bookingMap.values()).map(normalizeBookingRecord);
       // Sort client side
       fetched.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setBookings(fetched);
@@ -642,6 +1494,38 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
       console.error('Error fetching saved itineraries from Firestore:', err);
       setPortalError(`Failed to fetch saved itineraries: ${err.message || String(err)}`);
       setSavedAiItineraries([]);
+    }
+  };
+
+  const fetchRecentCustomerEnquiries = async (userEmail: string) => {
+    const rawEmail = userEmail.trim();
+    const cleanEmail = rawEmail.toLowerCase();
+    const emailsToCheck = Array.from(new Set([rawEmail, cleanEmail].filter(Boolean)));
+    if (emailsToCheck.length === 0) {
+      setRecentEnquiries([]);
+      return;
+    }
+
+    try {
+      const snapshots = await Promise.all(
+        emailsToCheck.map((candidateEmail) => getDocs(query(
+          collection(db, 'enquiries'),
+          where('email', '==', candidateEmail)
+        )))
+      );
+      const fetched = snapshots
+        .flatMap((snapshot) => snapshot.docs)
+        .map(docSnap => ({
+          id: docSnap.id,
+          ...docSnap.data()
+        }))
+        .filter((item: any, index, allItems) => allItems.findIndex((candidate: any) => candidate.id === item.id) === index)
+        .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+        .slice(0, 8);
+      setRecentEnquiries(fetched);
+    } catch (err: any) {
+      console.warn('Recent enquiries unavailable for route personalization:', err);
+      setRecentEnquiries([]);
     }
   };
 
@@ -905,6 +1789,148 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
     } finally {
       setSavingAi(false);
       fetchSavedAiItineraries(user.uid);
+    }
+  };
+
+  const getTripDocumentsForBooking = (booking: any) => {
+    const bookingId = String(booking?.id || '');
+    const bookingNumber = String(booking?.bookingId || '');
+    return vaultDocs.filter((item: any) => {
+      const itemBookingId = String(item.bookingId || '');
+      const itemBookingNumber = String(item.bookingNumber || '');
+      return item.type === 'trip_document'
+        && (itemBookingId === bookingId || itemBookingId === bookingNumber || itemBookingNumber === bookingNumber);
+    });
+  };
+
+  const getTripDocumentStatus = (booking: any, documentType: BookingDocumentType): BookingDocumentStatus => {
+    const existingDocument = getTripDocumentsForBooking(booking).find((item: any) => item.documentType === documentType);
+    return (existingDocument?.documentStatus || booking?.documentStatus?.[documentType] || 'Pending') as BookingDocumentStatus;
+  };
+
+  const getTripManager = (booking: any) => ({
+    name: booking?.tripOperations?.coordinatorName || booking?.tripManager?.name || booking?.assignedTripManager || booking?.assignedStaff || 'Pravaah Trip Desk',
+    phone: booking?.tripOperations?.coordinatorPhone || booking?.tripManager?.phone || booking?.customerWhatsApp || '',
+    email: booking?.tripManager?.email || '',
+    emergencyContact: booking?.tripOperations?.emergencyContact || booking?.tripManager?.emergencyContact || booking?.customerPhone || '',
+  });
+
+  const getCustomerTripStatus = (booking: any): TripCustomerStatus => {
+    const overrideStatus = booking?.tripStatusOverride || booking?.tripStatus;
+    if (TRIP_STATUS_OPTIONS.includes(overrideStatus)) return overrideStatus;
+    const bookingStatus = String(booking?.bookingStatus || booking?.status || 'Pending');
+    if (bookingStatus === 'Cancelled') return 'Cancelled';
+    if (bookingStatus === 'Completed' || bookingStatus === 'Trip Completed' || booking?.tripChecklist?.tripCompleted) return 'Completed';
+    const departure = booking?.travelDate || booking?.departureDate;
+    const departureTime = departure ? new Date(departure).getTime() : 0;
+    if (departureTime && departureTime <= Date.now()) return 'In Progress';
+    const checklist = booking?.tripChecklist || {};
+    const ready = Boolean(
+      checklist.bookingConfirmed
+        && checklist.remainingPaymentReceived
+        && checklist.documentsVerified
+        && checklist.hotelAssigned
+        && checklist.vehicleAssigned
+        && checklist.driverAssigned
+        && checklist.coordinatorAssigned
+        && checklist.itineraryShared
+        && checklist.customerBriefed
+    );
+    return ready ? 'Ready To Travel' : 'Upcoming';
+  };
+
+  const getSmartBookingStatus = (booking: any) => {
+    const status = String(booking?.bookingStatus || booking?.status || 'Pending');
+    if (['Completed', 'Trip Completed'].includes(status)) return booking?.reviewSubmitted ? 'Review Submitted' : 'Review Pending';
+    if (['Pending', 'Contacted'].includes(status)) return 'Payment Pending';
+    const remainingBalance = Number(booking?.remainingBalance ?? Math.max(Number(booking?.totalPrice ?? booking?.price ?? 0) - Number(booking?.advancePaid ?? booking?.advanceReceived ?? 0), 0));
+    if (remainingBalance > 0) return 'Payment Pending';
+    const documents = BOOKING_DOCUMENT_TYPES.map((documentType) => getTripDocumentStatus(booking, documentType));
+    if (documents.some((documentStatus) => documentStatus !== 'Verified')) return 'Documents Pending';
+    const travelTime = booking?.travelDate ? new Date(booking.travelDate).getTime() : 0;
+    if (travelTime && travelTime <= Date.now()) return 'Trip Started';
+    return 'Trip Ready';
+  };
+
+  const getBookingTimelineSteps = (booking: any) => {
+    const status = String(booking?.bookingStatus || booking?.status || 'Pending');
+    const remainingBalance = Number(booking?.remainingBalance ?? Math.max(Number(booking?.totalPrice ?? booking?.price ?? 0) - Number(booking?.advancePaid ?? booking?.advanceReceived ?? 0), 0));
+    const documentsVerified = BOOKING_DOCUMENT_TYPES.every((documentType) => getTripDocumentStatus(booking, documentType) === 'Verified');
+    const travelTime = booking?.travelDate ? new Date(booking.travelDate).getTime() : 0;
+    const completedTrip = ['Completed', 'Trip Completed'].includes(status);
+    const confirmed = ['Confirmed', 'Completed', 'Trip Completed'].includes(status);
+    const tripStatus = getCustomerTripStatus(booking);
+    const checklist = booking?.tripChecklist || {};
+
+    return [
+      { label: 'Enquiry', complete: Boolean(booking?.enquiryId || booking?.createdAt) },
+      { label: 'Booking', complete: confirmed },
+      { label: 'Payment Verified', complete: remainingBalance <= 0 || Boolean(checklist.remainingPaymentReceived) || normalizePaymentStatus(booking?.paymentStatus) === 'Paid' },
+      { label: 'Documents Approved', complete: documentsVerified || Boolean(checklist.documentsVerified) },
+      { label: 'Trip Ready', complete: tripStatus === 'Ready To Travel' || tripStatus === 'In Progress' || tripStatus === 'Completed' },
+      { label: 'Pickup', complete: Boolean(checklist.customerBriefed && booking?.tripOperations?.pickupLocation && booking?.tripOperations?.pickupTime) },
+      { label: 'Journey Started', complete: tripStatus === 'In Progress' || tripStatus === 'Completed' || Boolean(travelTime && travelTime <= Date.now()) },
+      { label: 'Journey Completed', complete: completedTrip || tripStatus === 'Completed' },
+      { label: 'Review Submitted', complete: Boolean(booking?.reviewSubmitted) },
+    ];
+  };
+
+  const handleDownloadItinerary = (booking: any) => {
+    const itineraryText = [
+      'Pravaah Travels Itinerary',
+      `Booking ID: ${booking.bookingId || booking.id}`,
+      `Package: ${booking.packageTitle || 'Custom Package'}`,
+      `Destination: ${booking.destination || 'Flexible'}`,
+      `Departure: ${booking.travelDate || 'Flexible'}`,
+      `Travellers: ${booking.guests || booking.travelers || 1}`,
+      '',
+      'A detailed itinerary will be shared by your trip manager once finalized.',
+    ].join('\n');
+    const blob = new Blob([itineraryText], { type: 'text/plain;charset=utf-8' });
+    const downloadUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = downloadUrl;
+    anchor.download = `${booking.bookingId || booking.id || 'pravaah-trip'}-itinerary.txt`;
+    anchor.click();
+    URL.revokeObjectURL(downloadUrl);
+  };
+
+  const handleUploadTripDocument = async (booking: any, documentType: BookingDocumentType, file?: File) => {
+    if (!user || !file) return;
+    const uploadKey = `${booking.id}-${documentType}`;
+    setDocumentUploadingKey(uploadKey);
+    try {
+      const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-');
+      const storagePath = `users/${user.uid}/tripDocuments/${booking.id}/${Date.now()}-${cleanFileName}`;
+      const fileRef = ref(storage, storagePath);
+      await uploadBytes(fileRef, file);
+      const fileUrl = await getDownloadURL(fileRef);
+      const now = new Date().toISOString();
+      await addDoc(collection(db, 'users', user.uid, 'private'), {
+        userId: user.uid,
+        type: 'trip_document',
+        title: `${documentType} - ${booking.packageTitle || 'Trip'}`,
+        content: file.name,
+        category: documentType === 'Travel Insurance' ? 'Insurance' : documentType === 'Emergency Contact' ? 'Emergency' : documentType === 'Passport' ? 'Passport' : 'Other',
+        bookingId: booking.id,
+        bookingNumber: booking.bookingId || '',
+        packageTitle: booking.packageTitle || '',
+        documentType,
+        documentStatus: 'Pending',
+        status: 'Pending',
+        fileUrl,
+        fileName: file.name,
+        fileSize: file.size,
+        uploadedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await fetchPrivateVault(user.uid);
+    } catch (err: any) {
+      console.error('Trip document upload failed:', err);
+      setPortalError(`Failed to upload document: ${err.message || String(err)}`);
+    } finally {
+      setDocumentUploadingKey(null);
     }
   };
 
@@ -1329,6 +2355,34 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
     const savedMatch = savedPackages.find(saved => saved.title === booking.packageTitle || saved.destination === booking.destination);
     return getTravelImage(booking.imageUrl || booking.packageImageUrl || savedMatch?.imageUrl);
   };
+  const normalizedBookings = bookings.map(normalizeBookingRecord);
+  const filteredTripBookings = normalizedBookings.filter((booking) => {
+    const searchText = tripSearch.trim().toLowerCase();
+    if (!searchText) return true;
+    return [
+      booking.packageTitle,
+      booking.bookingId,
+      booking.destination,
+    ].some((value) => String(value || '').toLowerCase().includes(searchText));
+  });
+  const visiblePersonalizedRoutes = personalizedRoutes.slice(0, 3);
+  const visiblePopularRoutes = popularRoutes.slice(0, 6);
+  const selectedExpeditionRoute = selectedRouteId
+    ? POPULAR_TREK_ROUTES.find((route) => route.id === selectedRouteId)
+    : undefined;
+  const selectedExpeditionState = selectedRouteId
+    ? personalizedWeatherByRouteId[selectedRouteId] || popularWeatherByRouteId[selectedRouteId]
+    : undefined;
+  const mountainStatusCounts = POPULAR_TREK_ROUTES.reduce((counts, route) => {
+    const routeData = (personalizedWeatherByRouteId[route.id] || popularWeatherByRouteId[route.id])?.data;
+    if (!routeData) return counts;
+    const statusLabel = getRouteStatusTone(routeData).label;
+    if (statusLabel === 'Rain Alert') counts.rain += 1;
+    if (statusLabel === 'Snow Zone') counts.snow += 1;
+    if (statusLabel === 'Stable') counts.stable += 1;
+    return counts;
+  }, { stable: 0, rain: 0, snow: 0 });
+  const journeyTimelineItems = ['Booking Confirmed ✔', 'Mountain Conditions', 'Packing Ready', 'Departure Day', 'Enjoy Your Trek'];
 
   return (
     <div className="min-h-screen bg-[#f6f7f2] px-4 py-8 font-sans sm:px-6 lg:px-8" id="customer-portal-active-root">
@@ -1523,507 +2577,602 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
       {/* Main Content Areas */}
       {activeTab === 'bookings' && (
         <div className="space-y-8" id="bookings-panel">
-          
-          {/* REAL-TIME TRAVEL ALERTS BANNER */}
-          <div className="border border-stone-200 bg-stone-50 rounded-xl p-5 shadow-xs" id="realtime-weather-alerts-banner">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-stone-200 pb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-[#008080]/10 text-[#008080] rounded-lg">
-                  <CloudSun className="w-5 h-5 animate-pulse" />
-                </div>
-                <div>
-                  <span className="text-[9px] bg-[#008080]/15 text-[#008080] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full inline-block">Pravaah Live Radar</span>
-                  <h3 className="text-sm font-bold text-stone-850 flex items-center gap-1.5 mt-0.5">
-                    <span>Real-time Regional Travel Alerts</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                  </h3>
-                </div>
-              </div>
-
-              {nextTrip && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!nextTrip.destination) return;
-                    setWeatherLoading(true);
-                    setWeatherError('');
-                    try {
-                      const response = await fetch(`/api/weather-alerts?destination=${encodeURIComponent(nextTrip.destination)}`);
-                      if (!response.ok) throw new Error('Could not update weather.');
-                      const data = await response.json();
-                      setWeatherAlert(data);
-                    } catch (err: any) {
-                      setWeatherError(err.message || 'Failed to update travel weather.');
-                    } finally {
-                      setWeatherLoading(false);
-                    }
-                  }}
-                  disabled={weatherLoading}
-                  className="px-3 py-1.5 border border-stone-300 hover:border-stone-400 bg-white hover:bg-stone-50 text-stone-700 text-[10px] font-bold uppercase tracking-wider rounded flex items-center gap-1.5 shadow-2xs transition-all disabled:opacity-50 cursor-pointer self-start md:self-auto"
-                >
-                  <RefreshCw className={`w-3 h-3 ${weatherLoading ? 'animate-spin' : ''}`} />
-                  <span>Update Safety Feeds</span>
-                </button>
-              )}
-            </div>
-
-            {weatherLoading ? (
-              <div className="py-8 text-center space-y-2">
-                <RefreshCw className="w-6 h-6 text-[#008080] animate-spin mx-auto" />
-                <p className="text-xs text-stone-500 font-light">Contacting Himalayan meteorological satellites for {nextTrip?.destination}...</p>
-              </div>
-            ) : !nextTrip ? (
-              <div className="py-6 flex flex-col items-center text-center max-w-lg mx-auto space-y-3">
-                <Compass className="w-8 h-8 text-stone-300" />
-                <div>
-                  <h4 className="text-xs font-bold text-stone-700 uppercase tracking-widest">No Active Upcoming Trips Detected</h4>
-                  <p className="text-xs text-stone-500 font-light leading-relaxed mt-1">
-                    Book an upcoming package or request a custom itinerary to receive real-time, AI-powered weather feeds, safety radar advisories, and packing recommendations.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('ai-assistant')}
-                  className="px-4 py-2 bg-[#008080] hover:bg-[#006666] text-white text-[10px] font-bold uppercase tracking-wider rounded transition-all shadow cursor-pointer"
-                >
-                  Configure AI Trip
-                </button>
-              </div>
-            ) : weatherError ? (
-              <div className="py-6 flex flex-col items-center text-center max-w-md mx-auto space-y-3">
-                <AlertCircle className="w-7 h-7 text-rose-500" />
-                <div>
-                  <p className="text-xs text-rose-800 font-semibold">{weatherError}</p>
-                  <p className="text-[11px] text-stone-500 font-light mt-0.5">Please check your network connection or try updating manually.</p>
-                </div>
-              </div>
-            ) : weatherAlert ? (
-              <div className="pt-5 space-y-5" id="weather-alert-active-content">
-                {/* Weather alert status card */}
-                <div className={`p-4 rounded-lg border flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all ${
-                  weatherAlert.safetyStatus === 'Safe' ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-950' :
-                  weatherAlert.safetyStatus === 'Caution advised' ? 'bg-amber-500/5 border-amber-500/20 text-amber-950' :
-                  'bg-rose-500/5 border-rose-500/20 text-rose-950'
-                }`}>
-                  <div className="flex items-start gap-3">
-                    <div className={`p-2 rounded-full shrink-0 ${
-                      weatherAlert.safetyStatus === 'Safe' ? 'bg-emerald-500/10 text-emerald-600' :
-                      weatherAlert.safetyStatus === 'Caution advised' ? 'bg-amber-500/10 text-amber-600' :
-                      'bg-rose-500/10 text-rose-600'
-                    }`}>
-                      {weatherAlert.safetyStatus === 'Safe' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] text-stone-400 font-bold uppercase tracking-widest leading-none">Upcoming Trip Destination</span>
-                        <span className={`px-2 py-0.5 rounded-full text-[8.5px] font-extrabold uppercase tracking-wider leading-none ${
-                          weatherAlert.safetyStatus === 'Safe' ? 'bg-emerald-500/15 text-emerald-700' :
-                          weatherAlert.safetyStatus === 'Caution advised' ? 'bg-amber-500/15 text-amber-700' :
-                          'bg-rose-500/15 text-rose-700'
-                        }`}>
-                          {weatherAlert.safetyStatus}
-                        </span>
-                      </div>
-                      <h4 className="text-base font-bold text-stone-850 mt-1">{weatherAlert.destination}</h4>
-                      <p className="text-xs text-stone-500 font-light mt-0.5">
-                        Scheduled departure: <strong className="font-semibold text-stone-700">{nextTrip.travelDate}</strong> ({nextTrip.packageTitle})
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4 border-t md:border-t-0 border-stone-200/60 pt-3 md:pt-0 shrink-0">
-                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-stone-150">
-                      <Thermometer className="w-4 h-4 text-orange-500" />
-                      <div className="text-left">
-                        <span className="text-[8px] text-stone-400 font-bold uppercase tracking-wider block leading-none">Temperature</span>
-                        <span className="text-xs font-bold text-stone-850 leading-none inline-block mt-0.5">{weatherAlert.temperature}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-stone-150">
-                      <CloudSun className="w-4 h-4 text-blue-500" />
-                      <div className="text-left">
-                        <span className="text-[8px] text-stone-400 font-bold uppercase tracking-wider block leading-none">Condition</span>
-                        <span className="text-xs font-bold text-stone-850 leading-none inline-block mt-0.5 truncate max-w-[120px]">{weatherAlert.condition}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Sub-grid of details */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-white p-3.5 rounded-lg border border-stone-150 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[9px] text-stone-400 font-extrabold uppercase tracking-wider flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3 text-stone-400" />
-                        <span>Landslide Risk</span>
-                      </span>
-                      <span className={`px-2 py-0.5 rounded text-[8.5px] font-bold uppercase tracking-wider ${
-                        weatherAlert.landslideRisk === 'Low' ? 'bg-emerald-50 text-emerald-700' :
-                        weatherAlert.landslideRisk === 'Moderate' ? 'bg-amber-50 text-amber-700' :
-                        'bg-rose-50 text-rose-700'
-                      }`}>
-                        {weatherAlert.landslideRisk} Risk
-                      </span>
-                    </div>
-                    <p className="text-xs font-medium text-stone-800 pt-1">Route Safety Index</p>
-                    <p className="text-[11px] text-stone-500 font-light leading-relaxed">
-                      Safety checks run 3x daily. High monsoon or freezing zones are dynamically mapped by our logistics scouts.
-                    </p>
-                  </div>
-
-                  <div className="bg-white p-3.5 rounded-lg border border-stone-150 space-y-1">
-                    <span className="text-[9px] text-stone-400 font-extrabold uppercase tracking-wider flex items-center gap-1">
-                      <Map className="w-3 h-3 text-stone-400" />
-                      <span>Highway Route Status</span>
-                    </span>
-                    <p className="text-xs font-bold text-stone-800 leading-tight pt-1">{weatherAlert.routeStatus}</p>
-                    <p className="text-[11px] text-stone-500 font-light leading-relaxed">
-                      Main mountain passes, local bypasses and road conditions for state and national highways.
-                    </p>
-                  </div>
-
-                  <div className="bg-white p-3.5 rounded-lg border border-stone-150 space-y-1">
-                    <span className="text-[9px] text-stone-400 font-extrabold uppercase tracking-wider flex items-center gap-1">
-                      <Briefcase className="w-3 h-3 text-stone-400" />
-                      <span>Packing & Gear Guide</span>
-                    </span>
-                    <p className="text-xs font-bold text-stone-800 leading-tight pt-1">{weatherAlert.packingRecommendation}</p>
-                    <p className="text-[11px] text-stone-500 font-light leading-relaxed">
-                      Himalayan weather fluctuates swiftly. Ensure correct gear is ready for higher passes.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Final safety recommendation banner */}
-                <div className="p-3 bg-stone-100 border border-stone-200/60 rounded-lg flex items-start gap-2 text-[11px] text-stone-600 font-light leading-relaxed">
-                  <Info className="w-4 h-4 text-stone-500 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-bold text-stone-700">Pravaah Expedition Advisory:</span> {weatherAlert.advisoryMessage}
-                    <span className="block text-[9px] text-stone-400 font-bold uppercase mt-1 font-sans">Satellite Feed Sync: {weatherAlert.lastUpdated}</span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="py-6 text-center space-y-2">
-                <p className="text-xs text-stone-500 font-light">Loading custom travel feed for {nextTrip.destination}...</p>
-              </div>
-            )}
-          </div>
-          
-          {/* LIVE STATUS TRACKER & WEATHER ALERTS (UGC & HEALTH ALERTS) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6" id="emergency-support-grid">
-            
-            {/* Live Weather & Route Feed */}
-            <div className="bg-stone-900 text-stone-100 rounded-xl p-5 border border-stone-800 relative overflow-hidden shadow-md">
-              {/* Decorative radar pulses */}
-              <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-rose-500/10 text-rose-400 px-2 py-0.5 rounded-full text-[8.5px] font-bold uppercase tracking-wider">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
-                <span>Live Radar</span>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-xs font-bold text-stone-400 uppercase tracking-widest flex items-center gap-1.5">
-                    <AlertCircle className="w-4 h-4 text-rose-500" />
-                    <span>Himalayan Route Feeds</span>
-                  </h4>
-                  <p className="text-xs text-stone-300 mt-1 leading-relaxed font-light">Real-time weather, landslide and helicopter clearances for current active zones.</p>
-                </div>
-
-                <div className="space-y-2.5 pt-2 border-t border-stone-800">
-                  <div className="flex items-start justify-between text-xs font-light">
-                    <span className="text-stone-400 font-bold">Kedarnath Temple Route:</span>
-                    <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                      <span>🌤️ Clear skies (Permits running)</span>
-                    </span>
-                  </div>
-                  <div className="flex items-start justify-between text-xs font-light">
-                    <span className="text-stone-400 font-bold">Rishikesh Rafting Status:</span>
-                    <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                      <span>🌊 Water levels normal (All clear)</span>
-                    </span>
-                  </div>
-                  <div className="flex items-start justify-between text-xs font-light">
-                    <span className="text-stone-400 font-bold">Rohtang & Manali Valley:</span>
-                    <span className="text-amber-400 font-semibold flex items-center gap-1">
-                      <span>❄️ Light Frost (Passes clear)</span>
-                    </span>
-                  </div>
-                  <div className="flex items-start justify-between text-xs font-light">
-                    <span className="text-stone-400 font-bold">VIP Dehradun Heli Shuttle:</span>
-                    <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                      <span>🚁 On Schedule</span>
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Direct WhatsApp Emergency Support Box */}
-            <div className="bg-emerald-50/60 border border-emerald-200/60 rounded-xl p-5 flex flex-col justify-between shadow-xs">
+          <div className="rounded-[18px] border border-emerald-200/70 bg-emerald-50/70 p-5 shadow-sm" id="emergency-support-grid">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-widest">Emergency & Ground Support</h4>
-                  <span className="flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[8.5px] font-bold px-2 py-0.5 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span>Online 24/7</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-xs font-bold uppercase tracking-widest text-emerald-800">Emergency & Ground Support</h4>
+                  <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[8.5px] font-bold text-emerald-800">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>Support Desk</span>
                   </span>
                 </div>
                 <h3 className="text-sm font-bold text-stone-800">Direct WhatsApp Helpline</h3>
-                <p className="text-xs text-stone-600 leading-relaxed font-light">
-                  Are you in the middle of a trip or need immediate logistics adjustments? Speak directly with <strong>Rajesh Sharma</strong>, our veteran Senior Himalayan Coordinator.
+                <p className="max-w-3xl text-xs font-light leading-relaxed text-stone-600">
+                  For official road closures, permits, helicopter operations, or emergency logistics, confirm with the Pravaah support desk and the relevant government/operator source before departure.
                 </p>
               </div>
 
-              <div className="pt-4 border-t border-emerald-200/50 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <img 
-                    src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80" 
-                    alt="Coordinator" 
-                    className="w-9 h-9 rounded-full border border-emerald-200 shadow-xs shrink-0" 
-                    referrerPolicy="no-referrer"
-                  />
-                  <div>
-                    <h5 className="text-xs font-bold text-stone-800">Rajesh Sharma</h5>
-                    <span className="text-[10px] text-stone-400 font-light">Lead Logistics Sherpa</span>
-                  </div>
-                </div>
-
-                <a
-                  href="https://wa.me/919999999999?text=Hi%20Pravaah%20Travels,%20I%20am%20registered%20on%20the%20Customer%20Portal%20and%20need%20immediate%20trip%20assistance."
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold uppercase tracking-wider text-[10px] rounded transition shadow-md flex items-center gap-1 cursor-pointer w-full sm:w-auto text-center justify-center shrink-0"
-                >
-                  <span className="font-bold">Get Help on WhatsApp</span>
-                </a>
-              </div>
+              <a
+                href="https://wa.me/919999999999?text=Hi%20Pravaah%20Travels,%20I%20am%20registered%20on%20the%20Customer%20Portal%20and%20need%20immediate%20trip%20assistance."
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-[5px] bg-emerald-600 px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-white shadow-md transition hover:bg-emerald-700 sm:w-auto"
+              >
+                <MessageCircle className="h-4 w-4" />
+                <span>Get Help on WhatsApp</span>
+              </a>
             </div>
-
           </div>
 
           {/* Bookings Title Header */}
-          <div className="flex flex-col gap-4 border-t border-stone-200 pt-6 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">My Bookings</span>
-              <h3 className="mt-2 text-2xl font-extrabold text-stone-950">Your Booking Orders</h3>
-              <p className="mt-1 text-sm text-stone-500">Track upcoming journeys, confirmations, requests, and dues.</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowNewBookingModal(true)}
-              className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[5px] bg-[#4DA528] px-5 py-3 text-xs font-extrabold uppercase tracking-[0.12em] text-white shadow transition hover:-translate-y-0.5 hover:bg-[#FF970D]"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Request Custom Package</span>
-            </button>
-          </div>
-
-          {bookingsLoading ? (
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-              {Array.from({ length: 4 }).map((_, idx) => (
-                <SkeletonBookingCard key={idx} />
-              ))}
-            </div>
-          ) : bookings.length === 0 ? (
-            <div className="relative overflow-hidden rounded-[22px] border border-dashed border-stone-300 bg-white p-10 text-center shadow-sm">
-              <div className="absolute inset-x-0 top-0 h-24 bg-linear-to-b from-[#4DA528]/10 to-transparent" />
-              <div className="relative mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#4DA528]/10 text-[#4DA528]">
-                <Compass className="h-10 w-10" />
+          <section className="relative overflow-hidden rounded-[28px] border border-white/70 bg-linear-to-br from-white via-[#fffdf8] to-[#eef7ec] p-4 shadow-[0_18px_55px_rgba(18,38,32,0.08)] sm:p-5" id="my-trips-section">
+            <div className="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-[#4DA528]/10" />
+            <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <span className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">My Trips</span>
+                <h3 className="mt-2 text-2xl font-extrabold text-stone-950">Your travel command center</h3>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-stone-500">Track booking confirmations, trip managers, documents, and payment progress from one premium dashboard.</p>
               </div>
-              <h4 className="relative mt-5 text-xl font-extrabold text-stone-900">No bookings yet</h4>
-              <p className="relative mx-auto mt-2 max-w-md text-sm leading-7 text-stone-500">
-                You haven't requested any custom trip packages yet. Create a personalized trip using our AI engine or request a booking now!
-              </p>
-              <div className="relative mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-                <button type="button" onClick={() => setShowNewBookingModal(true)} className="rounded-[5px] bg-[#4DA528] px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]">
-                  Request a Trip
-                </button>
-                <button type="button" onClick={() => setActiveTab('ai-assistant')} className="rounded-[5px] border border-stone-200 bg-white px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]">
-                  Open AI Planner
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-              {bookings.map((booking) => (
-                <div
-                  key={booking.id}
-                  className="overflow-hidden rounded-[20px] border border-stone-200 bg-white shadow-[0_16px_42px_rgba(18,38,32,0.08)]"
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <label className="relative min-w-0 sm:min-w-[280px]">
+                  <span className="sr-only">Search bookings</span>
+                  <Compass className="absolute left-3 top-3 h-4 w-4 text-stone-400" />
+                  <input
+                    type="text"
+                    value={tripSearch}
+                    onChange={(event) => setTripSearch(event.target.value)}
+                    placeholder="Search package, booking ID, destination"
+                    className="w-full rounded-[12px] border border-stone-200 bg-white/85 py-3 pl-10 pr-3 text-sm text-stone-700 shadow-sm focus:border-[#4DA528] focus:outline-none focus:ring-2 focus:ring-[#4DA528]/20"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowNewBookingModal(true)}
+                  className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[5px] bg-[#4DA528] px-5 py-3 text-xs font-extrabold uppercase tracking-[0.12em] text-white shadow transition hover:-translate-y-0.5 hover:bg-[#FF970D]"
                 >
-                  <div className="p-5">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Booking ID</p>
-                        <p className="mt-1 text-sm font-bold text-stone-950">{booking.bookingId}</p>
+                  <Plus className="w-4 h-4" />
+                  <span>Request Custom Package</span>
+                </button>
+              </div>
+            </div>
+
+            {bookingsLoading ? (
+              <div className="relative mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+                {Array.from({ length: 4 }).map((_, idx) => (
+                  <SkeletonBookingCard key={idx} />
+                ))}
+              </div>
+            ) : normalizedBookings.length === 0 ? (
+              <div className="relative mt-6 overflow-hidden rounded-[22px] border border-dashed border-stone-300 bg-white/82 p-10 text-center shadow-sm">
+                <div className="absolute inset-x-0 top-0 h-24 bg-linear-to-b from-[#4DA528]/10 to-transparent" />
+                <div className="relative mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#4DA528]/10 text-[#4DA528]">
+                  <Compass className="h-10 w-10" />
+                </div>
+                <h4 className="relative mt-5 text-xl font-extrabold text-stone-900">No trips yet</h4>
+                <p className="relative mx-auto mt-2 max-w-md text-sm leading-7 text-stone-500">
+                  Request a custom package or save an itinerary and your confirmed bookings will appear here automatically.
+                </p>
+                <div className="relative mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+                  <button type="button" onClick={() => setShowNewBookingModal(true)} className="rounded-[5px] bg-[#4DA528] px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]">
+                    Request a Trip
+                  </button>
+                  <button type="button" onClick={() => setActiveTab('ai-assistant')} className="rounded-[5px] border border-stone-200 bg-white px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]">
+                    Open AI Planner
+                  </button>
+                </div>
+              </div>
+            ) : filteredTripBookings.length === 0 ? (
+              <div className="relative mt-6 rounded-[22px] border border-dashed border-stone-300 bg-white/82 p-8 text-center shadow-sm">
+                <h4 className="text-lg font-extrabold text-stone-900">No matching trips found</h4>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-7 text-stone-500">Try a package name, destination, or booking ID from your confirmed travel records.</p>
+                <button type="button" onClick={() => setTripSearch('')} className="mt-5 rounded-[5px] border border-stone-200 bg-white px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]">
+                  Clear Search
+                </button>
+              </div>
+            ) : (
+              <div className="relative mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+                {filteredTripBookings.map((booking) => {
+                  const tripManager = getTripManager(booking);
+                  const smartStatus = getSmartBookingStatus(booking);
+                  const tripStatus = getCustomerTripStatus(booking);
+                  const remainingBalance = Number(booking.remainingBalance ?? 0);
+                  const managerContact = tripManager.phone
+                    ? `https://wa.me/${String(tripManager.phone).replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hi ${tripManager.name || 'Pravaah Trip Desk'}, I need assistance with booking ${booking.bookingId || booking.id}.`)}`
+                    : getBookingWhatsAppUrl(booking);
+
+                  return (
+                    <article
+                      key={booking.id}
+                      className="group overflow-hidden rounded-[24px] border border-white/80 bg-white shadow-[0_18px_50px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_26px_65px_rgba(18,38,32,0.14)]"
+                    >
+                      <div className="relative h-48 overflow-hidden bg-stone-100">
+                        <img
+                          src={getBookingImage(booking)}
+                          alt={booking.packageTitle || booking.destination || 'Travel package'}
+                          className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          onError={handleTravelImageError}
+                        />
+                        <div className="absolute inset-0 bg-linear-to-t from-stone-950/75 via-stone-950/10 to-transparent" />
+                        <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+                          <span className={`rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] ${getBookingStatusBadgeClasses(booking.bookingStatus)}`}>
+                            {booking.bookingStatus}
+                          </span>
+                          <span className={`rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] ${getPaymentStatusClasses(booking.paymentStatus)}`}>
+                            {normalizePaymentStatus(booking.paymentStatus)}
+                          </span>
+                          <span className={`rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] ${getTripStatusClasses(tripStatus)}`}>
+                            {tripStatus}
+                          </span>
+                        </div>
+                        <div className="absolute bottom-4 left-4 right-4">
+                          <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/72">{booking.bookingId}</p>
+                          <h4 className="mt-1 line-clamp-2 text-xl font-extrabold text-white">{booking.packageTitle}</h4>
+                        </div>
                       </div>
-                      <span className={`rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] ${getBookingStatusBadgeClasses(booking.bookingStatus)}`}>
-                        {booking.bookingStatus}
+
+                      <div className="space-y-4 p-5">
+                        <div className="grid gap-3 text-sm text-stone-600 sm:grid-cols-2">
+                          <div className="rounded-[14px] bg-stone-50 p-3">
+                            <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Departure</p>
+                            <p className="mt-1 font-semibold text-stone-900">{booking.travelDate || 'Flexible'}</p>
+                          </div>
+                          <div className="rounded-[14px] bg-stone-50 p-3">
+                            <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Duration</p>
+                            <p className="mt-1 font-semibold text-stone-900">{booking.duration || 'Custom duration'}</p>
+                          </div>
+                          <div className="rounded-[14px] bg-stone-50 p-3">
+                            <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Travellers</p>
+                            <p className="mt-1 font-semibold text-stone-900">{booking.guests || booking.travelers || 1}</p>
+                          </div>
+                          <div className="rounded-[14px] bg-stone-50 p-3">
+                            <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Remaining</p>
+                            <p className="mt-1 font-semibold text-stone-900">{formatPrice(remainingBalance)}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-stone-100 bg-[#fffdf8] p-3">
+                          <div>
+                            <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#4DA528]">Smart Status</p>
+                            <p className="mt-1 text-sm font-bold text-stone-900">{smartStatus}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Trip Manager</p>
+                            <p className="mt-1 text-sm font-bold text-stone-900">{tripManager.name}</p>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedBookingDetails(booking)}
+                            className="rounded-[5px] border border-stone-200 bg-white px-3 py-2.5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
+                          >
+                            View Details
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadItinerary(booking)}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-[5px] border border-stone-200 bg-white px-3 py-2.5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            Itinerary
+                          </button>
+                          <a
+                            href={managerContact}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded-[5px] bg-emerald-600 px-3 py-2.5 text-center text-[10px] font-extrabold uppercase tracking-[0.16em] text-white transition hover:bg-emerald-700"
+                          >
+                            Contact Manager
+                          </a>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section ref={popularRoutesRef} className="animate-fade-in overflow-hidden rounded-[28px] border border-white/70 bg-linear-to-br from-white via-[#fffdf8] to-[#eaf5e4] p-3 shadow-[0_18px_50px_rgba(18,38,32,0.1)] sm:p-4 lg:p-5" id="expedition-center">
+            <div className="relative overflow-hidden rounded-[24px] bg-[#081E2A] p-4 text-white sm:p-5">
+              <img
+                src={getRouteImage()}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover opacity-25"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={handleTravelImageError}
+              />
+              <div className="absolute inset-0 bg-linear-to-br from-[#081E2A] via-[#123c3a]/92 to-[#4DA528]/60" />
+              <div className="absolute -right-14 -top-20 h-44 w-44 rounded-full border border-white/10 bg-white/10" />
+              <div className="relative grid gap-4 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/55">For {portalUserName}</p>
+                  <h3 className="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl">🏔 Journey Companion</h3>
+                  <p className="mt-2 max-w-xl text-sm leading-6 text-white/76">Everything you need before your next Himalayan adventure.</p>
+                </div>
+
+                <div className="rounded-[22px] border border-white/14 bg-white/12 p-3 backdrop-blur-md sm:p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/55">Mountain Status</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+                    {[
+                      [`🟢 ${mountainStatusCounts.stable} Stable Routes`, 'border-emerald-300/40 bg-emerald-400/15 text-emerald-50'],
+                      [`🟡 ${mountainStatusCounts.rain} Rain Alerts`, 'border-amber-300/40 bg-amber-400/15 text-amber-50'],
+                      [`🔵 ${mountainStatusCounts.snow} Snow Zones`, 'border-sky-300/40 bg-sky-400/15 text-sky-50'],
+                    ].map(([label, classes]) => (
+                      <span key={label} className={`rounded-full border px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.12em] ${classes}`}>
+                        {label}
                       </span>
-                    </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
 
-                    <div className="mt-4 rounded-[16px] border border-stone-100 bg-stone-50 p-4">
-                      <h4 className="text-lg font-extrabold text-stone-900">{booking.packageTitle}</h4>
-                      <div className="mt-3 grid gap-3 text-sm text-stone-600 sm:grid-cols-2">
-                        <div>
-                          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Travel Date</p>
-                          <p className="mt-1 font-semibold text-stone-900">{booking.travelDate || 'Flexible'}</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Guests</p>
-                          <p className="mt-1 font-semibold text-stone-900">{booking.guests || 1}</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Price</p>
-                          <p className="mt-1 font-semibold text-stone-900">{formatPrice(booking.totalPrice || booking.price)}</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Created</p>
-                          <p className="mt-1 font-semibold text-stone-900">{new Date(booking.createdAt).toLocaleDateString('en-IN')}</p>
-                        </div>
-                      </div>
-                    </div>
+            {routeWeatherOffline && (
+              <div className="mt-3 rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>Live updates are paused while you are offline.</span>
+                </div>
+              </div>
+            )}
 
-                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedBookingDetails(booking)}
-                        className="flex-1 rounded-[5px] border border-stone-200 bg-white px-3 py-2.5 text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
-                      >
-                        View Details
-                      </button>
-                      <a
-                        href={getBookingWhatsAppUrl(booking)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 rounded-[5px] bg-emerald-600 px-3 py-2.5 text-center text-[10px] font-extrabold uppercase tracking-[0.16em] text-white transition hover:bg-emerald-700"
-                      >
-                        Contact Support
-                      </a>
+            <div className="mt-4 space-y-5">
+              {visiblePersonalizedRoutes.length > 0 ? (
+                <div>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h4 className="text-sm font-extrabold uppercase tracking-[0.16em] text-stone-900">Personalized Routes</h4>
+                    <span className="rounded-full bg-white px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.14em] text-stone-500 shadow-sm">Top 3</span>
+                  </div>
+                  <div className="scrollbar-none -mx-2 grid auto-cols-[82%] grid-flow-col gap-4 overflow-x-auto px-2 pb-2 md:mx-0 md:grid-flow-row md:grid-cols-2 md:overflow-visible md:px-0 lg:grid-cols-3">
+                    {visiblePersonalizedRoutes.map((route) => (
+                      <RouteWeatherCard
+                        key={route.id}
+                        route={route}
+                        state={personalizedWeatherByRouteId[route.id]}
+                        onView={() => setSelectedRouteId(route.id)}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="mt-4 rounded-[22px] border border-white/70 bg-white/72 p-4 shadow-sm backdrop-blur">
+                    <div className="scrollbar-none flex items-center gap-3 overflow-x-auto">
+                      {journeyTimelineItems.map((item, index) => (
+                        <React.Fragment key={item}>
+                          <div className="flex min-w-max items-center gap-2 rounded-full border border-stone-200 bg-[#fffdf8] px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.12em] text-stone-700">
+                            <span className={`h-2 w-2 rounded-full ${index === 0 ? 'bg-[#4DA528]' : 'bg-stone-300'}`} />
+                            <span>{item}</span>
+                          </div>
+                          {index < journeyTimelineItems.length - 1 && <span className="text-stone-300">↓</span>}
+                        </React.Fragment>
+                      ))}
                     </div>
                   </div>
                 </div>
-              ))}
+              ) : (
+                <div className="rounded-[24px] border border-dashed border-stone-300 bg-white/75 p-6 text-center shadow-sm">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#4DA528]/10 text-3xl">🏔</div>
+                  <h4 className="mt-4 text-lg font-extrabold text-stone-950">No adventure planned yet.</h4>
+                  <p className="mx-auto mt-2 max-w-2xl text-sm leading-7 text-stone-500">
+                    Save a package, create a booking or send an enquiry and we'll automatically prepare live route intelligence for your journey.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onNavigateToPackages || onNavigateToHome}
+                    className="mt-5 inline-flex w-full items-center justify-center rounded-full bg-[#4DA528] px-5 py-3 text-xs font-extrabold uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5 hover:bg-[#FF970D] sm:w-auto"
+                  >
+                    Explore Packages
+                  </button>
+                </div>
+              )}
+
+              <div>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h4 className="text-sm font-extrabold uppercase tracking-[0.16em] text-stone-900">Popular Trek & Pilgrimage Routes</h4>
+                  <span className="hidden rounded-full bg-white px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.14em] text-stone-500 shadow-sm sm:inline-flex">Swipe to explore</span>
+                </div>
+                <div className="scrollbar-none -mx-2 flex gap-4 overflow-x-auto px-2 pb-2">
+                  {visiblePopularRoutes.map((route) => (
+                    <RouteWeatherCard
+                      key={route.id}
+                      route={route}
+                      state={popularWeatherByRouteId[route.id]}
+                      compact
+                      onView={() => setSelectedRouteId(route.id)}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
-          )}
+          </section>
         </div>
       )}
 
       {selectedBookingDetails && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-stone-950/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-[24px] border border-stone-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-stone-100 bg-[#fffdf8] p-5">
-              <div>
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Booking Details</p>
-                <h3 className="mt-1 text-xl font-extrabold text-stone-950">{selectedBookingDetails.bookingId}</h3>
-              </div>
-              <button type="button" onClick={() => setSelectedBookingDetails(null)} className="rounded-full border border-stone-200 p-2 text-stone-500 transition hover:bg-stone-100">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="space-y-5 p-5">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-[16px] border border-stone-100 bg-stone-50 p-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Customer Information</p>
-                  <p className="mt-2 font-semibold text-stone-900">{selectedBookingDetails.customerName}</p>
-                  <p className="mt-1 text-sm text-stone-600">{selectedBookingDetails.email}</p>
-                  <p className="mt-1 text-sm text-stone-600">{selectedBookingDetails.phone}</p>
+          <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-2xl">
+            <div className="relative overflow-hidden border-b border-stone-100 bg-[#071d28] p-5 text-white">
+              <img
+                src={getBookingImage(selectedBookingDetails)}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover opacity-25"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={handleTravelImageError}
+              />
+              <div className="absolute inset-0 bg-linear-to-r from-[#071d28] via-[#071d28]/90 to-[#4DA528]/45" />
+              <div className="relative flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#9fe870]">Booking Details</p>
+                  <h3 className="mt-1 text-2xl font-extrabold text-white">{selectedBookingDetails.packageTitle}</h3>
+                  <p className="mt-2 text-sm text-white/68">{selectedBookingDetails.bookingId} • {selectedBookingDetails.destination || 'Flexible destination'}</p>
                 </div>
-                <div className="rounded-[16px] border border-stone-100 bg-stone-50 p-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Package Information</p>
-                  <p className="mt-2 font-semibold text-stone-900">{selectedBookingDetails.packageTitle}</p>
-                  <p className="mt-1 text-sm text-stone-600">Travel Date: {selectedBookingDetails.travelDate || 'Flexible'}</p>
-                  <p className="mt-1 text-sm text-stone-600">Guests: {selectedBookingDetails.guests || 1}</p>
+                <button type="button" onClick={() => setSelectedBookingDetails(null)} className="rounded-full border border-white/20 bg-white/10 p-2 text-white/70 transition hover:bg-white/20 hover:text-white">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-[calc(90vh-150px)] space-y-5 overflow-y-auto bg-[#fcfbf9] p-5">
+              <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                <div className="rounded-[20px] border border-white/80 bg-white p-5 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#4DA528]">Trip Snapshot</p>
+                      <h4 className="mt-2 text-xl font-extrabold text-stone-950">{selectedBookingDetails.packageTitle}</h4>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <span className={`rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] ${getBookingStatusBadgeClasses(selectedBookingDetails.bookingStatus)}`}>
+                        {selectedBookingDetails.bookingStatus}
+                      </span>
+                      <span className={`rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] ${getPaymentStatusClasses(selectedBookingDetails.paymentStatus)}`}>
+                        {normalizePaymentStatus(selectedBookingDetails.paymentStatus)}
+                      </span>
+                      <span className={`rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] ${getTripStatusClasses(getCustomerTripStatus(selectedBookingDetails))}`}>
+                        {getCustomerTripStatus(selectedBookingDetails)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-5 grid gap-3 text-sm text-stone-600 sm:grid-cols-2">
+                    <div className="rounded-[14px] bg-stone-50 p-3">
+                      <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Departure Date</p>
+                      <p className="mt-1 font-semibold text-stone-900">{selectedBookingDetails.travelDate || 'Flexible'}</p>
+                    </div>
+                    <div className="rounded-[14px] bg-stone-50 p-3">
+                      <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Duration</p>
+                      <p className="mt-1 font-semibold text-stone-900">{selectedBookingDetails.duration || 'Custom duration'}</p>
+                    </div>
+                    <div className="rounded-[14px] bg-stone-50 p-3">
+                      <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Travellers</p>
+                      <p className="mt-1 font-semibold text-stone-900">{selectedBookingDetails.guests || selectedBookingDetails.travelers || 1}</p>
+                    </div>
+                    <div className="rounded-[14px] bg-stone-50 p-3">
+                      <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Smart Status</p>
+                      <p className="mt-1 font-semibold text-stone-900">{getSmartBookingStatus(selectedBookingDetails)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[20px] border border-white/80 bg-white p-5 shadow-sm">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#4DA528]">Trip Manager</p>
+                  {(() => {
+                    const manager = getTripManager(selectedBookingDetails);
+                    return (
+                      <div className="mt-4 space-y-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#4DA528]/10 text-[#4DA528]">
+                            <Briefcase className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <p className="font-extrabold text-stone-950">{manager.name}</p>
+                            <p className="text-xs text-stone-500">Assigned Coordinator</p>
+                          </div>
+                        </div>
+                        <div className="grid gap-2 text-sm">
+                          <a href={manager.phone ? `tel:${manager.phone}` : undefined} className={`flex items-center gap-2 rounded-[12px] border border-stone-100 bg-stone-50 px-3 py-2 ${manager.phone ? 'text-stone-700 hover:text-[#4DA528]' : 'pointer-events-none text-stone-400'}`}>
+                            <Phone className="h-4 w-4" />
+                            {manager.phone || 'Phone unavailable'}
+                          </a>
+                          <a href={manager.email ? `mailto:${manager.email}` : undefined} className={`flex items-center gap-2 rounded-[12px] border border-stone-100 bg-stone-50 px-3 py-2 ${manager.email ? 'text-stone-700 hover:text-[#4DA528]' : 'pointer-events-none text-stone-400'}`}>
+                            <Mail className="h-4 w-4" />
+                            {manager.email || 'Email unavailable'}
+                          </a>
+                          <p className="flex items-center gap-2 rounded-[12px] border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                            <AlertCircle className="h-4 w-4" />
+                            Emergency: {manager.emergencyContact || 'Support desk will assign before departure'}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
-              <div className="rounded-[16px] border border-stone-100 bg-white p-4">
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Status Timeline</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {['Pending', 'Contacted', 'Confirmed', 'Completed', 'Cancelled'].map((status) => (
-                    <span key={status} className={`rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] ${selectedBookingDetails.bookingStatus === status ? getBookingStatusBadgeClasses(status) : 'bg-stone-100 text-stone-500'}`}>
-                      {status}
-                    </span>
+              <section className="rounded-[20px] border border-white/80 bg-white p-5 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#4DA528]">Trip Details</p>
+                    <h4 className="mt-1 text-lg font-extrabold text-stone-950">Ground arrangements for your journey</h4>
+                  </div>
+                  <span className={`rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] ${getTripStatusClasses(getCustomerTripStatus(selectedBookingDetails))}`}>
+                    {getCustomerTripStatus(selectedBookingDetails)}
+                  </span>
+                </div>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {[
+                    ['Coordinator', selectedBookingDetails.tripOperations?.coordinatorName || getTripManager(selectedBookingDetails).name],
+                    ['Coordinator Phone', selectedBookingDetails.tripOperations?.coordinatorPhone || getTripManager(selectedBookingDetails).phone || 'To be shared'],
+                    ['Driver', selectedBookingDetails.tripOperations?.driverName || 'To be assigned'],
+                    ['Vehicle', selectedBookingDetails.tripOperations?.vehicleDetails || 'To be assigned'],
+                    ['Hotel', selectedBookingDetails.tripOperations?.hotelName || 'To be assigned'],
+                    ['Pickup Location', selectedBookingDetails.tripOperations?.pickupLocation || 'To be shared'],
+                    ['Pickup Time', selectedBookingDetails.tripOperations?.pickupTime || 'To be shared'],
+                    ['Emergency Contact', selectedBookingDetails.tripOperations?.emergencyContact || getTripManager(selectedBookingDetails).emergencyContact || 'Support desk'],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-[14px] border border-stone-100 bg-stone-50 p-3">
+                      <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">{label}</p>
+                      <p className="mt-1 text-sm font-semibold text-stone-900">{value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-5 border-t border-stone-100 pt-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-400">Trip Documents</p>
+                  {(selectedBookingDetails.operationDocuments || []).length === 0 ? (
+                    <p className="mt-3 rounded-[14px] border border-dashed border-stone-200 bg-stone-50 p-4 text-sm text-stone-500">Final itinerary and vouchers will appear here once your operations team uploads them.</p>
+                  ) : (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      {(selectedBookingDetails.operationDocuments as TripOperationDocument[]).map((documentItem) => (
+                        <a
+                          key={documentItem.id || documentItem.fileUrl}
+                          href={documentItem.fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="group rounded-[14px] border border-stone-200 bg-[#fffdf8] p-3 transition hover:-translate-y-0.5 hover:border-[#4DA528] hover:shadow-sm"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-bold text-stone-900">{documentItem.title || documentItem.type}</p>
+                              <p className="mt-1 line-clamp-1 text-xs text-stone-500">{documentItem.fileName}</p>
+                            </div>
+                            <Download className="h-4 w-4 text-[#4DA528]" />
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <div className="rounded-[20px] border border-white/80 bg-white p-5 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#4DA528]">Booking Timeline</p>
+                    <h4 className="mt-1 text-lg font-extrabold text-stone-950">Trip readiness journey</h4>
+                  </div>
+                  <span className="rounded-full bg-stone-100 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.14em] text-stone-500">{getSmartBookingStatus(selectedBookingDetails)}</span>
+                </div>
+                <div className="mt-5 grid gap-3 md:grid-cols-4">
+                  {getBookingTimelineSteps(selectedBookingDetails).map((step, index) => (
+                    <div key={step.label} className={`rounded-[16px] border p-3 ${step.complete ? 'border-[#4DA528]/25 bg-[#4DA528]/8' : 'border-stone-200 bg-stone-50'}`}>
+                      <div className={`flex h-9 w-9 items-center justify-center rounded-full ${step.complete ? 'bg-[#4DA528] text-white' : 'bg-stone-200 text-stone-500'}`}>
+                        {step.complete ? <Check className="h-4 w-4" /> : <span className="text-xs font-bold">{index + 1}</span>}
+                      </div>
+                      <p className="mt-3 text-sm font-extrabold text-stone-900">{step.label}</p>
+                    </div>
                   ))}
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-[16px] border border-stone-100 bg-white p-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Booking Timeline</p>
-                  <div className="mt-3 space-y-2">
-                    {(selectedBookingDetails.bookingTimeline || []).map((item: any, index: number) => (
-                      <div key={`${item.title}-${index}`} className="rounded-[10px] border border-stone-100 bg-stone-50 px-3 py-2">
-                        <p className="text-sm font-semibold text-stone-900">{item.title}</p>
-                        <p className="mt-1 text-xs text-stone-600">{item.note}</p>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-[20px] border border-white/80 bg-white p-5 shadow-sm">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#4DA528]">Payment Tracking</p>
+                  <div className="mt-4 grid gap-3 text-sm">
+                    <div className="flex justify-between rounded-[12px] bg-stone-50 px-3 py-2"><span>Total Amount</span><strong>{formatPrice(selectedBookingDetails.totalPrice || selectedBookingDetails.price || 0)}</strong></div>
+                    <div className="flex justify-between rounded-[12px] bg-stone-50 px-3 py-2"><span>Advance Paid</span><strong>{formatPrice(selectedBookingDetails.advancePaid || selectedBookingDetails.advanceReceived || 0)}</strong></div>
+                    <div className="flex justify-between rounded-[12px] bg-stone-50 px-3 py-2"><span>Remaining Amount</span><strong>{formatPrice(selectedBookingDetails.remainingBalance || 0)}</strong></div>
+                    <div className="flex justify-between rounded-[12px] bg-stone-50 px-3 py-2"><span>Payment Due Date</span><strong>{selectedBookingDetails.paymentDueDate || 'To be assigned'}</strong></div>
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    {(selectedBookingDetails.paymentHistory || []).length > 0 ? selectedBookingDetails.paymentHistory.map((payment: any) => (
+                      <div key={payment.id || `${payment.label}-${payment.createdAt}`} className="rounded-[12px] border border-stone-100 bg-[#fffdf8] p-3 text-sm">
+                        <div className="flex justify-between gap-3">
+                          <span className="font-semibold text-stone-900">{payment.label || 'Payment recorded'}</span>
+                          <strong>{formatPrice(payment.amount || 0)}</strong>
+                        </div>
+                        <p className="mt-1 text-xs text-stone-500">{payment.method || 'Manual'} • {payment.createdAt ? new Date(payment.createdAt).toLocaleDateString('en-IN') : 'Date pending'}</p>
                       </div>
-                    ))}
+                    )) : <p className="rounded-[12px] border border-dashed border-stone-200 bg-stone-50 p-4 text-sm text-stone-500">No payment history has been recorded yet.</p>}
                   </div>
                 </div>
-                <div className="rounded-[16px] border border-stone-100 bg-white p-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Payment Status</p>
-                  <p className="mt-2 text-sm font-semibold text-stone-900">{selectedBookingDetails.paymentStatus || 'Pending'}</p>
-                  <p className="mt-2 text-sm text-stone-600">Payment method: {selectedBookingDetails.paymentMethod || 'Not selected'}</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button type="button" className="rounded-[8px] border border-stone-200 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-700">View Voucher</button>
-                    <button type="button" className="rounded-[8px] border border-stone-200 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-700">Download Invoice</button>
+
+                <div className="rounded-[20px] border border-white/80 bg-white p-5 shadow-sm">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#4DA528]">Document Vault</p>
+                  <div className="mt-4 grid gap-3">
+                    {BOOKING_DOCUMENT_TYPES.map((documentType) => {
+                      const uploadedDocument = getTripDocumentsForBooking(selectedBookingDetails).find((item: any) => item.documentType === documentType);
+                      const status = getTripDocumentStatus(selectedBookingDetails, documentType);
+                      const uploadKey = `${selectedBookingDetails.id}-${documentType}`;
+                      return (
+                        <div key={documentType} className="rounded-[14px] border border-stone-100 bg-stone-50 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <FileText className="h-4 w-4 text-[#4DA528]" />
+                              <div>
+                                <p className="text-sm font-bold text-stone-900">{documentType}</p>
+                                <p className="text-xs text-stone-500">{uploadedDocument?.fileName || 'Upload required'}</p>
+                              </div>
+                            </div>
+                            <span className={`rounded-full px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-[0.16em] ${getDocumentStatusClasses(status)}`}>
+                              {status}
+                            </span>
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            {uploadedDocument?.fileUrl && (
+                              <a href={uploadedDocument.fileUrl} target="_blank" rel="noopener noreferrer" className="rounded-[8px] border border-stone-200 bg-white px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]">
+                                View File
+                              </a>
+                            )}
+                            <label className="inline-flex cursor-pointer items-center gap-2 rounded-[8px] bg-[#4DA528] px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.16em] text-white transition hover:bg-[#FF970D]">
+                              {documentUploadingKey === uploadKey ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                              {uploadedDocument ? 'Replace' : 'Upload'}
+                              <input
+                                type="file"
+                                className="sr-only"
+                                disabled={documentUploadingKey === uploadKey}
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0];
+                                  void handleUploadTripDocument(selectedBookingDetails, documentType, file);
+                                  event.target.value = '';
+                                }}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-[16px] border border-stone-100 bg-white p-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Traveller List</p>
-                  <div className="mt-3 space-y-2">
-                    {(selectedBookingDetails.travellerList && selectedBookingDetails.travellerList.length > 0) ? selectedBookingDetails.travellerList.map((traveller: any, index: number) => (
-                      <div key={`${traveller.name}-${index}`} className="rounded-[10px] border border-stone-100 bg-stone-50 px-3 py-2 text-sm text-stone-700">
-                        <p className="font-semibold text-stone-900">{traveller.name || `Traveller ${index + 1}`}</p>
-                        <p className="mt-1 text-xs">Age: {traveller.age || 'N/A'} • Gender: {traveller.gender || 'N/A'} • ID: {traveller.idType || 'N/A'} {traveller.idNumber || ''}</p>
-                      </div>
-                    )) : <p className="text-sm text-stone-500">No additional travellers added yet.</p>}
-                  </div>
-                </div>
-                <div className="rounded-[16px] border border-stone-100 bg-white p-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Booking Notes</p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-stone-600">
+                <div className="rounded-[20px] border border-white/80 bg-white p-5 shadow-sm">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#4DA528]">Booking Notes</p>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-stone-600">
                     {(selectedBookingDetails.notes && selectedBookingDetails.notes.length > 0)
                       ? selectedBookingDetails.notes.map((note: any) => `• ${note.text}`).join('\n')
                       : 'No notes have been added for this booking yet.'}
                   </p>
-                  <div className="mt-4 rounded-[10px] border border-stone-100 bg-stone-50 p-3 text-sm text-stone-600">
-                    <p className="font-semibold text-stone-900">Internal Notes</p>
-                    <p className="mt-1">{selectedBookingDetails.internalNotes?.length ? selectedBookingDetails.internalNotes.join(' • ') : 'No internal notes yet.'}</p>
+                </div>
+                <div className="rounded-[20px] border border-white/80 bg-white p-5 shadow-sm">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#4DA528]">Actions</p>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    <button type="button" onClick={() => handleDownloadItinerary(selectedBookingDetails)} className="inline-flex items-center justify-center gap-2 rounded-[8px] border border-stone-200 bg-white px-3 py-3 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]">
+                      <Download className="h-3.5 w-3.5" />
+                      Download Itinerary
+                    </button>
+                    <a href={getBookingWhatsAppUrl(selectedBookingDetails)} target="_blank" rel="noopener noreferrer" className="rounded-[8px] bg-emerald-600 px-3 py-3 text-center text-[10px] font-bold uppercase tracking-[0.16em] text-white transition hover:bg-emerald-700">
+                      Contact Support
+                    </a>
                   </div>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-[16px] border border-stone-100 bg-white p-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Assigned Executive</p>
-                  <p className="mt-2 text-sm font-semibold text-stone-900">{selectedBookingDetails.assignedStaff || 'Unassigned'}</p>
-                </div>
-                <div className="rounded-[16px] border border-stone-100 bg-white p-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Invoice & Voucher</p>
-                  <p className="mt-2 text-sm text-stone-600">Invoice: {selectedBookingDetails.invoice?.invoiceNumber || 'Pending'}</p>
-                  <p className="mt-1 text-sm text-stone-600">Voucher: {selectedBookingDetails.voucher?.voucherCode || 'Pending'}</p>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-[16px] border border-stone-100 bg-white p-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Payment History</p>
-                  <p className="mt-2 text-sm text-stone-600">{selectedBookingDetails.paymentHistory?.length ? `${selectedBookingDetails.paymentHistory.length} transaction(s)` : 'No payments recorded yet.'}</p>
-                </div>
-                <div className="rounded-[16px] border border-stone-100 bg-white p-4">
-                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Service Requests</p>
-                  <p className="mt-2 text-sm text-stone-600">Cancel request: {selectedBookingDetails.cancelRequested ? 'Yes' : 'No'}</p>
-                  <p className="mt-1 text-sm text-stone-600">Reschedule request: {selectedBookingDetails.rescheduleRequested ? 'Yes' : 'No'}</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
+      )}
+
+      {selectedExpeditionRoute && (
+        <RouteDetailModal
+          route={selectedExpeditionRoute}
+          state={selectedExpeditionState}
+          onClose={() => setSelectedRouteId(null)}
+        />
       )}
 
       {/* AI Assistant Tab */}

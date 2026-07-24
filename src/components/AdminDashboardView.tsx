@@ -3,10 +3,10 @@ import {
   Compass, LayoutDashboard, FileText, Package, Image as ImageIcon, 
   Plus, Edit2, Trash2, X, Search, Download, 
   Calendar, DollarSign, Users, LogOut, Globe, Eye, ChevronDown, ChevronUp,
-  Upload, CheckCircle, Clock, Phone, Mail, MessageSquare, Clipboard, ExternalLink, Star, LineChart as LineChartIcon, RefreshCw, MapPin,
+  Upload, CheckCircle, Clock, Phone, Mail, MessageSquare, Clipboard, ExternalLink, Star, LineChart as LineChartIcon, RefreshCw, MapPin, Briefcase,
   Menu, Bell, Settings, Palette, Home, Megaphone, Images, PanelLeftClose, PanelLeftOpen, Heart, Sparkles, ChevronRight
 } from 'lucide-react';
-import { TravelPackage, Enquiry, GalleryImage, ActivityItem, DestinationCategory, EnquiryStatus, Review, formatPrice, WebsiteCMSSettings, PACKAGE_LOCATIONS, type CustomerProfile } from '../types';
+import { TravelPackage, Enquiry, GalleryImage, ActivityItem, DestinationCategory, EnquiryStatus, EnquiryPriority, EnquiryPaymentStatus, Review, formatPrice, WebsiteCMSSettings, PACKAGE_LOCATIONS, type BookingDocumentStatus, type CustomerProfile, type TripChecklistKey, type TripCustomerStatus, type TripDocument, type TripOperationDocument, type TripOperationDocumentType, type TripOperations } from '../types';
 import { auth, db, storage, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, setDoc, writeBatch, getDoc } from '../lib/firebase';
 import { collectionGroup } from 'firebase/firestore';
 import { triggerSystemEmail } from '../lib/emailClient';
@@ -41,6 +41,105 @@ interface AdminDashboardViewProps {
 }
 
 type AdminTab = 'overview' | 'packages' | 'enquiries' | 'customers' | 'gallery' | 'media-library' | 'website' | 'activities' | 'bookings' | 'reviews' | 'blogs' | 'analytics' | 'settings';
+
+const CRM_ENQUIRY_STATUS_OPTIONS: EnquiryStatus[] = ['New', 'Contacted', 'Quote Sent', 'Booking Confirmed', 'Cancelled', 'Completed'];
+const CRM_PRIORITY_OPTIONS: EnquiryPriority[] = ['Low', 'Medium', 'High'];
+const CRM_PAYMENT_STATUS_OPTIONS: EnquiryPaymentStatus[] = ['Pending', 'Partial', 'Paid'];
+const BOOKING_DOCUMENT_TYPES = ['Passport', 'Aadhaar', 'Visa', 'Medical Certificate', 'Travel Insurance', 'Emergency Contact'] as const;
+const TRIP_STATUS_OPTIONS: TripCustomerStatus[] = ['Upcoming', 'Ready To Travel', 'In Progress', 'Completed', 'Cancelled'];
+const TRIP_OPERATION_DOCUMENT_TYPES: TripOperationDocumentType[] = ['Final Itinerary', 'Hotel Voucher', 'Transport Voucher', 'Meeting Instructions'];
+
+type BookingConversionFormData = {
+  packageId: string;
+  departureDate: string;
+  travellers: number;
+  totalCost: number;
+  advancePaid: number;
+  assignedTripManager: string;
+  internalNotes: string;
+};
+
+const normalizeEnquiryStatus = (status?: EnquiryStatus): EnquiryStatus => {
+  if (status === 'Converted') return 'Booking Confirmed';
+  if (status === 'Closed') return 'Completed';
+  return status || 'New';
+};
+
+const getEnquiryAdults = (enquiry: Enquiry) => Number(enquiry.adults ?? enquiry.travelers ?? 1);
+const getEnquiryChildren = (enquiry: Enquiry) => Number(enquiry.children ?? 0);
+const getEnquiryPackagePrice = (enquiry: Enquiry) => Number(enquiry.packagePrice ?? 0);
+const getEnquiryAdvanceReceived = (enquiry: Enquiry) => Number(enquiry.advanceReceived ?? 0);
+const getEnquiryRemainingBalance = (enquiry: Enquiry) => Math.max(getEnquiryPackagePrice(enquiry) - getEnquiryAdvanceReceived(enquiry), 0);
+
+const getConversionPaymentStatus = (totalCost: number, advancePaid: number): EnquiryPaymentStatus => {
+  if (totalCost > 0 && advancePaid >= totalCost) return 'Paid';
+  if (advancePaid > 0) return 'Partial';
+  return 'Pending';
+};
+
+const createBookingReference = () => `PRV-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+
+const getPaymentDueDate = (departureDate: string) => {
+  if (!departureDate) return '';
+  const parsedDate = new Date(departureDate);
+  if (Number.isNaN(parsedDate.getTime())) return '';
+  parsedDate.setDate(parsedDate.getDate() - 7);
+  return parsedDate.toISOString().slice(0, 10);
+};
+
+const getOperationalTripStatus = (booking: any): TripCustomerStatus => {
+  const overrideStatus = booking?.tripStatusOverride || booking?.tripStatus;
+  if (TRIP_STATUS_OPTIONS.includes(overrideStatus)) return overrideStatus;
+  const bookingStatus = String(booking?.bookingStatus || booking?.status || 'Pending');
+  if (bookingStatus === 'Cancelled') return 'Cancelled';
+  if (bookingStatus === 'Completed' || bookingStatus === 'Trip Completed' || booking?.tripChecklist?.tripCompleted) return 'Completed';
+  const departure = booking?.travelDate || booking?.departureDate;
+  const departureTime = departure ? new Date(departure).getTime() : 0;
+  if (departureTime && departureTime <= Date.now()) return 'In Progress';
+  const checklist = booking?.tripChecklist || {};
+  const ready = Boolean(
+    checklist.bookingConfirmed
+      && checklist.remainingPaymentReceived
+      && checklist.documentsVerified
+      && checklist.hotelAssigned
+      && checklist.vehicleAssigned
+      && checklist.driverAssigned
+      && checklist.coordinatorAssigned
+      && checklist.itineraryShared
+      && checklist.customerBriefed
+  );
+  return ready ? 'Ready To Travel' : 'Upcoming';
+};
+
+const getEnquiryStatusBadgeClass = (status?: EnquiryStatus) => {
+  switch (normalizeEnquiryStatus(status)) {
+    case 'New':
+      return 'border-blue-200 bg-blue-50 text-blue-700';
+    case 'Contacted':
+      return 'border-sky-200 bg-sky-50 text-sky-700';
+    case 'Quote Sent':
+      return 'border-violet-200 bg-violet-50 text-violet-700';
+    case 'Booking Confirmed':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case 'Cancelled':
+      return 'border-rose-200 bg-rose-50 text-rose-700';
+    case 'Completed':
+      return 'border-teal-200 bg-teal-50 text-teal-700';
+    default:
+      return 'border-stone-200 bg-stone-50 text-stone-700';
+  }
+};
+
+const getEnquiryPriorityBadgeClass = (priority?: EnquiryPriority) => {
+  switch (priority || 'Medium') {
+    case 'High':
+      return 'border-rose-200 bg-rose-50 text-rose-700';
+    case 'Low':
+      return 'border-stone-200 bg-stone-50 text-stone-600';
+    default:
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+  }
+};
 
 const getInitialAdminTab = (): AdminTab => {
   if (typeof window !== 'undefined' && (window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/'))) {
@@ -109,6 +208,7 @@ function AdminDashboardView({
   const [bookings, setBookings] = useState<any[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [wishlistItems, setWishlistItems] = useState<any[]>([]);
+  const [bookingDocuments, setBookingDocuments] = useState<TripDocument[]>([]);
   const [wishlistLoading, setWishlistLoading] = useState(false);
   const [settingsFormData, setSettingsFormData] = useState({
     agencyName: 'Pravaah Travels',
@@ -142,6 +242,11 @@ function AdminDashboardView({
   const [customerDestinationFilter, setCustomerDestinationFilter] = useState('All');
   const [bookingPackageFilter, setBookingPackageFilter] = useState('All');
   const [bookingMonthFilter, setBookingMonthFilter] = useState('All');
+  const [bookingDepartureDateFilter, setBookingDepartureDateFilter] = useState('');
+  const [bookingCoordinatorFilter, setBookingCoordinatorFilter] = useState('All');
+  const [bookingDriverFilter, setBookingDriverFilter] = useState('All');
+  const [bookingDestinationFilter, setBookingDestinationFilter] = useState('All');
+  const [bookingTripStatusFilter, setBookingTripStatusFilter] = useState('All');
   const [bookingFeedback, setBookingFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [bookingActionBusy, setBookingActionBusy] = useState(false);
 
@@ -150,6 +255,18 @@ function AdminDashboardView({
   const [newNote, setNewNote] = useState('');
   const [assignee, setAssignee] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
+
+  const [conversionEnquiry, setConversionEnquiry] = useState<Enquiry | null>(null);
+  const [conversionFormData, setConversionFormData] = useState<BookingConversionFormData>({
+    packageId: '',
+    departureDate: '',
+    travellers: 1,
+    totalCost: 0,
+    advancePaid: 0,
+    assignedTripManager: '',
+    internalNotes: '',
+  });
+  const [conversionSaving, setConversionSaving] = useState(false);
 
   // Get all unique packages/destinations in bookings for filtering
   const uniqueBookingPackages = useMemo(() => {
@@ -169,6 +286,27 @@ function AdminDashboardView({
     return Array.from(new Set(months)).sort().reverse();
   }, [bookings]);
 
+  const uniqueBookingCoordinators = useMemo(() => {
+    const coordinators = bookings
+      .map((booking) => booking.tripOperations?.coordinatorName || booking.tripManager?.name || booking.assignedTripManager || booking.assignedStaff || '')
+      .filter(Boolean);
+    return Array.from(new Set(coordinators)).sort();
+  }, [bookings]);
+
+  const uniqueBookingDrivers = useMemo(() => {
+    const drivers = bookings
+      .map((booking) => booking.tripOperations?.driverName || '')
+      .filter(Boolean);
+    return Array.from(new Set(drivers)).sort();
+  }, [bookings]);
+
+  const uniqueBookingDestinations = useMemo(() => {
+    const destinations = bookings
+      .map((booking) => booking.destination || '')
+      .filter(Boolean);
+    return Array.from(new Set(destinations)).sort();
+  }, [bookings]);
+
   // Filtered Bookings (Leads)
   const filteredBookings = useMemo(() => {
     return bookings.filter((b) => {
@@ -178,6 +316,10 @@ function AdminDashboardView({
       const customerPhone = String(b.customerPhone || b.phone || '').toLowerCase();
       const destination = String(b.destination || '').toLowerCase();
       const packageTitle = String(b.packageTitle || '').toLowerCase();
+      const departureDate = String(b.travelDate || b.departureDate || '').substring(0, 10);
+      const coordinator = String(b.tripOperations?.coordinatorName || b.tripManager?.name || b.assignedTripManager || b.assignedStaff || '');
+      const driver = String(b.tripOperations?.driverName || '');
+      const tripStatus = getOperationalTripStatus(b);
 
       if (bookingSearch) {
         const queryStr = String(bookingSearch ?? '').toLowerCase();
@@ -186,7 +328,9 @@ function AdminDashboardView({
         const phoneMatch = customerPhone.includes(queryStr);
         const destMatch = destination.includes(queryStr);
         const pkgMatch = packageTitle.includes(queryStr);
-        if (!nameMatch && !emailMatch && !phoneMatch && !destMatch && !pkgMatch) {
+        const coordinatorMatch = coordinator.toLowerCase().includes(queryStr);
+        const driverMatch = driver.toLowerCase().includes(queryStr);
+        if (!nameMatch && !emailMatch && !phoneMatch && !destMatch && !pkgMatch && !coordinatorMatch && !driverMatch) {
           return false;
         }
       }
@@ -202,7 +346,27 @@ function AdminDashboardView({
         }
       }
 
-      if (bookingPackageFilter !== 'All' && packageTitle !== bookingPackageFilter) {
+      if (bookingPackageFilter !== 'All' && packageTitle !== bookingPackageFilter.toLowerCase()) {
+        return false;
+      }
+
+      if (bookingDestinationFilter !== 'All' && destination !== bookingDestinationFilter.toLowerCase()) {
+        return false;
+      }
+
+      if (bookingDepartureDateFilter && departureDate !== bookingDepartureDateFilter) {
+        return false;
+      }
+
+      if (bookingCoordinatorFilter !== 'All' && coordinator !== bookingCoordinatorFilter) {
+        return false;
+      }
+
+      if (bookingDriverFilter !== 'All' && driver !== bookingDriverFilter) {
+        return false;
+      }
+
+      if (bookingTripStatusFilter !== 'All' && tripStatus !== bookingTripStatusFilter) {
         return false;
       }
 
@@ -217,7 +381,7 @@ function AdminDashboardView({
 
       return true;
     });
-  }, [bookings, bookingSearch, bookingStatusFilter, bookingPackageFilter, bookingMonthFilter]);
+  }, [bookings, bookingSearch, bookingStatusFilter, bookingPackageFilter, bookingMonthFilter, bookingDepartureDateFilter, bookingCoordinatorFilter, bookingDriverFilter, bookingDestinationFilter, bookingTripStatusFilter]);
 
   const filteredCustomers = useMemo(() => {
     const query = customerSearch.trim().toLowerCase();
@@ -326,7 +490,21 @@ function AdminDashboardView({
         customerPhone: doc.data().customerPhone || doc.data().phone || '',
         packageTitle: doc.data().packageTitle || doc.data().destination || 'Custom Package',
         travelDate: doc.data().travelDate || '',
-        guests: Number(doc.data().guests ?? (doc.data().travelers ?? ((doc.data().adults || 0) + (doc.data().children || 0) || 1)))
+        guests: Number(doc.data().guests ?? (doc.data().travelers ?? ((doc.data().adults || 0) + (doc.data().children || 0) || 1))),
+        totalPrice: Number(doc.data().totalPrice ?? doc.data().price ?? 0),
+        advancePaid: Number(doc.data().advancePaid ?? doc.data().advanceReceived ?? 0),
+        remainingBalance: Number(doc.data().remainingBalance ?? Math.max(Number(doc.data().totalPrice ?? doc.data().price ?? 0) - Number(doc.data().advancePaid ?? doc.data().advanceReceived ?? 0), 0)),
+        tripManager: doc.data().tripManager || {
+          name: doc.data().assignedTripManager || doc.data().assignedStaff || '',
+          phone: doc.data().tripManagerPhone || '',
+          email: doc.data().tripManagerEmail || '',
+          emergencyContact: doc.data().emergencyContact || '',
+        },
+        tripOperations: doc.data().tripOperations || {},
+        tripChecklist: doc.data().tripChecklist || {},
+        operationDocuments: doc.data().operationDocuments || [],
+        tripStatusOverride: doc.data().tripStatusOverride || '',
+        tripStatus: doc.data().tripStatus || '',
       }));
       fetched.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       setBookings(fetched);
@@ -355,10 +533,15 @@ function AdminDashboardView({
     setWishlistLoading(true);
     try {
       const snapshot = await getDocs(collectionGroup(db, 'private'));
-      const items = snapshot.docs
-        .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }))
-        .filter((item: any) => item.packageId || item.packageTitle || item.title);
+      const privateItems = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        _path: docSnap.ref.path,
+        ...(docSnap.data() as Record<string, unknown>),
+      }));
+      const items = privateItems.filter((item: any) => item.packageId || item.packageTitle || item.title);
+      const tripDocuments = privateItems.filter((item: any) => item.type === 'trip_document' || (item.bookingId && item.documentType));
       setWishlistItems(items);
+      setBookingDocuments(tripDocuments as TripDocument[]);
       setSystemHealth((prev) => ({ ...prev, realtimeListenersActive: true }));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err ?? '');
@@ -371,6 +554,7 @@ function AdminDashboardView({
       }
 
       setWishlistItems([]);
+      setBookingDocuments([]);
     } finally {
       setWishlistLoading(false);
     }
@@ -537,6 +721,173 @@ function AdminDashboardView({
     } catch (err) {
       console.error('Failed to update follow-up date:', err);
       setBookingFeedback({ type: 'error', message: 'Unable to update the follow-up date.' });
+    } finally {
+      setBookingActionBusy(false);
+    }
+  };
+
+  const handleUpdateBookingDocumentStatus = async (documentPath: string, status: BookingDocumentStatus) => {
+    if (!documentPath) {
+      setBookingFeedback({ type: 'error', message: 'Document reference is missing.' });
+      return;
+    }
+
+    setBookingActionBusy(true);
+    setBookingFeedback(null);
+    try {
+      const now = new Date().toISOString();
+      await updateDoc(doc(db, documentPath), {
+        documentStatus: status,
+        status,
+        reviewedAt: now,
+        reviewedBy: adminEmail || 'Admin',
+        updatedAt: now,
+      });
+      setBookingDocuments((prev) => prev.map((item) => item._path === documentPath ? { ...item, documentStatus: status, status } as TripDocument : item));
+      setBookingFeedback({ type: 'success', message: `Document marked ${status}.` });
+      await fetchWishlistAnalytics();
+    } catch (err) {
+      console.error('Failed to update booking document status:', err);
+      setBookingFeedback({ type: 'error', message: 'Unable to update this document status.' });
+    } finally {
+      setBookingActionBusy(false);
+    }
+  };
+
+  const handleSaveTripOperations = async (bookingId: string, operations: TripOperations) => {
+    setBookingActionBusy(true);
+    setBookingFeedback(null);
+    try {
+      const now = new Date().toISOString();
+      const booking = bookings.find((item) => item.id === bookingId) || activeBooking || {};
+      const nextOperations = {
+        ...operations,
+        updatedAt: now,
+        updatedBy: adminEmail || 'Admin',
+      };
+      const nextTripManager = {
+        ...(booking.tripManager || {}),
+        name: operations.coordinatorName || booking.tripManager?.name || booking.assignedTripManager || '',
+        phone: operations.coordinatorPhone || booking.tripManager?.phone || '',
+        email: booking.tripManager?.email || settingsFormData.supportEmail || settingsFormData.email || '',
+        emergencyContact: operations.emergencyContact || booking.tripManager?.emergencyContact || '',
+      };
+      const nextBooking = {
+        ...booking,
+        tripOperations: nextOperations,
+        tripManager: nextTripManager,
+        assignedTripManager: operations.coordinatorName || booking.assignedTripManager || '',
+        assignedStaff: operations.coordinatorName || booking.assignedStaff || '',
+      };
+      const nextStatus = getOperationalTripStatus(nextBooking);
+
+      await updateDoc(doc(db, 'bookings', bookingId), {
+        tripOperations: nextOperations,
+        tripManager: nextTripManager,
+        assignedTripManager: nextBooking.assignedTripManager,
+        assignedStaff: nextBooking.assignedStaff,
+        tripStatus: nextStatus,
+        updatedAt: now,
+      });
+
+      setActiveBooking((prev) => prev && prev.id === bookingId ? { ...prev, ...nextBooking, tripStatus: nextStatus, updatedAt: now } : prev);
+      setBookings((prev) => prev.map((item) => item.id === bookingId ? { ...item, ...nextBooking, tripStatus: nextStatus, updatedAt: now } : item));
+      setBookingFeedback({ type: 'success', message: 'Trip operations saved.' });
+      await fetchAllBookings();
+    } catch (err) {
+      console.error('Failed to save trip operations:', err);
+      setBookingFeedback({ type: 'error', message: 'Unable to save trip operations right now.' });
+    } finally {
+      setBookingActionBusy(false);
+    }
+  };
+
+  const handleToggleTripChecklist = async (bookingId: string, key: TripChecklistKey, completed: boolean) => {
+    setBookingActionBusy(true);
+    setBookingFeedback(null);
+    try {
+      const now = new Date().toISOString();
+      const booking = bookings.find((item) => item.id === bookingId) || activeBooking || {};
+      const nextChecklist = {
+        ...(booking.tripChecklist || {}),
+        [key]: completed,
+      };
+      const nextBooking = { ...booking, tripChecklist: nextChecklist };
+      const nextStatus = getOperationalTripStatus(nextBooking);
+      await updateDoc(doc(db, 'bookings', bookingId), {
+        tripChecklist: nextChecklist,
+        tripStatus: nextStatus,
+        updatedAt: now,
+      });
+      setActiveBooking((prev) => prev && prev.id === bookingId ? { ...prev, tripChecklist: nextChecklist, tripStatus: nextStatus, updatedAt: now } : prev);
+      setBookings((prev) => prev.map((item) => item.id === bookingId ? { ...item, tripChecklist: nextChecklist, tripStatus: nextStatus, updatedAt: now } : item));
+      setBookingFeedback({ type: 'success', message: 'Trip checklist updated.' });
+    } catch (err) {
+      console.error('Failed to update trip checklist:', err);
+      setBookingFeedback({ type: 'error', message: 'Unable to update checklist item.' });
+    } finally {
+      setBookingActionBusy(false);
+    }
+  };
+
+  const handleUpdateTripStatusOverride = async (bookingId: string, status: TripCustomerStatus | '') => {
+    setBookingActionBusy(true);
+    setBookingFeedback(null);
+    try {
+      const now = new Date().toISOString();
+      const booking = bookings.find((item) => item.id === bookingId) || activeBooking || {};
+      const nextBooking = { ...booking, tripStatusOverride: status };
+      const nextStatus = getOperationalTripStatus(nextBooking);
+      await updateDoc(doc(db, 'bookings', bookingId), {
+        tripStatusOverride: status,
+        tripStatus: nextStatus,
+        updatedAt: now,
+      });
+      setActiveBooking((prev) => prev && prev.id === bookingId ? { ...prev, tripStatusOverride: status, tripStatus: nextStatus, updatedAt: now } : prev);
+      setBookings((prev) => prev.map((item) => item.id === bookingId ? { ...item, tripStatusOverride: status, tripStatus: nextStatus, updatedAt: now } : item));
+      setBookingFeedback({ type: 'success', message: status ? `Trip status set to ${status}.` : 'Trip status returned to automatic mode.' });
+    } catch (err) {
+      console.error('Failed to update trip status override:', err);
+      setBookingFeedback({ type: 'error', message: 'Unable to update trip status.' });
+    } finally {
+      setBookingActionBusy(false);
+    }
+  };
+
+  const handleUploadTripOperationDocument = async (bookingId: string, documentType: TripOperationDocumentType, file: File) => {
+    setBookingActionBusy(true);
+    setBookingFeedback(null);
+    try {
+      const now = new Date().toISOString();
+      const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-');
+      const fileRef = ref(storage, `bookings/${bookingId}/operations/${Date.now()}-${cleanFileName}`);
+      await uploadBytes(fileRef, file);
+      const fileUrl = await getDownloadURL(fileRef);
+      const booking = bookings.find((item) => item.id === bookingId) || activeBooking || {};
+      const currentDocuments = Array.isArray(booking.operationDocuments) ? booking.operationDocuments : [];
+      const nextDocument: TripOperationDocument = {
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type: documentType,
+        title: documentType,
+        fileName: file.name,
+        fileUrl,
+        uploadedAt: now,
+        uploadedBy: adminEmail || 'Admin',
+      };
+      const nextDocuments = [
+        ...currentDocuments.filter((item: TripOperationDocument) => item.type !== documentType),
+        nextDocument,
+      ];
+      await updateDoc(doc(db, 'bookings', bookingId), {
+        operationDocuments: nextDocuments,
+        updatedAt: now,
+      });
+      setActiveBooking((prev) => prev && prev.id === bookingId ? { ...prev, operationDocuments: nextDocuments, updatedAt: now } : prev);
+      setBookings((prev) => prev.map((item) => item.id === bookingId ? { ...item, operationDocuments: nextDocuments, updatedAt: now } : item));
+      setBookingFeedback({ type: 'success', message: `${documentType} uploaded.` });
+    } catch (err) {
+      console.error('Failed to upload trip operation document:', err);
+      setBookingFeedback({ type: 'error', message: 'Unable to upload this trip document.' });
     } finally {
       setBookingActionBusy(false);
     }
@@ -1156,7 +1507,14 @@ function AdminDashboardView({
   // Filters and searches inside tab
   const [enquirySearch, setEnquirySearch] = useState('');
   const [enquiryStatusFilter, setEnquiryStatusFilter] = useState<string>('All');
-  const [enquiryMonthFilter, setEnquiryMonthFilter] = useState<string>('All');
+  const [enquiryDestinationFilter, setEnquiryDestinationFilter] = useState<string>('All');
+  const [enquiryTravelDateFilter, setEnquiryTravelDateFilter] = useState<string>('');
+  const [enquiryPriorityFilter, setEnquiryPriorityFilter] = useState<string>('All');
+  const [enquiryAssignedFilter, setEnquiryAssignedFilter] = useState<string>('All');
+  const [enquirySortOrder, setEnquirySortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [enquiryNoteText, setEnquiryNoteText] = useState('');
+  const [enquiryActionBusy, setEnquiryActionBusy] = useState(false);
+  const [enquiryFeedback, setEnquiryFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const [packageSearch, setPackageSearch] = useState('');
 
@@ -1259,30 +1617,77 @@ function AdminDashboardView({
   // ENQUIRIES FILTERS & EXPORT
   // ----------------------------------------------------
   const filteredEnquiries = useMemo(() => {
-    return enquiries.filter((e) => {
+    const searchTerm = String(enquirySearch ?? '').trim().toLowerCase();
+    const filtered = enquiries.filter((e) => {
       const matchSearch =
-        String(e.name ?? '').toLowerCase().includes(String(enquirySearch ?? '').toLowerCase()) ||
-        String(e.phone ?? '').includes(String(enquirySearch ?? '')) ||
-        String(e.destination ?? '').toLowerCase().includes(String(enquirySearch ?? '').toLowerCase());
+        !searchTerm ||
+        String(e.name ?? '').toLowerCase().includes(searchTerm) ||
+        String(e.phone ?? '').toLowerCase().includes(searchTerm) ||
+        String(e.email ?? '').toLowerCase().includes(searchTerm) ||
+        String(e.destination ?? '').toLowerCase().includes(searchTerm) ||
+        String(e.assignedTo ?? '').toLowerCase().includes(searchTerm);
 
-      const matchStatus = enquiryStatusFilter === 'All' || e.status === enquiryStatusFilter;
+      const normalizedStatus = normalizeEnquiryStatus(e.status);
+      const matchStatus = enquiryStatusFilter === 'All' || normalizedStatus === enquiryStatusFilter;
+      const matchDestination = enquiryDestinationFilter === 'All' || e.destination === enquiryDestinationFilter;
+      const matchPriority = enquiryPriorityFilter === 'All' || (e.priority || 'Medium') === enquiryPriorityFilter;
+      const matchAssigned = enquiryAssignedFilter === 'All' || (e.assignedTo || 'Unassigned') === enquiryAssignedFilter;
+      const matchTravelDate = !enquiryTravelDateFilter || String(e.travelDate ?? '').substring(0, 10) === enquiryTravelDateFilter;
 
-      let matchMonth = true;
-      if (enquiryMonthFilter !== 'All') {
-        const monthMatches = typeof e.createdAt === 'string' && e.createdAt.substring(0, 7) === enquiryMonthFilter;
-        matchMonth = monthMatches;
-      }
-
-      return matchSearch && matchStatus && matchMonth;
+      return matchSearch && matchStatus && matchDestination && matchPriority && matchAssigned && matchTravelDate;
     });
-  }, [enquiries, enquirySearch, enquiryStatusFilter, enquiryMonthFilter]);
 
-  // Extract unique months from enquiries for filter dropdown
-  const uniqueEnquiryMonths = useMemo(() => {
-    const months = enquiries
-      .map((e) => e.createdAt && e.createdAt.substring(0, 7))
-      .filter(Boolean);
-    return Array.from(new Set(months)).sort();
+    return filtered.sort((a, b) => {
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return enquirySortOrder === 'newest' ? bTime - aTime : aTime - bTime;
+    });
+  }, [enquiries, enquirySearch, enquiryStatusFilter, enquiryDestinationFilter, enquiryPriorityFilter, enquiryAssignedFilter, enquiryTravelDateFilter, enquirySortOrder]);
+
+  const uniqueEnquiryDestinations = useMemo(() => {
+    return Array.from(new Set(enquiries.map((e) => String(e.destination ?? '').trim()).filter(Boolean))).sort();
+  }, [enquiries]);
+
+  const uniqueEnquiryAssignees = useMemo(() => {
+    return Array.from(new Set(enquiries.map((e) => String(e.assignedTo || 'Unassigned').trim()).filter(Boolean))).sort();
+  }, [enquiries]);
+
+  const enquiryCrmMetrics = useMemo(() => {
+    const statusCounts = enquiries.reduce<Record<string, number>>((acc, enquiry) => {
+      const status = normalizeEnquiryStatus(enquiry.status);
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {});
+
+    const destinationCounts = enquiries.reduce<Record<string, number>>((acc, enquiry) => {
+      const destination = String(enquiry.destination || '').trim();
+      if (!destination) return acc;
+      acc[destination] = (acc[destination] || 0) + 1;
+      return acc;
+    }, {});
+
+    const mostPopularDestination = Object.entries(destinationCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Not enough data';
+    const revenueExpected = enquiries.reduce((sum, enquiry) => sum + getEnquiryPackagePrice(enquiry), 0);
+    const advanceReceived = enquiries.reduce((sum, enquiry) => sum + getEnquiryAdvanceReceived(enquiry), 0);
+    const pendingPayments = enquiries.reduce((sum, enquiry) => {
+      const packagePrice = getEnquiryPackagePrice(enquiry);
+      const advance = getEnquiryAdvanceReceived(enquiry);
+      return sum + Math.max(packagePrice - advance, 0);
+    }, 0);
+
+    return {
+      total: enquiries.length,
+      newCount: statusCounts.New || 0,
+      contactedCount: statusCounts.Contacted || 0,
+      quoteSentCount: statusCounts['Quote Sent'] || 0,
+      confirmedCount: statusCounts['Booking Confirmed'] || 0,
+      completedCount: statusCounts.Completed || 0,
+      cancelledCount: statusCounts.Cancelled || 0,
+      revenueExpected,
+      advanceReceived,
+      pendingPayments,
+      mostPopularDestination,
+    };
   }, [enquiries]);
 
   // Client-side CSV Exporter
@@ -1290,17 +1695,24 @@ function AdminDashboardView({
     if (filteredEnquiries.length === 0) return;
     
     // Headers
-    const headers = ['Name', 'Phone', 'Email', 'Destination', 'Travel Date', 'Travelers', 'Budget', 'Status', 'Submitted At', 'Message'];
+    const headers = ['Name', 'Phone', 'Email', 'Destination', 'Travel Date', 'Adults', 'Children', 'Budget', 'Status', 'Priority', 'Assigned To', 'Follow Up', 'Package Price', 'Advance Received', 'Payment Status', 'Submitted At', 'Message'];
     const rows = filteredEnquiries.map((e) => [
-      `"${e.name.replace(/"/g, '""')}"`,
-      `"${e.phone}"`,
-      `"${e.email}"`,
-      `"${e.destination.replace(/"/g, '""')}"`,
-      `"${e.travelDate}"`,
-      e.travelers,
-      `"${e.budget}"`,
-      `"${e.status}"`,
-      `"${e.createdAt}"`,
+      `"${String(e.name ?? '').replace(/"/g, '""')}"`,
+      `"${String(e.phone ?? '').replace(/"/g, '""')}"`,
+      `"${String(e.email ?? '').replace(/"/g, '""')}"`,
+      `"${String(e.destination ?? '').replace(/"/g, '""')}"`,
+      `"${String(e.travelDate ?? '').replace(/"/g, '""')}"`,
+      getEnquiryAdults(e),
+      getEnquiryChildren(e),
+      `"${String(e.budget ?? '').replace(/"/g, '""')}"`,
+      `"${normalizeEnquiryStatus(e.status)}"`,
+      `"${e.priority || 'Medium'}"`,
+      `"${String(e.assignedTo || 'Unassigned').replace(/"/g, '""')}"`,
+      `"${[e.followUpDate, e.followUpTime].filter(Boolean).join(' ').replace(/"/g, '""')}"`,
+      getEnquiryPackagePrice(e),
+      getEnquiryAdvanceReceived(e),
+      `"${e.paymentStatus || 'Pending'}"`,
+      `"${String(e.createdAt ?? '').replace(/"/g, '""')}"`,
       `"${(e.message || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`
     ]);
 
@@ -1584,28 +1996,360 @@ function AdminDashboardView({
   // ----------------------------------------------------
   // ENQUIRY STATUS UPDATES
   // ----------------------------------------------------
-  const handleUpdateEnquiryStatus = async (enquiryId: string, newStatus: EnquiryStatus) => {
+  const createEnquiryActivityId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  const handleOpenEnquiry = (enquiry: Enquiry) => {
+    setActiveEnquiry({
+      ...enquiry,
+      status: normalizeEnquiryStatus(enquiry.status),
+      priority: enquiry.priority || 'Medium',
+      paymentStatus: enquiry.paymentStatus || 'Pending',
+    });
+    setEnquiryNoteText('');
+    setEnquiryFeedback(null);
+  };
+
+  const getPackageMatchForEnquiry = (enquiry: Enquiry) => {
+    const packageName = String(enquiry.packageName || '').trim().toLowerCase();
+    const destination = String(enquiry.destination || '').trim().toLowerCase();
+    return packages.find((pkg) => pkg.id === enquiry.packageId)
+      || packages.find((pkg) => packageName && pkg.title.trim().toLowerCase() === packageName)
+      || packages.find((pkg) => destination && pkg.destination.trim().toLowerCase() === destination);
+  };
+
+  const handleOpenBookingConversion = (enquiry: Enquiry) => {
+    const normalizedEnquiry = {
+      ...enquiry,
+      status: normalizeEnquiryStatus(enquiry.status),
+      priority: enquiry.priority || 'Medium',
+      paymentStatus: enquiry.paymentStatus || 'Pending',
+    };
+    const matchedPackage = getPackageMatchForEnquiry(normalizedEnquiry);
+    const numericBudget = Number(String(enquiry.budget || '').replace(/[^0-9.]/g, '')) || 0;
+    const totalCost = Number(enquiry.packagePrice ?? matchedPackage?.offerPrice ?? matchedPackage?.price ?? numericBudget ?? 0);
+    setConversionEnquiry(normalizedEnquiry);
+    setConversionFormData({
+      packageId: matchedPackage?.id || enquiry.packageId || '',
+      departureDate: enquiry.travelDate || '',
+      travellers: Math.max(getEnquiryAdults(enquiry) + getEnquiryChildren(enquiry), 1),
+      totalCost,
+      advancePaid: Number(enquiry.advanceReceived ?? 0),
+      assignedTripManager: enquiry.assignedTo || '',
+      internalNotes: '',
+    });
+    setEnquiryFeedback(null);
+  };
+
+  const handleConvertEnquiryToBooking = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!conversionEnquiry) return;
+
+    const totalCost = Math.max(Number(conversionFormData.totalCost || 0), 0);
+    const advancePaid = Math.min(Math.max(Number(conversionFormData.advancePaid || 0), 0), totalCost || Number.MAX_SAFE_INTEGER);
+    const remainingBalance = Math.max(totalCost - advancePaid, 0);
+    const travellers = Math.max(Number(conversionFormData.travellers || 1), 1);
+    const selectedPackage = packages.find((pkg) => pkg.id === conversionFormData.packageId);
+    const customerEmail = String(conversionEnquiry.email || '').trim();
+    const customerMatch = customers.find((customer) => customer.email.trim().toLowerCase() === customerEmail.toLowerCase());
+    const now = new Date().toISOString();
+    const bookingNumber = conversionEnquiry.convertedBookingNumber || conversionEnquiry.bookingId || createBookingReference();
+    const paymentStatus = getConversionPaymentStatus(totalCost, advancePaid);
+    const bookingTimeline = [
+      {
+        title: 'Enquiry Submitted',
+        note: conversionEnquiry.createdAt ? `Lead received on ${new Date(conversionEnquiry.createdAt).toLocaleDateString('en-IN')}.` : 'Original enquiry received.',
+        createdAt: conversionEnquiry.createdAt || now,
+        status: 'completed',
+      },
+      {
+        title: 'Booking Confirmed',
+        note: `Converted from enquiry by ${adminEmail || 'Admin'}.`,
+        createdAt: now,
+        status: 'completed',
+      },
+      ...(advancePaid > 0 ? [{
+        title: 'Advance Paid',
+        note: `${formatPrice(advancePaid)} recorded during booking conversion.`,
+        createdAt: now,
+        status: 'completed',
+      }] : []),
+      {
+        title: 'Documents Pending',
+        note: 'Customer documents are awaiting upload and verification.',
+        createdAt: now,
+        status: 'current',
+      },
+    ];
+    const documentStatus = BOOKING_DOCUMENT_TYPES.reduce<Record<string, BookingDocumentStatus>>((acc, documentType) => {
+      acc[documentType] = 'Pending';
+      return acc;
+    }, {});
+    const paymentHistory = advancePaid > 0 ? [{
+      id: createEnquiryActivityId(),
+      label: 'Advance received',
+      amount: advancePaid,
+      status: paymentStatus,
+      method: 'Manual CRM',
+      receivedBy: adminEmail || 'Admin',
+      createdAt: now,
+    }] : [];
+    const bookingPayload = {
+      bookingId: bookingNumber,
+      customerId: customerMatch?.id || '',
+      userId: customerMatch?.id || '',
+      userEmail: customerEmail,
+      userName: conversionEnquiry.name || customerMatch?.displayName || 'Traveler',
+      customerName: conversionEnquiry.name || customerMatch?.displayName || 'Traveler',
+      customerEmail,
+      customerPhone: conversionEnquiry.phone || '',
+      customerWhatsApp: conversionEnquiry.phone || '',
+      email: customerEmail,
+      phone: conversionEnquiry.phone || '',
+      packageId: selectedPackage?.id || conversionEnquiry.packageId || '',
+      packageTitle: selectedPackage?.title || conversionEnquiry.packageName || conversionEnquiry.destination || 'Custom Package',
+      packageImageUrl: selectedPackage?.imageUrl || selectedPackage?.packageBannerUrl || '',
+      imageUrl: selectedPackage?.imageUrl || selectedPackage?.packageBannerUrl || '',
+      destination: selectedPackage?.destination || conversionEnquiry.destination || '',
+      duration: selectedPackage?.duration || '',
+      travelDate: conversionFormData.departureDate || conversionEnquiry.travelDate || '',
+      departureDate: conversionFormData.departureDate || conversionEnquiry.travelDate || '',
+      guests: travellers,
+      travelers: travellers,
+      adults: getEnquiryAdults(conversionEnquiry),
+      children: getEnquiryChildren(conversionEnquiry),
+      totalPrice: totalCost,
+      price: totalCost,
+      packagePrice: totalCost,
+      advancePaid,
+      advanceReceived: advancePaid,
+      remainingBalance,
+      paymentStatus,
+      paymentDueDate: getPaymentDueDate(conversionFormData.departureDate),
+      paymentHistory,
+      bookingStatus: 'Confirmed',
+      status: 'Confirmed',
+      assignedStaff: conversionFormData.assignedTripManager || conversionEnquiry.assignedTo || '',
+      assignedTripManager: conversionFormData.assignedTripManager || conversionEnquiry.assignedTo || '',
+      tripManager: {
+        name: conversionFormData.assignedTripManager || conversionEnquiry.assignedTo || 'Pravaah Trip Desk',
+        phone: settingsFormData.phoneNumber || settingsFormData.whatsappNumber || '',
+        email: settingsFormData.supportEmail || settingsFormData.email || '',
+        emergencyContact: settingsFormData.whatsappNumber || settingsFormData.phoneNumber || '',
+      },
+      notes: conversionFormData.internalNotes.trim()
+        ? [{ text: conversionFormData.internalNotes.trim(), createdAt: now, author: adminEmail || 'Admin' }]
+        : [],
+      internalNotes: conversionFormData.internalNotes.trim() ? [conversionFormData.internalNotes.trim()] : [],
+      bookingTimeline,
+      documentStatus,
+      enquiryId: conversionEnquiry.id,
+      convertedFromEnquiryId: conversionEnquiry.id,
+      source: 'enquiry_conversion',
+      sourceEnquirySnapshot: {
+        id: conversionEnquiry.id,
+        name: conversionEnquiry.name || '',
+        phone: conversionEnquiry.phone || '',
+        email: customerEmail,
+        destination: conversionEnquiry.destination || '',
+        message: conversionEnquiry.message || '',
+        statusTimeline: (conversionEnquiry.statusTimeline || []).map((item) => ({
+          id: item.id || createEnquiryActivityId(),
+          label: item.label || '',
+          note: item.note || '',
+          createdAt: item.createdAt || now,
+          author: item.author || '',
+        })),
+        adminNotes: (conversionEnquiry.adminNotes || []).map((note) => ({
+          id: note.id || createEnquiryActivityId(),
+          text: note.text || '',
+          createdAt: note.createdAt || now,
+          author: note.author || '',
+        })),
+        createdAt: conversionEnquiry.createdAt || now,
+      },
+      updatedAt: now,
+    };
+
+    setConversionSaving(true);
+    setEnquiryFeedback(null);
     try {
+      let bookingDocId = conversionEnquiry.convertedBookingId || '';
+      if (bookingDocId) {
+        await updateDoc(doc(db, 'bookings', bookingDocId), bookingPayload);
+      } else {
+        const createdBooking = await addDoc(collection(db, 'bookings'), {
+          ...bookingPayload,
+          createdAt: now,
+        });
+        bookingDocId = createdBooking.id;
+      }
+
+      const updatedTimeline = [
+        ...(conversionEnquiry.statusTimeline || []),
+        {
+          id: createEnquiryActivityId(),
+          label: 'Converted to booking',
+          note: `Booking ${bookingNumber} confirmed for ${formatPrice(totalCost)}.`,
+          createdAt: now,
+          author: adminEmail || 'Admin',
+        },
+      ];
+      const enquiryUpdate = {
+        status: 'Booking Confirmed' as EnquiryStatus,
+        convertedBookingId: bookingDocId,
+        convertedBookingNumber: bookingNumber,
+        bookingId: bookingNumber,
+        packageId: selectedPackage?.id || conversionEnquiry.packageId || '',
+        packageName: selectedPackage?.title || conversionEnquiry.packageName || conversionEnquiry.destination || 'Custom Package',
+        adults: getEnquiryAdults(conversionEnquiry),
+        children: getEnquiryChildren(conversionEnquiry),
+        assignedTo: conversionFormData.assignedTripManager || conversionEnquiry.assignedTo || '',
+        packagePrice: totalCost,
+        advanceReceived: advancePaid,
+        paymentStatus,
+        statusTimeline: updatedTimeline,
+        conversion: {
+          packageId: selectedPackage?.id || conversionEnquiry.packageId || '',
+          packageTitle: selectedPackage?.title || conversionEnquiry.packageName || conversionEnquiry.destination || 'Custom Package',
+          departureDate: conversionFormData.departureDate || conversionEnquiry.travelDate || '',
+          travellers,
+          totalCost,
+          advancePaid,
+          remainingBalance,
+          assignedTripManager: conversionFormData.assignedTripManager || conversionEnquiry.assignedTo || '',
+          internalNotes: conversionFormData.internalNotes.trim(),
+          convertedAt: now,
+          convertedBy: adminEmail || 'Admin',
+        },
+        updatedAt: now,
+      };
+      await updateDoc(doc(db, 'enquiries', conversionEnquiry.id), enquiryUpdate);
+      setActiveEnquiry((prev) => prev && prev.id === conversionEnquiry.id ? { ...prev, ...enquiryUpdate } : prev);
+      setConversionEnquiry(null);
+      setEnquiryFeedback({ type: 'success', message: `Booking ${bookingNumber} created and linked to this enquiry.` });
+      await fetchAllBookings();
+      await onRefreshData();
+    } catch (err) {
+      console.error('Failed to convert enquiry to booking:', err);
+      setEnquiryFeedback({ type: 'error', message: 'Unable to convert this enquiry to a booking right now.' });
+    } finally {
+      setConversionSaving(false);
+    }
+  };
+
+  const updateActiveEnquiryField = (field: keyof Enquiry, value: Enquiry[keyof Enquiry]) => {
+    setActiveEnquiry((prev) => prev ? { ...prev, [field]: value } : null);
+  };
+
+  const handleUpdateEnquiryStatus = async (enquiryId: string, newStatus: EnquiryStatus) => {
+    setEnquiryActionBusy(true);
+    setEnquiryFeedback(null);
+    try {
+      const now = new Date().toISOString();
+      const sourceEnquiry = activeEnquiry?.id === enquiryId ? activeEnquiry : enquiries.find((enquiry) => enquiry.id === enquiryId);
+      const updatedTimeline = [
+        ...(sourceEnquiry?.statusTimeline || []),
+        {
+          id: createEnquiryActivityId(),
+          label: `Status updated to ${newStatus}`,
+          createdAt: now,
+          author: adminEmail || 'Admin',
+        },
+      ];
       const docRef = doc(db, 'enquiries', enquiryId);
-      await updateDoc(docRef, { status: newStatus });
+      await updateDoc(docRef, { status: newStatus, statusTimeline: updatedTimeline, updatedAt: now });
       // Keep detail modal updated
       if (activeEnquiry && activeEnquiry.id === enquiryId) {
-        setActiveEnquiry((prev) => prev ? { ...prev, status: newStatus } : null);
+        setActiveEnquiry((prev) => prev ? { ...prev, status: newStatus, statusTimeline: updatedTimeline, updatedAt: now } : null);
       }
+      setEnquiryFeedback({ type: 'success', message: 'Enquiry status updated.' });
       await onRefreshData();
     } catch (err) {
       console.error('Error updating enquiry status:', err);
+      setEnquiryFeedback({ type: 'error', message: 'Unable to update enquiry status right now.' });
+    } finally {
+      setEnquiryActionBusy(false);
+    }
+  };
+
+  const handleSaveEnquiryCrmDetails = async () => {
+    if (!activeEnquiry) return;
+    setEnquiryActionBusy(true);
+    setEnquiryFeedback(null);
+    try {
+      const now = new Date().toISOString();
+      const payload = {
+        adults: Math.max(Number(activeEnquiry.adults ?? activeEnquiry.travelers ?? 1), 0),
+        children: Math.max(Number(activeEnquiry.children ?? 0), 0),
+        travelType: String(activeEnquiry.travelType || '').trim(),
+        preferredContactMethod: String(activeEnquiry.preferredContactMethod || activeEnquiry.preferredContact || '').trim(),
+        priority: activeEnquiry.priority || 'Medium',
+        followUpDate: String(activeEnquiry.followUpDate || '').trim(),
+        followUpTime: String(activeEnquiry.followUpTime || '').trim(),
+        assignedTo: String(activeEnquiry.assignedTo || '').trim(),
+        packagePrice: Math.max(Number(activeEnquiry.packagePrice ?? 0), 0),
+        advanceReceived: Math.max(Number(activeEnquiry.advanceReceived ?? 0), 0),
+        paymentStatus: activeEnquiry.paymentStatus || 'Pending',
+        updatedAt: now,
+      };
+      await updateDoc(doc(db, 'enquiries', activeEnquiry.id), payload);
+      setActiveEnquiry((prev) => prev ? { ...prev, ...payload } : null);
+      setEnquiryFeedback({ type: 'success', message: 'CRM details saved to this enquiry.' });
+      await onRefreshData();
+    } catch (err) {
+      console.error('Error saving enquiry CRM details:', err);
+      setEnquiryFeedback({ type: 'error', message: 'Unable to save CRM details right now.' });
+    } finally {
+      setEnquiryActionBusy(false);
+    }
+  };
+
+  const handleAddEnquiryNote = async () => {
+    if (!activeEnquiry) return;
+    if (!enquiryNoteText.trim()) {
+      setEnquiryFeedback({ type: 'error', message: 'Add an internal note before saving.' });
+      return;
+    }
+
+    setEnquiryActionBusy(true);
+    setEnquiryFeedback(null);
+    try {
+      const now = new Date().toISOString();
+      const updatedNotes = [
+        ...(activeEnquiry.adminNotes || []),
+        {
+          id: createEnquiryActivityId(),
+          text: enquiryNoteText.trim(),
+          createdAt: now,
+          author: adminEmail || 'Admin',
+        },
+      ];
+      await updateDoc(doc(db, 'enquiries', activeEnquiry.id), { adminNotes: updatedNotes, updatedAt: now });
+      setActiveEnquiry((prev) => prev ? { ...prev, adminNotes: updatedNotes, updatedAt: now } : null);
+      setEnquiryNoteText('');
+      setEnquiryFeedback({ type: 'success', message: 'Internal note added to the enquiry.' });
+      await onRefreshData();
+    } catch (err) {
+      console.error('Error adding enquiry note:', err);
+      setEnquiryFeedback({ type: 'error', message: 'Unable to save this note right now.' });
+    } finally {
+      setEnquiryActionBusy(false);
     }
   };
 
   const handleDeleteEnquiry = async (enquiryId: string) => {
     if (!confirm('Are you sure you want to delete this enquiry from record?')) return;
+    setEnquiryActionBusy(true);
+    setEnquiryFeedback(null);
     try {
       await deleteDoc(doc(db, 'enquiries', enquiryId));
       setActiveEnquiry(null);
       await onRefreshData();
     } catch (err) {
       console.error('Error deleting enquiry:', err);
+      setEnquiryFeedback({ type: 'error', message: 'Unable to delete this enquiry right now.' });
+    } finally {
+      setEnquiryActionBusy(false);
     }
   };
 
@@ -2337,16 +3081,32 @@ function AdminDashboardView({
           {activeTab === 'enquiries' && (
             <Suspense fallback={<div className="rounded-[20px] border border-stone-200 bg-white p-8 text-sm text-stone-500">Loading enquiries…</div>}>
               <EnquiriesTab
-                enquiries={enquiries}
                 filteredEnquiries={filteredEnquiries}
                 enquirySearch={enquirySearch}
                 setEnquirySearch={setEnquirySearch}
                 enquiryStatusFilter={enquiryStatusFilter}
                 setEnquiryStatusFilter={setEnquiryStatusFilter}
-                enquiryMonthFilter={enquiryMonthFilter}
-                setEnquiryMonthFilter={setEnquiryMonthFilter}
-                uniqueEnquiryMonths={uniqueEnquiryMonths}
+                enquiryDestinationFilter={enquiryDestinationFilter}
+                setEnquiryDestinationFilter={setEnquiryDestinationFilter}
+                enquiryTravelDateFilter={enquiryTravelDateFilter}
+                setEnquiryTravelDateFilter={setEnquiryTravelDateFilter}
+                enquiryPriorityFilter={enquiryPriorityFilter}
+                setEnquiryPriorityFilter={setEnquiryPriorityFilter}
+                enquiryAssignedFilter={enquiryAssignedFilter}
+                setEnquiryAssignedFilter={setEnquiryAssignedFilter}
+                enquirySortOrder={enquirySortOrder}
+                setEnquirySortOrder={setEnquirySortOrder}
+                uniqueEnquiryDestinations={uniqueEnquiryDestinations}
+                uniqueEnquiryAssignees={uniqueEnquiryAssignees}
+                enquiryCrmMetrics={enquiryCrmMetrics}
+                crmStatusOptions={CRM_ENQUIRY_STATUS_OPTIONS}
+                crmPriorityOptions={CRM_PRIORITY_OPTIONS}
                 handleExportCSV={handleExportCSV}
+                onOpenEnquiry={handleOpenEnquiry}
+                onOpenConvertBooking={handleOpenBookingConversion}
+                onUpdateEnquiryStatus={handleUpdateEnquiryStatus}
+                enquiryActionBusy={enquiryActionBusy}
+                formatPriceValue={(value) => formatPrice(value)}
               />
             </Suspense>
           )}
@@ -2525,8 +3285,23 @@ function AdminDashboardView({
                 setBookingPackageFilter={setBookingPackageFilter}
                 bookingMonthFilter={bookingMonthFilter}
                 setBookingMonthFilter={setBookingMonthFilter}
+                bookingDepartureDateFilter={bookingDepartureDateFilter}
+                setBookingDepartureDateFilter={setBookingDepartureDateFilter}
+                bookingCoordinatorFilter={bookingCoordinatorFilter}
+                setBookingCoordinatorFilter={setBookingCoordinatorFilter}
+                bookingDriverFilter={bookingDriverFilter}
+                setBookingDriverFilter={setBookingDriverFilter}
+                bookingDestinationFilter={bookingDestinationFilter}
+                setBookingDestinationFilter={setBookingDestinationFilter}
+                bookingTripStatusFilter={bookingTripStatusFilter}
+                setBookingTripStatusFilter={setBookingTripStatusFilter}
                 uniqueBookingPackages={uniqueBookingPackages}
                 uniqueBookingMonths={uniqueBookingMonths}
+                uniqueBookingCoordinators={uniqueBookingCoordinators}
+                uniqueBookingDrivers={uniqueBookingDrivers}
+                uniqueBookingDestinations={uniqueBookingDestinations}
+                tripStatusOptions={TRIP_STATUS_OPTIONS}
+                tripOperationDocumentTypes={TRIP_OPERATION_DOCUMENT_TYPES}
                 fetchAllBookings={fetchAllBookings}
                 handleExportBookingsCSV={handleExportBookingsCSV}
                 handleAssignStaff={handleAssignStaff}
@@ -2542,6 +3317,13 @@ function AdminDashboardView({
                 followUpDate={followUpDate}
                 setFollowUpDate={setFollowUpDate}
                 handleAddNote={handleAddNote}
+                bookingDocuments={bookingDocuments}
+                handleUpdateBookingDocumentStatus={handleUpdateBookingDocumentStatus}
+                handleSaveTripOperations={handleSaveTripOperations}
+                handleToggleTripChecklist={handleToggleTripChecklist}
+                handleUpdateTripStatusOverride={handleUpdateTripStatusOverride}
+                handleUploadTripOperationDocument={handleUploadTripOperationDocument}
+                getOperationalTripStatus={getOperationalTripStatus}
                 bookingFeedback={bookingFeedback}
                 bookingActionBusy={bookingActionBusy}
               />
@@ -2631,6 +3413,9 @@ function AdminDashboardView({
                 enquiries={enquiries}
                 bookings={bookings}
                 adminReviews={adminReviews}
+                packages={packages}
+                wishlistItems={wishlistItems}
+                setActiveTab={setActiveTab}
               />
             </Suspense>
           )}
@@ -2994,137 +3779,343 @@ function AdminDashboardView({
       {/* DIALOG B: ENQUIRY INSPECT MODAL */}
       {/* ==================================================== */}
       {activeEnquiry && (
-        <div className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-sm w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col justify-between" onClick={(e) => e.stopPropagation()}>
-            
-            {/* Header */}
-            <div className="bg-stone-900 text-white p-6 flex justify-between items-center">
-              <div>
-                <span className="text-[9px] bg-[#008080]/20 text-teal-300 font-bold border border-[#008080]/30 px-2.5 py-1 rounded-none uppercase tracking-wider">
-                  Enquiry ID: {activeEnquiry.id.substring(0, 8)}
-                </span>
-                <h3 className="text-lg font-serif font-normal tracking-tight mt-3">
-                  Client: {activeEnquiry.name}
-                </h3>
+        <div className="fixed inset-0 z-50 bg-stone-950/45 backdrop-blur-sm animate-fade-in" onClick={() => setActiveEnquiry(null)}>
+          <div className="ml-auto flex h-full w-full max-w-5xl flex-col bg-[#f8f7f4] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="relative overflow-hidden bg-stone-950 px-5 py-5 text-white sm:px-8">
+              <div className="absolute inset-0 bg-linear-to-r from-stone-950 via-stone-900 to-[#123b3b]" />
+              <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <span className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-white/70">
+                    Enquiry #{activeEnquiry.id.substring(0, 8).toUpperCase()}
+                  </span>
+                  <h3 className="mt-3 text-2xl font-semibold tracking-tight">{activeEnquiry.name || 'Travel Lead'}</h3>
+                  <p className="mt-1 max-w-2xl text-sm text-white/60">{activeEnquiry.destination || 'Flexible destination'} - {activeEnquiry.packageName || 'Custom itinerary request'}</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${getEnquiryStatusBadgeClass(activeEnquiry.status)}`}>{normalizeEnquiryStatus(activeEnquiry.status)}</span>
+                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${getEnquiryPriorityBadgeClass(activeEnquiry.priority)}`}>{activeEnquiry.priority || 'Medium'} Priority</span>
+                  </div>
+                </div>
+                <button onClick={() => setActiveEnquiry(null)} className="rounded-full bg-white/10 p-2 text-white/70 transition hover:bg-white/20 hover:text-white">
+                  <X className="h-5 w-5" />
+                </button>
               </div>
-              <button 
-                onClick={() => setActiveEnquiry(null)}
-                className="text-stone-400 hover:text-white transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
+            </div>
+
+            {enquiryFeedback && (
+              <div role="status" aria-live="polite" className={`mx-5 mt-4 rounded-[12px] border px-4 py-3 text-sm sm:mx-8 ${enquiryFeedback.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>
+                {enquiryFeedback.message}
+              </div>
+            )}
+
+            <div className="grid min-h-0 flex-1 overflow-y-auto p-5 sm:p-8 lg:grid-cols-[1fr_360px] lg:gap-6">
+              <div className="space-y-5">
+                <section className="rounded-[18px] border border-stone-200 bg-white p-5 shadow-[0_12px_35px_rgba(18,38,32,0.06)]">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-base font-semibold text-stone-900">Customer Details</h4>
+                      <p className="text-xs text-stone-500">Primary contact and trip request fields.</p>
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">
+                      {activeEnquiry.createdAt ? new Date(activeEnquiry.createdAt).toLocaleString('en-IN') : 'Date not available'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="rounded-[14px] bg-[#f8f7f4] p-4">
+                      <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Phone</span>
+                      <a href={`tel:${activeEnquiry.phone}`} className="mt-1 inline-flex items-center gap-2 font-semibold text-stone-900 hover:text-[#008080]">
+                        <Phone className="h-4 w-4" />
+                        {activeEnquiry.phone || 'Not provided'}
+                      </a>
+                    </div>
+                    <div className="rounded-[14px] bg-[#f8f7f4] p-4">
+                      <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Email</span>
+                      <a href={`mailto:${activeEnquiry.email}`} className="mt-1 inline-flex items-center gap-2 font-semibold text-stone-900 hover:text-[#008080]">
+                        <Mail className="h-4 w-4" />
+                        {activeEnquiry.email || 'Not provided'}
+                      </a>
+                    </div>
+                    <div className="rounded-[14px] bg-[#f8f7f4] p-4">
+                      <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Destination</span>
+                      <strong className="mt-1 block text-stone-900">{activeEnquiry.destination || 'Flexible destination'}</strong>
+                    </div>
+                    <div className="rounded-[14px] bg-[#f8f7f4] p-4">
+                      <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Travel Date</span>
+                      <strong className="mt-1 block text-stone-900">{activeEnquiry.travelDate || 'Flexible dates'}</strong>
+                    </div>
+                    <div className="rounded-[14px] bg-[#f8f7f4] p-4">
+                      <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Adults</span>
+                      <strong className="mt-1 block text-stone-900">{getEnquiryAdults(activeEnquiry)}</strong>
+                    </div>
+                    <div className="rounded-[14px] bg-[#f8f7f4] p-4">
+                      <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Children</span>
+                      <strong className="mt-1 block text-stone-900">{getEnquiryChildren(activeEnquiry)}</strong>
+                    </div>
+                    <div className="rounded-[14px] bg-[#f8f7f4] p-4">
+                      <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Budget</span>
+                      <strong className="mt-1 block text-stone-900">{activeEnquiry.budget || 'Not specified'}</strong>
+                    </div>
+                    <div className="rounded-[14px] bg-[#f8f7f4] p-4">
+                      <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Preferred Contact</span>
+                      <strong className="mt-1 block text-stone-900">{activeEnquiry.preferredContactMethod || activeEnquiry.preferredContact || 'Not specified'}</strong>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="rounded-[18px] border border-stone-200 bg-white p-5 shadow-[0_12px_35px_rgba(18,38,32,0.06)]">
+                  <h4 className="text-base font-semibold text-stone-900">Message</h4>
+                  <p className="mt-3 whitespace-pre-wrap rounded-[14px] bg-[#f8f7f4] p-4 text-sm leading-7 text-stone-600">
+                    {activeEnquiry.message || 'No custom message was submitted.'}
+                  </p>
+                </section>
+
+                <section className="rounded-[18px] border border-stone-200 bg-white p-5 shadow-[0_12px_35px_rgba(18,38,32,0.06)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-base font-semibold text-stone-900">Admin Notes</h4>
+                      <p className="text-xs text-stone-500">Private internal note history for this enquiry.</p>
+                    </div>
+                    <span className="rounded-full bg-[#008080]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#008080]">{activeEnquiry.adminNotes?.length || 0} Notes</span>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {(!activeEnquiry.adminNotes || activeEnquiry.adminNotes.length === 0) ? (
+                      <p className="rounded-[14px] border border-dashed border-stone-200 bg-stone-50 p-4 text-center text-sm text-stone-400">No internal notes yet.</p>
+                    ) : (
+                      activeEnquiry.adminNotes.map((note) => (
+                        <div key={note.id} className="rounded-[14px] border border-stone-100 bg-[#fcfbf9] p-4">
+                          <p className="whitespace-pre-wrap text-sm leading-6 text-stone-700">{note.text}</p>
+                          <span className="mt-2 block text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-400">
+                            {note.author || 'Admin'} - {note.createdAt ? new Date(note.createdAt).toLocaleString('en-IN') : 'Just now'}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    <label className="block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Add Internal Note</label>
+                    <textarea value={enquiryNoteText} onChange={(e) => setEnquiryNoteText(e.target.value)} rows={3} placeholder="Customer wants luxury hotel, call after 6 PM..." className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+                    <button type="button" onClick={() => void handleAddEnquiryNote()} disabled={enquiryActionBusy} className="inline-flex items-center justify-center gap-2 rounded-[8px] bg-stone-900 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60">
+                      <MessageSquare className="h-4 w-4" />
+                      Save Note
+                    </button>
+                  </div>
+                </section>
+
+                <section className="rounded-[18px] border border-stone-200 bg-white p-5 shadow-[0_12px_35px_rgba(18,38,32,0.06)]">
+                  <h4 className="text-base font-semibold text-stone-900">Timeline</h4>
+                  <div className="mt-4 space-y-3">
+                    <div className="flex gap-3">
+                      <div className="mt-1 h-2.5 w-2.5 rounded-full bg-[#008080]" />
+                      <div>
+                        <p className="text-sm font-semibold text-stone-900">Enquiry submitted</p>
+                        <span className="text-xs text-stone-400">{activeEnquiry.createdAt ? new Date(activeEnquiry.createdAt).toLocaleString('en-IN') : 'Date unavailable'}</span>
+                      </div>
+                    </div>
+                    {(activeEnquiry.statusTimeline || []).map((item) => (
+                      <div key={item.id} className="flex gap-3">
+                        <div className="mt-1 h-2.5 w-2.5 rounded-full bg-stone-300" />
+                        <div>
+                          <p className="text-sm font-semibold text-stone-900">{item.label}</p>
+                          {item.note && <p className="text-xs text-stone-500">{item.note}</p>}
+                          <span className="text-xs text-stone-400">{item.author || 'Admin'} - {item.createdAt ? new Date(item.createdAt).toLocaleString('en-IN') : 'Just now'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+
+              <aside className="mt-5 space-y-5 lg:sticky lg:top-5 lg:mt-0 lg:self-start">
+                <section className="rounded-[18px] border border-stone-200 bg-white p-5 shadow-[0_12px_35px_rgba(18,38,32,0.06)]">
+                  <h4 className="text-base font-semibold text-stone-900">Lead Controls</h4>
+                  <div className="mt-4 space-y-4">
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Current Status</span>
+                      <select value={normalizeEnquiryStatus(activeEnquiry.status)} onChange={(e) => void handleUpdateEnquiryStatus(activeEnquiry.id, e.target.value as EnquiryStatus)} disabled={enquiryActionBusy} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20 disabled:opacity-60">
+                        {CRM_ENQUIRY_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
+                      </select>
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label>
+                        <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Adults</span>
+                        <input type="number" min={0} value={activeEnquiry.adults ?? activeEnquiry.travelers ?? 1} onChange={(e) => updateActiveEnquiryField('adults', Number(e.target.value))} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+                      </label>
+                      <label>
+                        <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Children</span>
+                        <input type="number" min={0} value={activeEnquiry.children ?? 0} onChange={(e) => updateActiveEnquiryField('children', Number(e.target.value))} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+                      </label>
+                    </div>
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Travel Type</span>
+                      <input type="text" value={activeEnquiry.travelType || ''} onChange={(e) => updateActiveEnquiryField('travelType', e.target.value)} placeholder="Luxury, family, pilgrimage..." className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Preferred Contact</span>
+                      <input type="text" value={activeEnquiry.preferredContactMethod || activeEnquiry.preferredContact || ''} onChange={(e) => updateActiveEnquiryField('preferredContactMethod', e.target.value)} placeholder="Phone, WhatsApp, email..." className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+                    </label>
+                  </div>
+                </section>
+
+                <section className="rounded-[18px] border border-stone-200 bg-white p-5 shadow-[0_12px_35px_rgba(18,38,32,0.06)]">
+                  <h4 className="text-base font-semibold text-stone-900">Follow-Up</h4>
+                  <div className="mt-4 space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <label>
+                        <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Date</span>
+                        <input type="date" value={activeEnquiry.followUpDate || ''} onChange={(e) => updateActiveEnquiryField('followUpDate', e.target.value)} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+                      </label>
+                      <label>
+                        <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Time</span>
+                        <input type="time" value={activeEnquiry.followUpTime || ''} onChange={(e) => updateActiveEnquiryField('followUpTime', e.target.value)} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+                      </label>
+                    </div>
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Priority</span>
+                      <select value={activeEnquiry.priority || 'Medium'} onChange={(e) => updateActiveEnquiryField('priority', e.target.value as EnquiryPriority)} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20">
+                        {CRM_PRIORITY_OPTIONS.map((priority) => <option key={priority} value={priority}>{priority}</option>)}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Assigned To</span>
+                      <input type="text" value={activeEnquiry.assignedTo || ''} onChange={(e) => updateActiveEnquiryField('assignedTo', e.target.value)} placeholder="Rahul, Amit, Priya..." className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+                    </label>
+                  </div>
+                </section>
+
+                <section className="rounded-[18px] border border-stone-200 bg-white p-5 shadow-[0_12px_35px_rgba(18,38,32,0.06)]">
+                  <h4 className="text-base font-semibold text-stone-900">Payment Tracking</h4>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <label>
+                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Package Price</span>
+                      <input type="number" min={0} value={activeEnquiry.packagePrice ?? 0} onChange={(e) => updateActiveEnquiryField('packagePrice', Number(e.target.value))} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+                    </label>
+                    <label>
+                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Advance</span>
+                      <input type="number" min={0} value={activeEnquiry.advanceReceived ?? 0} onChange={(e) => updateActiveEnquiryField('advanceReceived', Number(e.target.value))} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+                    </label>
+                  </div>
+                  <label className="mt-4 block">
+                    <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Payment Status</span>
+                    <select value={activeEnquiry.paymentStatus || 'Pending'} onChange={(e) => updateActiveEnquiryField('paymentStatus', e.target.value as EnquiryPaymentStatus)} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20">
+                      {CRM_PAYMENT_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
+                    </select>
+                  </label>
+                  <div className="mt-4 rounded-[14px] bg-[#f8f7f4] p-4 text-sm">
+                    <div className="flex justify-between gap-3 text-stone-600"><span>Expected</span><strong>{formatPrice(getEnquiryPackagePrice(activeEnquiry))}</strong></div>
+                    <div className="mt-2 flex justify-between gap-3 text-stone-600"><span>Advance</span><strong>{formatPrice(getEnquiryAdvanceReceived(activeEnquiry))}</strong></div>
+                    <div className="mt-2 flex justify-between gap-3 border-t border-stone-200 pt-2 text-stone-900"><span>Remaining</span><strong>{formatPrice(getEnquiryRemainingBalance(activeEnquiry))}</strong></div>
+                  </div>
+                </section>
+
+                <div className="sticky bottom-0 space-y-3 rounded-[18px] border border-stone-200 bg-white/95 p-4 shadow-[0_-12px_35px_rgba(18,38,32,0.08)] backdrop-blur-md">
+                  <button type="button" onClick={() => void handleSaveEnquiryCrmDetails()} disabled={enquiryActionBusy} className="inline-flex w-full items-center justify-center gap-2 rounded-[10px] bg-[#008080] px-4 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-white transition hover:bg-[#006666] disabled:cursor-not-allowed disabled:opacity-60">
+                    {enquiryActionBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                    Save CRM Details
+                  </button>
+                  <button type="button" onClick={() => handleOpenBookingConversion(activeEnquiry)} disabled={enquiryActionBusy || conversionSaving} className="inline-flex w-full items-center justify-center gap-2 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60">
+                    <Briefcase className="h-4 w-4" />
+                    {activeEnquiry.convertedBookingId ? 'Update Booking' : 'Convert to Booking'}
+                  </button>
+                  <button type="button" onClick={() => void handleDeleteEnquiry(activeEnquiry.id)} disabled={enquiryActionBusy} className="inline-flex w-full items-center justify-center gap-2 rounded-[10px] border border-rose-200 bg-rose-50 px-4 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60">
+                    <Trash2 className="h-4 w-4" />
+                    Delete Enquiry
+                  </button>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {conversionEnquiry && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/60 p-4 backdrop-blur-sm animate-fade-in" onClick={() => !conversionSaving && setConversionEnquiry(null)}>
+          <form
+            onSubmit={(event) => void handleConvertEnquiryToBooking(event)}
+            onClick={(event) => event.stopPropagation()}
+            className="w-full max-w-3xl overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-2xl"
+          >
+            <div className="relative overflow-hidden bg-[#071d28] p-6 text-white">
+              <div className="absolute inset-0 bg-linear-to-r from-[#071d28] via-[#11383a] to-[#4DA528]/70" />
+              <div className="relative flex items-start justify-between gap-4">
+                <div>
+                  <span className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-white/70">Booking Conversion</span>
+                  <h3 className="mt-3 text-2xl font-semibold tracking-tight">{conversionEnquiry.name || 'Travel Lead'}</h3>
+                  <p className="mt-1 text-sm text-white/65">Create a customer trip from enquiry #{conversionEnquiry.id.substring(0, 8).toUpperCase()} while preserving the CRM history.</p>
+                </div>
+                <button type="button" onClick={() => setConversionEnquiry(null)} disabled={conversionSaving} className="rounded-full bg-white/10 p-2 text-white/70 transition hover:bg-white/20 hover:text-white disabled:opacity-50">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="grid max-h-[70vh] gap-5 overflow-y-auto bg-[#fcfbf9] p-5 md:grid-cols-2">
+              <label className="md:col-span-2">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Package</span>
+                <select
+                  value={conversionFormData.packageId}
+                  onChange={(event) => {
+                    const selected = packages.find((pkg) => pkg.id === event.target.value);
+                    setConversionFormData((prev) => ({
+                      ...prev,
+                      packageId: event.target.value,
+                      totalCost: selected ? Number(selected.offerPrice ?? selected.price ?? prev.totalCost) : prev.totalCost,
+                    }));
+                  }}
+                  className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20"
+                >
+                  <option value="">Custom / no package selected</option>
+                  {packages.map((pkg) => (
+                    <option key={pkg.id} value={pkg.id}>{pkg.title} - {pkg.destination}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Departure Date</span>
+                <input type="date" value={conversionFormData.departureDate} onChange={(event) => setConversionFormData((prev) => ({ ...prev, departureDate: event.target.value }))} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+              </label>
+
+              <label>
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Number of Travellers</span>
+                <input type="number" min={1} value={conversionFormData.travellers} onChange={(event) => setConversionFormData((prev) => ({ ...prev, travellers: Number(event.target.value) }))} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+              </label>
+
+              <label>
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Total Cost</span>
+                <input type="number" min={0} value={conversionFormData.totalCost} onChange={(event) => setConversionFormData((prev) => ({ ...prev, totalCost: Number(event.target.value) }))} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+              </label>
+
+              <label>
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Advance Paid</span>
+                <input type="number" min={0} value={conversionFormData.advancePaid} onChange={(event) => setConversionFormData((prev) => ({ ...prev, advancePaid: Number(event.target.value) }))} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+              </label>
+
+              <label>
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Assigned Trip Manager</span>
+                <input type="text" value={conversionFormData.assignedTripManager} onChange={(event) => setConversionFormData((prev) => ({ ...prev, assignedTripManager: event.target.value }))} placeholder="Rahul, Amit, Priya..." className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+              </label>
+
+              <div className="rounded-[16px] border border-emerald-200 bg-emerald-50 p-4 text-sm">
+                <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Remaining Balance</span>
+                <strong className="mt-2 block text-2xl text-emerald-800">{formatPrice(Math.max(Number(conversionFormData.totalCost || 0) - Number(conversionFormData.advancePaid || 0), 0))}</strong>
+                <p className="mt-1 text-xs text-emerald-700">Payment status will be {getConversionPaymentStatus(Number(conversionFormData.totalCost || 0), Number(conversionFormData.advancePaid || 0))}.</p>
+              </div>
+
+              <label className="md:col-span-2">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Internal Notes</span>
+                <textarea value={conversionFormData.internalNotes} onChange={(event) => setConversionFormData((prev) => ({ ...prev, internalNotes: event.target.value }))} rows={4} placeholder="Customer wants luxury hotel. Call after 6 PM. Needs flight included." className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+              </label>
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-stone-200 bg-white p-5 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => setConversionEnquiry(null)} disabled={conversionSaving} className="rounded-[10px] border border-stone-200 bg-white px-5 py-3 text-xs font-bold uppercase tracking-[0.16em] text-stone-700 transition hover:bg-stone-100 disabled:opacity-50">
+                Cancel
+              </button>
+              <button type="submit" disabled={conversionSaving} className="inline-flex items-center justify-center gap-2 rounded-[10px] bg-[#008080] px-5 py-3 text-xs font-bold uppercase tracking-[0.16em] text-white transition hover:bg-[#006666] disabled:cursor-not-allowed disabled:opacity-60">
+                {conversionSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                {conversionEnquiry.convertedBookingId ? 'Update Booking' : 'Confirm Booking'}
               </button>
             </div>
-
-            {/* Body */}
-            <div className="p-6 space-y-6 overflow-y-auto max-h-[60vh] text-xs sm:text-sm">
-              
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Contact Phone</span>
-                  <a href={`tel:${activeEnquiry.phone}`} className="text-stone-850 font-bold hover:underline">
-                    {activeEnquiry.phone}
-                  </a>
-                </div>
-
-                <div>
-                  <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Contact Email</span>
-                  <a href={`mailto:${activeEnquiry.email}`} className="text-stone-850 font-bold hover:underline">
-                    {activeEnquiry.email}
-                  </a>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-6 border-t border-stone-100 pt-4">
-                <div>
-                  <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Target Destination</span>
-                  <strong className="text-[#008080] font-bold block">
-                    {activeEnquiry.destination}
-                  </strong>
-                  {activeEnquiry.packageName && (
-                    <span className="text-[10px] text-stone-400 italic block mt-0.5">Package: {activeEnquiry.packageName}</span>
-                  )}
-                </div>
-
-                <div>
-                  <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Travel Date</span>
-                  <strong className="text-stone-850 font-bold block">
-                    {activeEnquiry.travelDate}
-                  </strong>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-6 border-t border-stone-100 pt-4">
-                <div>
-                  <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Number of Travelers</span>
-                  <strong className="text-stone-850 font-bold block">
-                    {activeEnquiry.travelers} Guests
-                  </strong>
-                </div>
-
-                <div>
-                  <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block mb-1">Estimated Budget</span>
-                  <strong className="text-stone-850 font-bold block">
-                    {activeEnquiry.budget} per traveler
-                  </strong>
-                </div>
-              </div>
-
-              {/* Message Box */}
-              <div className="bg-[#f8f7f4] border border-stone-200 rounded-sm p-4 space-y-2">
-                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">Special Requests & Message</span>
-                <p className="text-stone-700 leading-relaxed font-light whitespace-pre-wrap">
-                  {activeEnquiry.message || 'No custom messages entered.'}
-                </p>
-              </div>
-
-              {/* Submitted At */}
-              <div className="text-[10px] text-stone-400 text-right">
-                Submitted At: {activeEnquiry.createdAt ? new Date(activeEnquiry.createdAt).toLocaleString() : 'N/A'}
-              </div>
-
-            </div>
-
-            {/* Footer Operations */}
-            <div className="bg-stone-50 border-t border-stone-100 p-6 flex flex-col sm:flex-row justify-between items-center gap-4">
-              
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-stone-500 font-bold uppercase tracking-wider">Status:</span>
-                <select
-                  value={activeEnquiry.status}
-                  onChange={(e) => handleUpdateEnquiryStatus(activeEnquiry.id, e.target.value as EnquiryStatus)}
-                  className={`px-3 py-1.5 bg-white border border-stone-200 rounded-sm text-xs font-bold uppercase cursor-pointer ${
-                    activeEnquiry.status === 'New' ? 'text-blue-700' :
-                    activeEnquiry.status === 'Contacted' ? 'text-amber-700' :
-                    activeEnquiry.status === 'Converted' ? 'text-emerald-700' :
-                    'text-stone-700'
-                  }`}
-                >
-                  <option value="New">New</option>
-                  <option value="Contacted">Contacted</option>
-                  <option value="Converted">Converted</option>
-                  <option value="Closed">Closed</option>
-                </select>
-              </div>
-
-              <div className="flex gap-2 w-full sm:w-auto">
-                <button
-                  onClick={() => handleDeleteEnquiry(activeEnquiry.id)}
-                  className="w-1/2 sm:w-auto px-4 py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 text-[10px] font-bold uppercase tracking-wider rounded-sm transition cursor-pointer inline-flex items-center justify-center gap-1.5"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  <span>Delete Enquiry</span>
-                </button>
-                <button
-                  onClick={() => setActiveEnquiry(null)}
-                  className="w-1/2 sm:w-auto px-5 py-2 bg-stone-900 hover:bg-stone-800 text-white text-[10px] font-bold uppercase tracking-wider rounded-sm transition cursor-pointer text-center"
-                >
-                  Close Modal
-                </button>
-              </div>
-
-            </div>
-
-          </div>
+          </form>
         </div>
       )}
 
