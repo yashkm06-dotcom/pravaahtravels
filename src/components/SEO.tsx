@@ -103,7 +103,7 @@ export default function SEO({
     const script = document.createElement('script');
     script.id = 'jsonld-schema';
     script.type = 'application/ld+json';
-    script.innerHTML = JSON.stringify(schemaMarkup || defaultSchema);
+    script.textContent = JSON.stringify(schemaMarkup || defaultSchema).replace(/</g, '\\u003c');
     document.head.appendChild(script);
 
     return () => {

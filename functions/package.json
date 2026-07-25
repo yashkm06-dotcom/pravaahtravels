@@ -1,0 +1,12 @@
+{
+  "name": "pravaah-functions",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "firebase-functions": "^5.1.1"
+  }
+}

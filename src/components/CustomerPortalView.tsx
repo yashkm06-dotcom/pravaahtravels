@@ -1649,14 +1649,21 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
     setPaymentLoading(true);
     try {
       const docRef = doc(db, 'bookings', payingBooking.id);
-      await updateDoc(docRef, { paymentStatus: 'Paid', status: 'Confirmed' });
-
-      // Trigger booking-confirmed email notification
-      triggerSystemEmail('booking-confirmed', payingBooking.customerEmail || payingBooking.email || user.email || '', {
-        customerName: payingBooking.customerName || user.displayName || 'Traveler',
-        bookingId: payingBooking.id,
-        packageTitle: payingBooking.packageTitle,
-        travelDate: payingBooking.travelDate
+      const now = new Date().toISOString();
+      await updateDoc(docRef, {
+        paymentStatus: 'Pending Verification',
+        paymentSubmissionStatus: 'Submitted',
+        paymentSubmittedAt: now,
+        paymentHistory: [
+          ...(Array.isArray(payingBooking.paymentHistory) ? payingBooking.paymentHistory : []),
+          {
+            amount: payingBooking.remainingBalance || payingBooking.price || 0,
+            method: 'Card submission',
+            status: 'Pending Verification',
+            submittedAt: now,
+          },
+        ],
+        updatedAt: now,
       });
 
       setPaymentSuccess(true);
@@ -4259,7 +4266,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
             
             <div className="bg-teal-700 text-white p-5 flex items-center justify-between">
               <div>
-                <h4 className="text-base font-bold">Secure Card Checkout</h4>
+                <h4 className="text-base font-bold">Payment Verification</h4>
                 <p className="text-xs text-teal-100">Booking: {payingBooking.packageTitle}</p>
               </div>
               <CreditCard className="w-8 h-8 opacity-45" />
@@ -4270,13 +4277,13 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
                 <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-md">
                   <Check className="w-8 h-8 stroke-[3.5]" />
                 </div>
-                <h4 className="text-base font-bold text-stone-850">Payment Successful!</h4>
-                <p className="text-xs text-stone-500">Your trip is now confirmed and verified. Booking status updated in Firestore.</p>
+                <h4 className="text-base font-bold text-stone-850">Payment Submitted!</h4>
+                <p className="text-xs text-stone-500">Your payment details were sent for admin verification. We will confirm the booking once the payment is reviewed.</p>
               </div>
             ) : (
               <form onSubmit={handleMakePayment} className="p-5 space-y-4">
                 <div className="bg-stone-50 p-3 rounded border border-stone-200 flex justify-between text-xs font-semibold">
-                  <span className="text-stone-500">Total Dues Payment:</span>
+                  <span className="text-stone-500">Amount for Verification:</span>
                   <span className="text-[#008080]">{formatPrice(payingBooking.price)}</span>
                 </div>
 
@@ -4347,7 +4354,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
                     {paymentLoading ? (
                       <RefreshCw className="w-4 h-4 animate-spin" />
                     ) : (
-                      <span>Complete Checkout</span>
+                      <span>Submit for Review</span>
                     )}
                   </button>
                 </div>

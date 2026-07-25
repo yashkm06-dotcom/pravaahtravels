@@ -67,7 +67,7 @@ Generate a highly personalized, detailed, and authentic travel package itinerary
 
 Craft an itinerary that makes sense for the destination, keeping travel times between spots realistic. Each day must feature a highly engaging and evocative description of activities, local dining recommendations, sightseeing points, and other premium travel insights.`;
 
-    const candidateModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+    const candidateModels = ['gemini-2.0-flash', 'gemini-2.5-pro', 'gemini-1.5-flash', 'gemini-1.5-pro'];
     let lastError: any = null;
     let response: any = null;
 
@@ -199,7 +199,7 @@ The response MUST strictly match this JSON schema:
   "advisoryMessage": "A professional and friendly safety advisory or tip from Pravaah Travels (e.g. 'Mornings are usually clear. We recommend starting sightseeing by 6 AM to avoid afternoon cloud cover.')"
 }`;
 
-    const candidateModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+    const candidateModels = ['gemini-2.0-flash', 'gemini-2.5-pro', 'gemini-1.5-flash', 'gemini-1.5-pro'];
     let lastError: any = null;
     let response: any = null;
 

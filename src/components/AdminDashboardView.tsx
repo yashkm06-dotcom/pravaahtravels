@@ -27,6 +27,7 @@ const CustomersTab = lazy(() => import('./admin/AdminDashboardSections').then((m
 const BlogsTab = lazy(() => import('./admin/AdminDashboardSections').then((module) => ({ default: module.BlogsTab })));
 const AnalyticsTab = lazy(() => import('./admin/AdminDashboardSections').then((module) => ({ default: module.AnalyticsTab })));
 const SettingsTab = lazy(() => import('./admin/AdminDashboardSections').then((module) => ({ default: module.SettingsTab })));
+const AiPackageImporter = lazy(() => import('./admin/AiPackageImporter'));
 
 interface AdminDashboardViewProps {
   packages: TravelPackage[];
@@ -40,7 +41,7 @@ interface AdminDashboardViewProps {
   websiteCMS: WebsiteCMSSettings;
 }
 
-type AdminTab = 'overview' | 'packages' | 'enquiries' | 'customers' | 'gallery' | 'media-library' | 'website' | 'activities' | 'bookings' | 'reviews' | 'blogs' | 'analytics' | 'settings';
+type AdminTab = 'overview' | 'packages' | 'enquiries' | 'customers' | 'gallery' | 'media-library' | 'website' | 'activities' | 'bookings' | 'reviews' | 'blogs' | 'analytics' | 'settings' | 'ai-importer';
 
 const CRM_ENQUIRY_STATUS_OPTIONS: EnquiryStatus[] = ['New', 'Contacted', 'Quote Sent', 'Booking Confirmed', 'Cancelled', 'Completed'];
 const CRM_PRIORITY_OPTIONS: EnquiryPriority[] = ['Low', 'Medium', 'High'];
@@ -70,6 +71,12 @@ const getEnquiryChildren = (enquiry: Enquiry) => Number(enquiry.children ?? 0);
 const getEnquiryPackagePrice = (enquiry: Enquiry) => Number(enquiry.packagePrice ?? 0);
 const getEnquiryAdvanceReceived = (enquiry: Enquiry) => Number(enquiry.advanceReceived ?? 0);
 const getEnquiryRemainingBalance = (enquiry: Enquiry) => Math.max(getEnquiryPackagePrice(enquiry) - getEnquiryAdvanceReceived(enquiry), 0);
+
+const toSafeCsvCell = (value: unknown) => {
+  const rawValue = String(value ?? '').replace(/\r?\n/g, ' ');
+  const protectedValue = /^[=+\-@]/.test(rawValue.trim()) ? `'${rawValue}` : rawValue;
+  return `"${protectedValue.replace(/"/g, '""')}"`;
+};
 
 const getConversionPaymentStatus = (totalCost: number, advancePaid: number): EnquiryPaymentStatus => {
   if (totalCost > 0 && advancePaid >= totalCost) return 'Paid';
@@ -538,7 +545,11 @@ function AdminDashboardView({
         _path: docSnap.ref.path,
         ...(docSnap.data() as Record<string, unknown>),
       }));
-      const items = privateItems.filter((item: any) => item.packageId || item.packageTitle || item.title);
+      const items = privateItems.filter((item: any) => {
+        const isSavedPackage = item.type === 'saved_package' || Boolean(item.packageId || item.packageTitle);
+        const isNonPackageVaultItem = item.type === 'trip_document' || item.type === 'ai_itinerary' || (item.bookingId && item.documentType);
+        return isSavedPackage && !isNonPackageVaultItem;
+      });
       const tripDocuments = privateItems.filter((item: any) => item.type === 'trip_document' || (item.bookingId && item.documentType));
       setWishlistItems(items);
       setBookingDocuments(tripDocuments as TripDocument[]);
@@ -958,8 +969,8 @@ function AdminDashboardView({
     ]);
 
     const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+      headers.map(toSafeCsvCell).join(','),
+      ...rows.map(row => row.map(toSafeCsvCell).join(','))
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -970,6 +981,7 @@ function AdminDashboardView({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Package modal/form states
@@ -1697,35 +1709,36 @@ function AdminDashboardView({
     // Headers
     const headers = ['Name', 'Phone', 'Email', 'Destination', 'Travel Date', 'Adults', 'Children', 'Budget', 'Status', 'Priority', 'Assigned To', 'Follow Up', 'Package Price', 'Advance Received', 'Payment Status', 'Submitted At', 'Message'];
     const rows = filteredEnquiries.map((e) => [
-      `"${String(e.name ?? '').replace(/"/g, '""')}"`,
-      `"${String(e.phone ?? '').replace(/"/g, '""')}"`,
-      `"${String(e.email ?? '').replace(/"/g, '""')}"`,
-      `"${String(e.destination ?? '').replace(/"/g, '""')}"`,
-      `"${String(e.travelDate ?? '').replace(/"/g, '""')}"`,
+      e.name ?? '',
+      e.phone ?? '',
+      e.email ?? '',
+      e.destination ?? '',
+      e.travelDate ?? '',
       getEnquiryAdults(e),
       getEnquiryChildren(e),
-      `"${String(e.budget ?? '').replace(/"/g, '""')}"`,
-      `"${normalizeEnquiryStatus(e.status)}"`,
-      `"${e.priority || 'Medium'}"`,
-      `"${String(e.assignedTo || 'Unassigned').replace(/"/g, '""')}"`,
-      `"${[e.followUpDate, e.followUpTime].filter(Boolean).join(' ').replace(/"/g, '""')}"`,
+      e.budget ?? '',
+      normalizeEnquiryStatus(e.status),
+      e.priority || 'Medium',
+      e.assignedTo || 'Unassigned',
+      [e.followUpDate, e.followUpTime].filter(Boolean).join(' '),
       getEnquiryPackagePrice(e),
       getEnquiryAdvanceReceived(e),
-      `"${e.paymentStatus || 'Pending'}"`,
-      `"${String(e.createdAt ?? '').replace(/"/g, '""')}"`,
-      `"${(e.message || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`
+      e.paymentStatus || 'Pending',
+      e.createdAt ?? '',
+      e.message || ''
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' 
-      + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const csvContent = [headers.map(toSafeCsvCell).join(','), ...rows.map((r) => r.map(toSafeCsvCell).join(','))].join('\n');
 
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.setAttribute('href', url);
     link.setAttribute('download', `pravaah_enquiries_${new Date().toISOString().substring(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // ----------------------------------------------------
@@ -2666,6 +2679,7 @@ function AdminDashboardView({
         { id: 'overview' as AdminTab, label: 'Dashboard', icon: LayoutDashboard, count: null },
         { id: 'website' as AdminTab, label: 'Website CMS', icon: Globe, count: null },
         { id: 'media-library' as AdminTab, label: 'Media Library', icon: Images, count: gallery.length },
+        { id: 'ai-importer' as AdminTab, label: 'AI Importer', icon: Sparkles, count: null },
         { id: 'analytics' as AdminTab, label: 'Analytics', icon: LineChartIcon, count: null },
         { id: 'settings' as AdminTab, label: 'Settings', icon: Settings, count: null },
       ],
@@ -3054,6 +3068,12 @@ function AdminDashboardView({
                 handleMoveGalleryImage={handleMoveGalleryImage}
                 handleDeleteGalleryImage={handleDeleteGalleryImage}
               />
+            </Suspense>
+          )}
+
+          {activeTab === 'ai-importer' && (
+            <Suspense fallback={<div className="rounded-[20px] border border-stone-200 bg-white p-8 text-sm text-stone-500">Loading AI package importer…</div>}>
+              <AiPackageImporter />
             </Suspense>
           )}
 

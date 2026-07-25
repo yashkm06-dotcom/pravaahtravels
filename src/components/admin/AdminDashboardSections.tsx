@@ -14,7 +14,24 @@ import { db, storage, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, qu
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { TravelPackage, Enquiry, EnquiryPriority, EnquiryStatus, GalleryImage, WebsiteCMSSettings, formatPrice, CustomerProfile, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem, DestinationCategory, type BookingDocumentStatus, type TripChecklistKey, type TripCustomerStatus, type TripDocument, type TripOperationDocument, type TripOperationDocumentType, type TripOperations } from '../../types';
 import { TableSkeletonLoader, CardGridSkeletonLoader } from '../SkeletonLoader';
-import { handleTravelImageError } from '../../utils/imageFallback';
+import { getTravelImage, handleTravelImageError } from '../../utils/imageFallback';
+
+const toSafeCsvCell = (value: unknown) => {
+  const rawValue = String(value ?? '').replace(/\r?\n/g, ' ');
+  const protectedValue = /^[=+\-@]/.test(rawValue.trim()) ? `'${rawValue}` : rawValue;
+  return `"${protectedValue.replace(/"/g, '""')}"`;
+};
+
+const escapeReportHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (character) => {
+  const entities: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  };
+  return entities[character] || character;
+});
 
 interface OverviewTabProps {
   recentBookings: any[];
@@ -3840,7 +3857,7 @@ export function AnalyticsTab(props: AnalyticsTabProps) {
       ['Package', 'Bookings', 'Wishlist Saves', 'Reviews', 'Revenue'],
       ...analyticsData.packagePopularity.map((item) => [item.title, item.bookings, item.saves, item.reviews, item.revenue]),
     ];
-    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const csv = rows.map((row) => row.map(toSafeCsvCell).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -3853,8 +3870,8 @@ export function AnalyticsTab(props: AnalyticsTabProps) {
   const handleExportAnalyticsPDF = () => {
     const reportWindow = window.open('', '_blank', 'noopener,noreferrer');
     if (!reportWindow) return;
-    const topDestinationRows = analyticsData.topDestinations.map((item) => `<tr><td>${item.destination}</td><td>${item.bookings}</td><td>${formatPrice(item.revenue)}</td><td>${item.growth}%</td></tr>`).join('');
-    const kpiRows = kpiCards.map((card) => `<tr><td>${card.label}</td><td>${card.value}</td><td>${card.trend}</td></tr>`).join('');
+    const topDestinationRows = analyticsData.topDestinations.map((item) => `<tr><td>${escapeReportHtml(item.destination)}</td><td>${escapeReportHtml(item.bookings)}</td><td>${escapeReportHtml(formatPrice(item.revenue))}</td><td>${escapeReportHtml(`${item.growth}%`)}</td></tr>`).join('');
+    const kpiRows = kpiCards.map((card) => `<tr><td>${escapeReportHtml(card.label)}</td><td>${escapeReportHtml(card.value)}</td><td>${escapeReportHtml(card.trend)}</td></tr>`).join('');
     reportWindow.document.write(`
       <html>
         <head>
@@ -3870,7 +3887,7 @@ export function AnalyticsTab(props: AnalyticsTabProps) {
         </head>
         <body>
           <h1>Pravaah Travels Business Analytics</h1>
-          <p>${dateRange.label} • Generated ${new Date().toLocaleString('en-IN')}</p>
+          <p>${escapeReportHtml(dateRange.label)} • Generated ${escapeReportHtml(new Date().toLocaleString('en-IN'))}</p>
           <h2>KPI Summary</h2>
           <table><thead><tr><th>Metric</th><th>Value</th><th>Trend</th></tr></thead><tbody>${kpiRows}</tbody></table>
           <h2>Top Destinations</h2>
@@ -4152,7 +4169,7 @@ export function AnalyticsTab(props: AnalyticsTabProps) {
               <p className="rounded-[16px] border border-dashed border-stone-200 bg-stone-50 p-5 text-center text-sm text-stone-400">No package activity in this range.</p>
             ) : analyticsData.packagePopularity.map((item) => (
               <div key={item.id} className="grid grid-cols-[64px_1fr] gap-3 rounded-[16px] border border-stone-200 bg-[#fcfbf9] p-3">
-                <img src={item.imageUrl} alt={item.title} onError={handleTravelImageError} className="h-16 w-16 rounded-[12px] object-cover" loading="lazy" referrerPolicy="no-referrer" />
+                <img src={getTravelImage(item.imageUrl)} alt={item.title} onError={handleTravelImageError} className="h-16 w-16 rounded-[12px] object-cover" loading="lazy" referrerPolicy="no-referrer" />
                 <div className="min-w-0">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">

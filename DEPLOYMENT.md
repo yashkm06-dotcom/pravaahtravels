@@ -46,6 +46,14 @@ VITE_FIREBASE_APP_ID="YOUR_APP_ID"
 VITE_FIREBASE_DATABASE_ID="(default)" # Or your named firestore database ID
 ```
 
+### Firebase Functions Secret
+
+The AI Package Importer Cloud Function reads its Cerebras API key from Firebase Secret Manager:
+
+```bash
+firebase functions:secrets:set CEREBRAS_API_KEY
+```
+
 ---
 
 ## 4. Security Rules Deployment

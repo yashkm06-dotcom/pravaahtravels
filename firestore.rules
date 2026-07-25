@@ -21,8 +21,25 @@ service cloud.firestore {
     function isBookingOwner(resourceData) {
       return isSignedIn() && (
         resourceData.userId == request.auth.uid ||
-        resourceData.customerEmail == request.auth.token.email
+        resourceData.customerId == request.auth.uid ||
+        resourceData.customerEmail == request.auth.token.email ||
+        resourceData.email == request.auth.token.email
       );
+    }
+
+    function isSafeCustomerBookingUpdate() {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      return isBookingOwner(resource.data) &&
+        changedKeys.hasOnly([
+          'status',
+          'updatedAt',
+          'paymentStatus',
+          'paymentSubmittedAt',
+          'paymentSubmissionStatus',
+          'paymentHistory'
+        ]) &&
+        (!changedKeys.hasAny(['status']) || request.resource.data.status == 'Cancelled') &&
+        (!changedKeys.hasAny(['paymentStatus']) || request.resource.data.paymentStatus == 'Pending Verification');
     }
 
     // Global safety net.
@@ -52,10 +69,11 @@ service cloud.firestore {
     }
 
     match /bookings/{bookingId} {
-      allow create: if isSignedIn() &&
+      allow create: if isAdmin() || (isSignedIn() &&
         request.resource.data.userId == request.auth.uid &&
-        request.resource.data.customerEmail == request.auth.token.email;
-      allow read, update: if isAdmin() || isBookingOwner(resource.data);
+        request.resource.data.customerEmail == request.auth.token.email);
+      allow read: if isAdmin() || isBookingOwner(resource.data);
+      allow update: if isAdmin() || isSafeCustomerBookingUpdate();
       allow delete: if isAdmin();
     }
 

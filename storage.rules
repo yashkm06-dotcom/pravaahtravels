@@ -13,7 +13,16 @@ service firebase.storage {
       );
     }
 
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
     match /cms/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /homepage-cms/{allPaths=**} {
       allow read: if true;
       allow write: if isAdmin();
     }
@@ -31,6 +40,19 @@ service firebase.storage {
     match /blogs/{allPaths=**} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    match /reviews/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /bookings/{bookingId}/operations/{allPaths=**} {
+      allow read, write: if isAdmin();
+    }
+
+    match /users/{userId}/tripDocuments/{allPaths=**} {
+      allow read, write: if isOwner(userId) || isAdmin();
     }
 
     match /{allPaths=**} {
