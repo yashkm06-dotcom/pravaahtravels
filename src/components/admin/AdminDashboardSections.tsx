@@ -13,8 +13,10 @@ import {
 import { db, storage, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, orderBy, writeBatch } from '../../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { TravelPackage, Enquiry, EnquiryPriority, EnquiryStatus, GalleryImage, WebsiteCMSSettings, formatPrice, CustomerProfile, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem, DestinationCategory, type BookingDocumentStatus, type TripChecklistKey, type TripCustomerStatus, type TripDocument, type TripOperationDocument, type TripOperationDocumentType, type TripOperations } from '../../types';
+import type { PackageActivityLog, PackageImportRecord } from '../../types/packageCms';
 import { TableSkeletonLoader, CardGridSkeletonLoader } from '../SkeletonLoader';
 import { getTravelImage, handleTravelImageError } from '../../utils/imageFallback';
+import { getPackageActivityLogs, getPackageImportHistory } from '../../services/packageCmsService';
 
 const toSafeCsvCell = (value: unknown) => {
   const rawValue = String(value ?? '').replace(/\r?\n/g, ' ');
@@ -1707,18 +1709,180 @@ interface PackagesTabProps {
   handleOpenPkgAdd: () => void;
   handleOpenPkgEdit: (pkg: TravelPackage) => void;
   handleDeletePackage: (id: string) => Promise<void>;
-  togglePackageActive: (pkg: TravelPackage) => void;
+  handleArchivePackage: (id: string) => Promise<void>;
+  handleDuplicatePackage: (id: string) => Promise<void>;
+  togglePackageActive: (pkg: TravelPackage) => Promise<void>;
   formatPriceValue: (value: number) => string;
 }
 
+type PackageStatusFilter = 'all' | 'published' | 'draft' | 'archived';
+type PackageSortMode = 'updated-desc' | 'created-desc' | 'title-asc' | 'price-desc';
+
 export function PackagesTab(props: PackagesTabProps) {
-  const { packages, packageSearch, setPackageSearch, handleOpenPkgAdd, handleOpenPkgEdit, handleDeletePackage, togglePackageActive, formatPriceValue } = props;
+  const {
+    packages,
+    packageSearch,
+    setPackageSearch,
+    handleOpenPkgAdd,
+    handleOpenPkgEdit,
+    handleDeletePackage,
+    handleArchivePackage,
+    handleDuplicatePackage,
+    togglePackageActive,
+    formatPriceValue,
+  } = props;
+  const [statusFilter, setStatusFilter] = useState<PackageStatusFilter>('all');
+  const [destinationFilter, setDestinationFilter] = useState('All');
+  const [sortMode, setSortMode] = useState<PackageSortMode>('updated-desc');
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [detailsPackage, setDetailsPackage] = useState<TravelPackage | null>(null);
+  const [detailsImports, setDetailsImports] = useState<PackageImportRecord[]>([]);
+  const [detailsLogs, setDetailsLogs] = useState<PackageActivityLog[]>([]);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const pageSize = 10;
+
+  const getPackageStatus = (pkg: TravelPackage): Exclude<PackageStatusFilter, 'all'> => {
+    if (pkg.cmsStatus === 'archived') return 'archived';
+    if (pkg.cmsStatus === 'deleted') return 'draft';
+    return pkg.cmsStatus === 'draft' || pkg.active === false ? 'draft' : 'published';
+  };
+
+  const destinationOptions = useMemo(() => {
+    const values = new Set<string>();
+    packages.forEach((pkg) => {
+      if (pkg.cmsStatus === 'deleted') return;
+      if (pkg.destination) values.add(pkg.destination);
+      (pkg.destinations || []).forEach((destination) => {
+        if (destination) values.add(destination);
+      });
+    });
+    return ['All', ...Array.from(values).sort((left, right) => left.localeCompare(right))];
+  }, [packages]);
+
+  const filteredPackages = useMemo(() => {
+    const search = packageSearch.trim().toLowerCase();
+    const destination = destinationFilter.toLowerCase();
+    const rows = packages
+      .filter((pkg) => pkg.cmsStatus !== 'deleted')
+      .filter((pkg) => {
+        if (statusFilter === 'all') return true;
+        return getPackageStatus(pkg) === statusFilter;
+      })
+      .filter((pkg) => {
+        if (destinationFilter === 'All') return true;
+        return [pkg.destination, ...(pkg.destinations || [])].some((item) => item?.toLowerCase() === destination);
+      })
+      .filter((pkg) => {
+        if (!search) return true;
+        return [
+          pkg.title,
+          pkg.destination,
+          pkg.slug,
+          pkg.packageCode,
+          pkg.category,
+          pkg.location,
+        ].some((item) => String(item || '').toLowerCase().includes(search));
+      });
+
+    return [...rows].sort((left, right) => {
+      if (sortMode === 'title-asc') return left.title.localeCompare(right.title);
+      if (sortMode === 'price-desc') return (right.offerPrice || right.price || 0) - (left.offerPrice || left.price || 0);
+      const leftDate = new Date(sortMode === 'created-desc' ? left.createdAt : left.updatedAt || left.createdAt).getTime();
+      const rightDate = new Date(sortMode === 'created-desc' ? right.createdAt : right.updatedAt || right.createdAt).getTime();
+      return rightDate - leftDate;
+    });
+  }, [destinationFilter, packageSearch, packages, sortMode, statusFilter]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredPackages.length / pageSize));
+  const pagedPackages = filteredPackages.slice((page - 1) * pageSize, page * pageSize);
+  const allPageSelected = pagedPackages.length > 0 && pagedPackages.every((pkg) => selectedIds.includes(pkg.id));
+
+  useEffect(() => {
+    setPage(1);
+    setSelectedIds([]);
+  }, [destinationFilter, packageSearch, sortMode, statusFilter]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!detailsPackage) {
+      setDetailsImports([]);
+      setDetailsLogs([]);
+      setDetailsLoading(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    setDetailsLoading(true);
+    Promise.all([
+      getPackageImportHistory(detailsPackage.id),
+      getPackageActivityLogs(detailsPackage.id),
+    ])
+      .then(([importHistory, activityLogs]) => {
+        if (!isMounted) return;
+        setDetailsImports(importHistory);
+        setDetailsLogs(activityLogs);
+      })
+      .catch((error) => {
+        console.error('Failed to load package CMS history:', error);
+        if (!isMounted) return;
+        setDetailsImports([]);
+        setDetailsLogs([]);
+      })
+      .finally(() => {
+        if (isMounted) setDetailsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [detailsPackage]);
+
+  const toggleSelection = (packageId: string) => {
+    setSelectedIds((current) => current.includes(packageId)
+      ? current.filter((id) => id !== packageId)
+      : [...current, packageId]);
+  };
+
+  const togglePageSelection = () => {
+    setSelectedIds((current) => {
+      if (allPageSelected) return current.filter((id) => !pagedPackages.some((pkg) => pkg.id === id));
+      return Array.from(new Set([...current, ...pagedPackages.map((pkg) => pkg.id)]));
+    });
+  };
+
+  const selectedPackages = packages.filter((pkg) => selectedIds.includes(pkg.id));
+
+  const runBulkAction = async (action: 'publish' | 'archive' | 'delete') => {
+    for (const pkg of selectedPackages) {
+      if (action === 'publish' && getPackageStatus(pkg) !== 'published') {
+        await togglePackageActive(pkg);
+      }
+      if (action === 'archive') {
+        await handleArchivePackage(pkg.id);
+      }
+      if (action === 'delete') {
+        await handleDeletePackage(pkg.id);
+      }
+    }
+    setSelectedIds([]);
+  };
+
+  const statusBadgeClass = (pkg: TravelPackage) => {
+    const status = getPackageStatus(pkg);
+    if (status === 'published') return 'bg-emerald-50 border-emerald-100 text-emerald-800';
+    if (status === 'archived') return 'bg-amber-50 border-amber-100 text-amber-800';
+    return 'bg-stone-100 border-stone-200 text-stone-700';
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl sm:text-2xl font-serif font-normal text-[#333333] tracking-tight">Manage Travel Packages</h2>
-          <p className="text-xs text-stone-500 font-light">Add, edit, or delete packages visible to public website visitors.</p>
+          <p className="text-xs text-stone-500 font-light">Manage drafts, published packages, archives, import metadata, and catalogue actions.</p>
         </div>
         <button onClick={handleOpenPkgAdd} className="px-4 py-2.5 bg-[#008080] hover:bg-[#006666] text-white text-[10px] font-bold uppercase tracking-wider rounded-sm shadow-sm flex items-center justify-center gap-1.5 cursor-pointer">
           <Plus className="w-4 h-4" />
@@ -1727,17 +1891,52 @@ export function PackagesTab(props: PackagesTabProps) {
       </div>
 
       <div className="bg-white border border-stone-200 rounded shadow-xs overflow-hidden">
-        <div className="p-4 border-b border-stone-100 bg-stone-50 flex items-center">
-          <div className="relative w-full max-w-md">
+        <div className="grid gap-3 border-b border-stone-100 bg-stone-50 p-4 lg:grid-cols-[1fr_170px_190px_170px] lg:items-center">
+          <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
             <input type="text" placeholder="Search packages by title or destination..." value={packageSearch} onChange={(e) => setPackageSearch(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080]" />
           </div>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as PackageStatusFilter)} className="w-full rounded border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 focus:border-[#008080] focus:outline-none">
+            <option value="all">All Statuses</option>
+            <option value="published">Published</option>
+            <option value="draft">Draft</option>
+            <option value="archived">Archived</option>
+          </select>
+          <select value={destinationFilter} onChange={(event) => setDestinationFilter(event.target.value)} className="w-full rounded border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 focus:border-[#008080] focus:outline-none">
+            {destinationOptions.map((destination) => <option key={destination} value={destination}>{destination === 'All' ? 'All Destinations' : destination}</option>)}
+          </select>
+          <select value={sortMode} onChange={(event) => setSortMode(event.target.value as PackageSortMode)} className="w-full rounded border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 focus:border-[#008080] focus:outline-none">
+            <option value="updated-desc">Recently Updated</option>
+            <option value="created-desc">Newest Created</option>
+            <option value="title-asc">Title A-Z</option>
+            <option value="price-desc">Highest Price</option>
+          </select>
+        </div>
+
+        {selectedIds.length > 0 && (
+          <div className="flex flex-col gap-3 border-b border-stone-100 bg-[#fcfbf9] px-4 py-3 text-xs text-stone-600 sm:flex-row sm:items-center sm:justify-between">
+            <span className="font-bold">{selectedIds.length} package{selectedIds.length === 1 ? '' : 's'} selected</span>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => runBulkAction('publish')} className="rounded-sm bg-emerald-600 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-emerald-700">Publish</button>
+              <button type="button" onClick={() => runBulkAction('archive')} className="rounded-sm bg-amber-500 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-amber-600">Archive</button>
+              <button type="button" onClick={() => runBulkAction('delete')} className="rounded-sm bg-rose-600 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-rose-700">Delete</button>
+              <button type="button" onClick={() => setSelectedIds([])} className="rounded-sm border border-stone-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-stone-600 transition hover:border-stone-400">Clear</button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-2 border-b border-stone-100 px-4 py-3 text-[11px] text-stone-500 sm:flex-row sm:items-center sm:justify-between">
+          <span>Showing {pagedPackages.length} of {filteredPackages.length} package{filteredPackages.length === 1 ? '' : 's'}.</span>
+          <span>{packages.filter((pkg) => pkg.cmsStatus !== 'deleted').length} catalogue items excluding soft-deleted records.</span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-stone-100 bg-[#f8f7f4] text-stone-500 text-[10px] font-bold uppercase tracking-wider">
+                <th className="py-4 pl-4 pr-2">
+                  <input type="checkbox" checked={allPageSelected} onChange={togglePageSelection} aria-label="Select all packages on this page" className="h-4 w-4 accent-[#008080]" />
+                </th>
                 <th className="py-4 px-6">Image / Title</th>
                 <th className="py-4 px-6">Category</th>
                 <th className="py-4 px-6">Duration</th>
@@ -1748,13 +1947,17 @@ export function PackagesTab(props: PackagesTabProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100 text-xs text-stone-700">
-              {packages.filter((p) => p.title.toLowerCase().includes(packageSearch.toLowerCase()) || p.destination.toLowerCase().includes(packageSearch.toLowerCase())).map((pkg) => (
+              {pagedPackages.map((pkg) => (
                 <tr key={pkg.id} className="hover:bg-stone-50/40 transition">
+                  <td className="py-4 pl-4 pr-2">
+                    <input type="checkbox" checked={selectedIds.includes(pkg.id)} onChange={() => toggleSelection(pkg.id)} aria-label={`Select ${pkg.title}`} className="h-4 w-4 accent-[#008080]" />
+                  </td>
                   <td className="py-4 px-6 flex items-center gap-3">
                     <img src={pkg.imageUrl} alt="" className="w-12 h-12 object-cover rounded-sm shrink-0 bg-[#f8f7f4] border border-stone-200" referrerPolicy="no-referrer" />
                     <div>
                       <strong className="text-[#333333] font-bold block leading-snug">{pkg.title}</strong>
                       <span className="text-[10px] text-stone-400 block font-light">{pkg.destination}</span>
+                      <span className="mt-0.5 block text-[9px] uppercase tracking-wider text-stone-400">v{pkg.version || 1} • {pkg.parserVersion || 'manual'}</span>
                     </div>
                   </td>
                   <td className="py-4 px-6">
@@ -1768,24 +1971,147 @@ export function PackagesTab(props: PackagesTabProps) {
                     </span>
                   </td>
                   <td className="py-4 px-6 text-center">
-                    <button onClick={() => togglePackageActive(pkg)} className={`px-2.5 py-1 rounded-none text-[9px] font-bold uppercase cursor-pointer transition ${pkg.active ? 'bg-emerald-50 border border-emerald-100 text-emerald-800 hover:bg-emerald-100' : 'bg-rose-50 border border-rose-100 text-rose-800 hover:bg-rose-100'}`}>
-                      {pkg.active ? 'Active' : 'Inactive'}
+                    <button onClick={() => togglePackageActive(pkg)} className={`px-2.5 py-1 rounded-none text-[9px] font-bold uppercase cursor-pointer transition border ${statusBadgeClass(pkg)} hover:bg-stone-100`}>
+                      {getPackageStatus(pkg)}
                     </button>
                   </td>
-                  <td className="py-4 px-6 text-right space-x-2">
+                  <td className="py-4 px-6 text-right">
+                    <div className="flex justify-end gap-2">
+                    <button onClick={() => setDetailsPackage(pkg)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-stone-800 hover:text-white rounded-sm transition cursor-pointer" title="View Details">
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
                     <button onClick={() => handleOpenPkgEdit(pkg)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-[#008080] hover:text-white rounded-sm transition cursor-pointer" title="Edit Package">
                       <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => handleDuplicatePackage(pkg.id)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-[#4DA528] hover:text-white rounded-sm transition cursor-pointer" title="Duplicate Package">
+                      <Clipboard className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => handleArchivePackage(pkg.id)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-amber-500 hover:text-white rounded-sm transition cursor-pointer" title="Archive Package">
+                      <FileText className="w-3.5 h-3.5" />
                     </button>
                     <button onClick={() => handleDeletePackage(pkg.id)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-rose-600 hover:text-white rounded-sm transition cursor-pointer" title="Delete Package">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
+                    </div>
                   </td>
                 </tr>
               ))}
+              {pagedPackages.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-6 py-14 text-center">
+                    <div className="mx-auto max-w-sm">
+                      <Package className="mx-auto h-10 w-10 text-stone-300" />
+                      <h3 className="mt-4 text-sm font-bold text-stone-900">No packages match these filters.</h3>
+                      <p className="mt-1 text-xs text-stone-500">Try clearing the search, changing destination, or viewing all statuses.</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
+
+        {filteredPackages.length > pageSize && (
+          <div className="flex flex-col gap-3 border-t border-stone-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[11px] text-stone-500">Page {page} of {pageCount}</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1} className="inline-flex items-center gap-1 rounded-sm border border-stone-200 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-stone-600 transition hover:border-[#008080] hover:text-[#008080] disabled:cursor-not-allowed disabled:opacity-40">
+                <ChevronLeft className="h-3.5 w-3.5" />
+                Prev
+              </button>
+              <button type="button" onClick={() => setPage((current) => Math.min(pageCount, current + 1))} disabled={page === pageCount} className="inline-flex items-center gap-1 rounded-sm border border-stone-200 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-stone-600 transition hover:border-[#008080] hover:text-[#008080] disabled:cursor-not-allowed disabled:opacity-40">
+                Next
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {detailsPackage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/50 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-[24px] bg-white shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-stone-100 bg-white/95 p-5 backdrop-blur">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#008080]">Package Details</span>
+                <h3 className="mt-1 text-2xl font-serif text-stone-950">{detailsPackage.title}</h3>
+                <p className="mt-1 text-xs text-stone-500">{detailsPackage.destination} • Version {detailsPackage.version || 1}</p>
+              </div>
+              <button type="button" onClick={() => setDetailsPackage(null)} className="rounded-full bg-stone-100 p-2 text-stone-500 transition hover:bg-stone-200">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid gap-5 p-5 lg:grid-cols-[0.9fr_1.1fr]">
+              <div className="overflow-hidden rounded-[18px] border border-stone-200 bg-stone-50">
+                <img src={detailsPackage.packageBannerUrl || detailsPackage.imageUrl} alt={detailsPackage.title} onError={handleTravelImageError} className="aspect-[16/10] w-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  ['Status', getPackageStatus(detailsPackage)],
+                  ['Duration', detailsPackage.duration],
+                  ['Price', formatPriceValue(detailsPackage.offerPrice || detailsPackage.price || 0)],
+                  ['Category', detailsPackage.category],
+                  ['Source', detailsPackage.sourceDomain || 'Manual CMS'],
+                  ['Quality', detailsPackage.importQuality ? `${detailsPackage.importQuality.score}/100 ${detailsPackage.importQuality.status}` : 'Not scored'],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-[16px] border border-stone-200 bg-[#fcfbf9] p-4">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-stone-400">{label}</span>
+                    <p className="mt-1 text-sm font-bold text-stone-900">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="lg:col-span-2 grid gap-5 lg:grid-cols-2">
+                <div className="rounded-[18px] border border-stone-200 p-4">
+                  <h4 className="text-sm font-bold text-stone-950">Overview</h4>
+                  <p className="mt-2 text-sm leading-6 text-stone-600">{detailsPackage.fullDescription || detailsPackage.shortDescription || 'No overview available.'}</p>
+                </div>
+                <div className="rounded-[18px] border border-stone-200 p-4">
+                  <h4 className="text-sm font-bold text-stone-950">Import History</h4>
+                  <div className="mt-3 space-y-3 text-xs text-stone-600">
+                    {detailsLoading && <p>Loading history…</p>}
+                    {!detailsLoading && detailsImports.length === 0 && <p>No import history recorded yet.</p>}
+                    {detailsImports.slice(0, 4).map((record) => (
+                      <div key={record.id || record.importedAt} className="rounded-[14px] bg-stone-50 p-3">
+                        <p className="font-bold text-stone-900">{record.parserVersion}</p>
+                        <p className="mt-1 break-all text-stone-500">{record.sourceUrl || 'Manual CMS'}</p>
+                        <p className="mt-1 text-[10px] uppercase tracking-wider text-stone-400">{record.importedAt}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-[18px] border border-stone-200 p-4">
+                  <h4 className="text-sm font-bold text-stone-950">Activity Timeline</h4>
+                  <div className="mt-3 space-y-3 text-xs text-stone-600">
+                    {detailsLoading && <p>Loading activity…</p>}
+                    {!detailsLoading && detailsLogs.length === 0 && (
+                      <>
+                        <p><strong>Created:</strong> {detailsPackage.createdAt || 'Unavailable'}</p>
+                        <p><strong>Updated:</strong> {detailsPackage.updatedAt || 'Unavailable'}</p>
+                        <p><strong>Published:</strong> {detailsPackage.publishedAt || 'Not published'}</p>
+                      </>
+                    )}
+                    {detailsLogs.slice(0, 6).map((log) => (
+                      <div key={log.id || log.createdAt} className="flex gap-3 rounded-[14px] bg-stone-50 p-3">
+                        <span className="mt-1 h-2 w-2 rounded-full bg-[#4DA528]" />
+                        <div>
+                          <p className="font-bold capitalize text-stone-900">{log.action.replace('-', ' ')}</p>
+                          <p className="mt-1 text-stone-500">{log.message}</p>
+                          <p className="mt-1 text-[10px] uppercase tracking-wider text-stone-400">{log.createdAt}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="lg:col-span-2 flex flex-wrap justify-end gap-2 border-t border-stone-100 pt-5">
+                <button type="button" onClick={() => handleOpenPkgEdit(detailsPackage)} className="rounded-sm bg-[#008080] px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-[#006666]">Edit</button>
+                <button type="button" onClick={() => handleDuplicatePackage(detailsPackage.id)} className="rounded-sm border border-stone-200 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]">Duplicate</button>
+                <button type="button" onClick={() => handleArchivePackage(detailsPackage.id)} className="rounded-sm border border-amber-200 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 transition hover:bg-amber-50">Archive</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -14,6 +14,16 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as XLSX from 'xlsx';
 import { fetchAnalyticsEvents } from '../lib/analytics';
 import { handleTravelImageError } from '../utils/imageFallback';
+import {
+  archivePackage,
+  duplicatePackage,
+  formPackageToCmsInput,
+  publishPackage,
+  saveDraftPackage,
+  softDeletePackage,
+  travelPackageToCmsInput,
+  updatePackage,
+} from '../services/packageCmsService';
 
 const OverviewTab = lazy(() => import('./admin/AdminDashboardSections').then((module) => ({ default: module.OverviewTab })));
 const WebsiteTab = lazy(() => import('./admin/AdminDashboardSections').then((module) => ({ default: module.WebsiteTab })));
@@ -77,6 +87,8 @@ const toSafeCsvCell = (value: unknown) => {
   const protectedValue = /^[=+\-@]/.test(rawValue.trim()) ? `'${rawValue}` : rawValue;
   return `"${protectedValue.replace(/"/g, '""')}"`;
 };
+
+const getAdminActorId = () => auth.currentUser?.uid || auth.currentUser?.email || 'admin';
 
 const getConversionPaymentStatus = (totalCost: number, advancePaid: number): EnquiryPaymentStatus => {
   if (totalCost > 0 && advancePaid >= totalCost) return 'Paid';
@@ -1869,98 +1881,69 @@ function AdminDashboardView({
     }
 
     try {
-      const parseListField = (value: string) => value
-        .split('\n')
-        .map((item) => item.trim())
-        .filter(Boolean);
-
-      const parseFaqs = (value: string) => value
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((line) => {
-          const separatorIndex = line.indexOf('|');
-          if (separatorIndex === -1) {
-            return { question: line, answer: '' };
-          }
-          return {
-            question: line.slice(0, separatorIndex).trim(),
-            answer: line.slice(separatorIndex + 1).trim(),
-          };
-        })
-        .filter((faq) => faq.question);
-
-      const {
-        galleryImages: galleryImagesInput,
-        highlights: highlightsInput,
-        thingsToCarry: thingsToCarryInput,
-        departureDates: departureDatesInput,
-        faqs: faqsInput,
-        policies: policiesInput,
-        ...restPkgFormData
-      } = pkgFormData;
-
-      const payload = {
-        ...restPkgFormData,
-        packageCode: pkgFormData.packageCode?.trim() || '',
-        pickup: pkgFormData.pickup?.trim() || '',
-        seoTitle: pkgFormData.seoTitle?.trim() || '',
-        seoDescription: pkgFormData.seoDescription?.trim() || '',
-        offerPrice: Number(pkgFormData.offerPrice) || undefined,
-        packageBannerUrl: pkgFormData.packageBannerUrl?.trim() || '',
-        galleryImages: parseListField(galleryImagesInput),
-        highlights: parseListField(highlightsInput),
-        thingsToCarry: parseListField(thingsToCarryInput),
-        departureDates: parseListField(departureDatesInput),
-        faqs: parseFaqs(faqsInput),
-        policies: parseListField(policiesInput),
-        status: pkgFormData.active ? 'Publish' : 'Draft',
-        itinerary,
-        inclusions,
-        exclusions,
-        updatedAt: new Date().toISOString(),
-      };
-
+      const actorId = getAdminActorId();
+      const cmsInput = formPackageToCmsInput(pkgFormData, itinerary, inclusions, exclusions, editingPkg);
       if (editingPkg) {
-        // Edit document
-        const docRef = doc(db, 'packages', editingPkg.id);
-        await updateDoc(docRef, payload);
+        await updatePackage(editingPkg.id, cmsInput, actorId);
+      } else if (pkgFormData.active) {
+        await publishPackage(cmsInput, actorId);
       } else {
-        // Create document
-        const colRef = collection(db, 'packages');
-        await addDoc(colRef, {
-          ...payload,
-          createdAt: new Date().toISOString(),
-        });
+        await saveDraftPackage(cmsInput, actorId);
       }
 
       setIsPkgFormOpen(false);
       await onRefreshData();
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Error saving package:', err);
-      alert('Failed to save package document. Check firestore permissions.');
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Failed to save package document: ${message}`);
     }
   };
 
   const handleDeletePackage = async (id: string) => {
-    if (!confirm('Are you absolutely sure you want to delete this travel package permanently?')) return;
+    if (!confirm('Soft-delete this travel package? It will be hidden from the public website and kept in Firestore for audit history.')) return;
     try {
-      await deleteDoc(doc(db, 'packages', id));
+      await softDeletePackage(id, getAdminActorId());
       await onRefreshData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error deleting package:', err);
-      alert(`Failed to delete package document: ${err.message || String(err)}`);
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Failed to delete package document: ${message}`);
+    }
+  };
+
+  const handleArchivePackage = async (id: string) => {
+    if (!confirm('Archive this package and hide it from the public website?')) return;
+    try {
+      await archivePackage(id, getAdminActorId());
+      await onRefreshData();
+    } catch (err: unknown) {
+      console.error('Error archiving package:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Failed to archive package: ${message}`);
+    }
+  };
+
+  const handleDuplicatePackage = async (id: string) => {
+    try {
+      await duplicatePackage(id, getAdminActorId());
+      await onRefreshData();
+    } catch (err: unknown) {
+      console.error('Error duplicating package:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Failed to duplicate package: ${message}`);
     }
   };
 
   const togglePackageActive = async (pkg: TravelPackage) => {
     try {
-      const docRef = doc(db, 'packages', pkg.id);
       const nextActive = !pkg.active;
-      await updateDoc(docRef, { active: nextActive, status: nextActive ? 'Publish' : 'Draft' });
+      await updatePackage(pkg.id, travelPackageToCmsInput(pkg, { status: nextActive ? 'published' : 'draft' }), getAdminActorId());
       await onRefreshData();
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Error toggling package status:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Failed to update package status: ${message}`);
     }
   };
 
@@ -3089,6 +3072,8 @@ function AdminDashboardView({
                 handleOpenPkgAdd={handleOpenPkgAdd}
                 handleOpenPkgEdit={handleOpenPkgEdit}
                 handleDeletePackage={handleDeletePackage}
+                handleArchivePackage={handleArchivePackage}
+                handleDuplicatePackage={handleDuplicatePackage}
                 togglePackageActive={togglePackageActive}
                 formatPriceValue={(value) => formatPrice(value)}
               />

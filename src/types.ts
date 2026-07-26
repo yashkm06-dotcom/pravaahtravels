@@ -27,7 +27,9 @@ export type PackageLocation = (typeof PACKAGE_LOCATIONS)[number];
 export interface TravelPackage {
   id: string;
   title: string;
+  slug?: string;
   destination: string;
+  destinations?: string[];
   location: PackageLocation | string;
   bookingType?: string;
   maxGuests?: number;
@@ -56,6 +58,36 @@ export interface TravelPackage {
   featured: boolean;
   active: boolean; // mapped to Publish/Draft
   status?: 'Publish' | 'Draft';
+  cmsStatus?: 'draft' | 'published' | 'archived' | 'deleted';
+  version?: number;
+  sourceUrl?: string | null;
+  sourceDomain?: string | null;
+  parserVersion?: string;
+  importQuality?: {
+    score: number;
+    status: 'excellent' | 'good' | 'needs_review' | 'poor';
+    warnings: string[];
+    missing: string[];
+    passed: string[];
+  } | null;
+  hotels?: { city: string | null; hotel: string | null; nights: number | null }[];
+  pricing?: {
+    currency?: string | null;
+    price?: number | null;
+    originalPrice?: number | null;
+    discount?: number | null;
+    priceType?: string | null;
+    occupancy?: string | null;
+  } | null;
+  gallery?: string[];
+  heroImage?: string | null;
+  overview?: string | null;
+  archivedAt?: string | null;
+  deletedAt?: string | null;
+  publishedAt?: string | null;
+  updatedAt?: string;
+  createdBy?: string;
+  updatedBy?: string;
   createdAt: string;
 }
 

@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { AlertCircle, ChevronDown, Image as ImageIcon, Link, Loader2, Sparkles } from 'lucide-react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { app } from '../../lib/firebase';
+import { app, auth } from '../../lib/firebase';
+import type { PackageCmsInput } from '../../types/packageCms';
+import { publishImportedPackage, saveImportedDraftPackage } from '../../services/packageCmsService';
 import { getTravelImage, handleTravelImageError } from '../../utils/imageFallback';
 
 type ImporterItineraryDay = {
@@ -98,10 +100,51 @@ const getErrorMessage = (error: unknown) => {
   return 'Package analysis failed.';
 };
 
+const previewToPackageInput = (preview: AIPackagePreview, sourceUrl: string): PackageCmsInput => ({
+  title: preview.title || '',
+  slug: preview.slug || undefined,
+  sourceUrl: sourceUrl || null,
+  heroImage: preview.heroImage || null,
+  gallery: preview.galleryImages || [],
+  duration: preview.duration || null,
+  destinations: preview.destination ? [preview.destination] : [],
+  destination: preview.destination || null,
+  overview: preview.overview || null,
+  itinerary: (preview.itinerary || []).map((day, index) => ({
+    day: day.day || index + 1,
+    title: day.title || null,
+    description: day.description || null,
+  })),
+  hotels: [],
+  pricing: {
+    currency: 'INR',
+    price: preview.price,
+    originalPrice: null,
+    discount: null,
+    priceType: 'Per Person',
+    occupancy: null,
+  },
+  price: preview.price,
+  inclusions: preview.inclusions || [],
+  exclusions: preview.exclusions || [],
+  faqs: (preview.faqs || []).map((faq) => ({
+    question: faq.question || null,
+    answer: faq.answer || null,
+  })),
+  policies: [],
+  parserVersion: 'deterministic-html-parser-v1',
+  legacy: {
+    seoTitle: preview.metaTitle || '',
+    seoDescription: preview.metaDescription || '',
+  },
+});
+
 export default function AiPackageImporter() {
   const [packageUrl, setPackageUrl] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSaving, setIsSaving] = useState<'draft' | 'publish' | null>(null);
   const [error, setError] = useState('');
+  const [saveMessage, setSaveMessage] = useState('');
   const [sourceUrl, setSourceUrl] = useState('');
   const [draft, setDraft] = useState<AIPackagePreview | null>(null);
   const [openItineraryIndex, setOpenItineraryIndex] = useState<number | null>(0);
@@ -153,6 +196,7 @@ export default function AiPackageImporter() {
 
     setIsAnalyzing(true);
     setError('');
+    setSaveMessage('');
     setSourceUrl('');
     setDraft(null);
 
@@ -171,6 +215,26 @@ export default function AiPackageImporter() {
     }
   };
 
+  const handlePersistPackage = async (mode: 'draft' | 'publish') => {
+    if (!draft) return;
+    setIsSaving(mode);
+    setError('');
+    setSaveMessage('');
+
+    try {
+      const actorId = auth.currentUser?.uid || auth.currentUser?.email || 'admin';
+      const input = previewToPackageInput(draft, sourceUrl || packageUrl.trim());
+      const savedPackage = mode === 'draft'
+        ? await saveImportedDraftPackage(input, actorId)
+        : await publishImportedPackage(input, actorId);
+      setSaveMessage(`${mode === 'draft' ? 'Draft saved' : 'Package published'}: ${savedPackage.title}`);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    } finally {
+      setIsSaving(null);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <section className="relative overflow-hidden rounded-[28px] border border-stone-200 bg-[#071d28] p-6 text-white shadow-[0_24px_70px_rgba(7,29,40,0.18)] sm:p-8">
@@ -184,11 +248,11 @@ export default function AiPackageImporter() {
             </span>
             <h2 className="mt-4 text-3xl font-extrabold tracking-tight sm:text-4xl">🤖 AI Package Importer (Beta)</h2>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-white/68">
-              Analyze a travel package URL and generate an editable preview. Nothing is saved to Firestore.
+              Analyze a travel package URL, review the editable preview, then save a draft or publish when it is ready.
             </p>
           </div>
           <div className="rounded-[22px] border border-white/12 bg-white/10 p-5 text-sm text-white/70 backdrop-blur-md">
-            Preview only
+            Parser v1
           </div>
         </div>
       </section>
@@ -225,6 +289,11 @@ export default function AiPackageImporter() {
             <span>{error}</span>
           </div>
         )}
+        {saveMessage && (
+          <div className="mt-4 rounded-[16px] border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">
+            {saveMessage}
+          </div>
+        )}
       </section>
 
       {isAnalyzing && (
@@ -237,6 +306,33 @@ export default function AiPackageImporter() {
 
       {draft && (
         <section className="space-y-6">
+          <div className="sticky top-4 z-20 flex flex-col gap-3 rounded-[22px] border border-stone-200 bg-white/90 p-4 shadow-[0_18px_50px_rgba(18,38,32,0.08)] backdrop-blur-md sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#4DA528]">Import workflow</p>
+              <h3 className="mt-1 text-lg font-extrabold text-stone-950">Review and save this package</h3>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => handlePersistPackage('draft')}
+                disabled={Boolean(isSaving)}
+                className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-stone-200 bg-white px-5 py-3 text-[11px] font-extrabold uppercase tracking-[0.16em] text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSaving === 'draft' && <Loader2 className="h-4 w-4 animate-spin" />}
+                Save Draft
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePersistPackage('publish')}
+                disabled={Boolean(isSaving)}
+                className="inline-flex items-center justify-center gap-2 rounded-[14px] bg-[#4DA528] px-5 py-3 text-[11px] font-extrabold uppercase tracking-[0.16em] text-white shadow-[0_14px_30px_rgba(77,165,40,0.28)] transition hover:-translate-y-0.5 hover:bg-[#FF970D] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSaving === 'publish' && <Loader2 className="h-4 w-4 animate-spin" />}
+                Publish Package
+              </button>
+            </div>
+          </div>
+
           <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
             <div className="overflow-hidden rounded-[26px] border border-stone-200 bg-white shadow-[0_20px_60px_rgba(18,38,32,0.08)]">
               <div className="relative aspect-[16/10] bg-stone-100">
