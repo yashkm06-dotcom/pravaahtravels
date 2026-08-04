@@ -52,10 +52,12 @@ export default function AboutView() {
           </div>
           <div className="relative aspect-[4/3] rounded-[12px] overflow-hidden border border-stone-200/60 shadow-[0_14px_38px_rgba(18,38,32,0.12)]">
             <img 
-              src="https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=1200&q=80" 
-              alt="Himalayan Tea Trails" 
+              src="https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=1200&q=80"
+              alt="Himalayan Tea Trails"
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"
+              loading="lazy"
+              decoding="async"
             />
             <div className="absolute inset-0 bg-[#4DA528]/10 mix-blend-multiply" />
           </div>

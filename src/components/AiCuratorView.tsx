@@ -36,6 +36,7 @@ export default function AiCuratorView({ onNavigateToHome }: AiCuratorViewProps) 
   const [enquiryTravelDate, setEnquiryTravelDate] = useState('');
   const [isEnquirySubmitting, setIsEnquirySubmitting] = useState(false);
   const [isEnquirySuccess, setIsEnquirySuccess] = useState(false);
+  const [enquiryFormError, setEnquiryFormError] = useState('');
 
   // Popular pre-filled options
   const popularDestinations = [
@@ -176,8 +177,9 @@ export default function AiCuratorView({ onNavigateToHome }: AiCuratorViewProps) 
   // Submit enquiry directly to Firestore db
   const handleEnquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setEnquiryFormError('');
     if (!enquiryName || !enquiryPhone || !enquiryEmail || !enquiryTravelDate) {
-      alert('Please fill out all contact fields.');
+      setEnquiryFormError('Please fill out all contact fields.');
       return;
     }
 
@@ -199,6 +201,7 @@ export default function AiCuratorView({ onNavigateToHome }: AiCuratorViewProps) 
                  aiResult.itinerary.map((d: any) => `Day ${d.day}: ${d.title}`).join('\n') +
                  `\nSpecial Wishes/Food Notes: ${specialRequests || 'None'}`,
         status: 'New',
+        source: 'AI Curator',
         createdAt: new Date().toISOString()
       };
 
@@ -206,7 +209,7 @@ export default function AiCuratorView({ onNavigateToHome }: AiCuratorViewProps) 
       setIsEnquirySuccess(true);
     } catch (err) {
       console.error('Error writing enquiry to database:', err);
-      alert('Failed to register enquiry. Please verify network connectivity.');
+      setEnquiryFormError('Failed to register enquiry. Please verify network connectivity.');
     } finally {
       setIsEnquirySubmitting(false);
     }
@@ -218,8 +221,9 @@ export default function AiCuratorView({ onNavigateToHome }: AiCuratorViewProps) 
 
   const handleManualFallbackSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setEnquiryFormError('');
     if (!enquiryName || !enquiryPhone || !enquiryEmail || !enquiryTravelDate) {
-      alert('Please fill out all contact fields.');
+      setEnquiryFormError('Please fill out all contact fields.');
       return;
     }
 
@@ -241,6 +245,7 @@ export default function AiCuratorView({ onNavigateToHome }: AiCuratorViewProps) 
                  `Special Wishes/Food Notes: ${specialRequests || 'None'}\n` +
                  `Note: Automated AI curator fallback triggered because the AI models were experiencing peak demand levels.`,
         status: 'New',
+        source: 'AI Curator',
         createdAt: new Date().toISOString()
       };
 
@@ -248,7 +253,7 @@ export default function AiCuratorView({ onNavigateToHome }: AiCuratorViewProps) 
       setIsManualEnquirySuccess(true);
     } catch (err) {
       console.error('Error writing manual fallback enquiry to database:', err);
-      alert('Failed to register fallback enquiry. Please verify network connectivity.');
+      setEnquiryFormError('Failed to register fallback enquiry. Please verify network connectivity.');
     } finally {
       setIsManualEnquirySubmitting(false);
     }
@@ -411,6 +416,12 @@ export default function AiCuratorView({ onNavigateToHome }: AiCuratorViewProps) 
                         </div>
                       ) : (
                         <form onSubmit={handleManualFallbackSubmit} className="space-y-2 pt-0.5">
+                          {enquiryFormError && (
+                            <div role="alert" className="flex items-start gap-1.5 rounded border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[10px] font-medium text-rose-700">
+                              <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+                              <span>{enquiryFormError}</span>
+                            </div>
+                          )}
                           <div className="grid grid-cols-2 gap-2">
                             <input 
                               type="text" 
@@ -931,6 +942,12 @@ export default function AiCuratorView({ onNavigateToHome }: AiCuratorViewProps) 
                 </div>
               ) : (
                 <form onSubmit={handleEnquirySubmit} className="max-w-2xl mx-auto space-y-4">
+                  {enquiryFormError && (
+                    <div role="alert" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-medium text-rose-700">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span>{enquiryFormError}</span>
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-widest">Full Name</label>

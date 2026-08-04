@@ -1,15 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   ArrowLeft, Calendar, MapPin, Check, X, Send, Users, 
-  ChevronDown, ChevronUp, Trash2, GripVertical, Sliders, ArrowUp, ArrowDown, Sparkles, Phone, Compass, HelpCircle, CheckCircle2, Heart,
-  Star, Camera, ChevronRight, AlertCircle, MessageCircle, BedDouble, Car, Utensils
+  ChevronDown, ChevronUp, Trash2, Sparkles, Phone, Compass, HelpCircle, CheckCircle2, Heart,
+  Star, Camera, ChevronRight, AlertCircle, MessageCircle, BedDouble, Car, Utensils, Flame,
+  Instagram, Youtube
 } from 'lucide-react';
-import { TravelPackage, Enquiry, Review, WebsiteCMSSettings, DEFAULT_WEBSITE_CMS, formatPrice } from '../types';
+import { TravelPackage, Enquiry, Review, WebsiteCMSSettings, DEFAULT_WEBSITE_CMS, Hotel, PackageDeparture, formatPrice } from '../types';
 import { db, collection, addDoc, auth, getDocs, query, where, orderBy, limit } from '../lib/firebase';
 import { triggerSystemEmail } from '../lib/emailClient';
-import InteractiveRouteMap from './InteractiveRouteMap';
-import { DEFAULT_TRAVEL_IMAGE, getTravelImage, handleTravelImageError } from '../utils/imageFallback';
+import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 import { SkeletonCard } from './SkeletonLoader';
+import NearbyPlacesSection from './NearbyPlacesSection';
+import TravelMedia from './TravelMedia';
 
 interface PackageDetailViewProps {
   pkg: TravelPackage;
@@ -23,6 +25,10 @@ interface PackageDetailViewProps {
   onNavigate?: (view: string, packageId?: string | null) => void;
   packages?: TravelPackage[];
   websiteCMS?: WebsiteCMSSettings;
+  hotels?: Hotel[];
+  // When true (admin Preview), blocks real enquiry/booking submissions — Firestore writes
+  // and outbound emails — since a preview must never "publish" side effects.
+  previewMode?: boolean;
 }
 
 const slugifyPackageTitle = (value: string) => String(value ?? '')
@@ -40,7 +46,22 @@ const getPackageRouteSegment = (pkg: Pick<TravelPackage, 'id' | 'title'>) => {
 const sanitizeWhatsAppPhone = (value?: string) => {
   const digits = String(value ?? '').replace(/[^\d]/g, '');
   if (!digits) return '';
-  return digits.startsWith('91') ? digits : `91${digits.replace(/^0+/, '')}`;
+  const trimmed = digits.replace(/^0+/, '');
+  // Only treat the number as already carrying the "91" country code at the full 12-digit
+  // length — a raw 10-digit Indian mobile number that happens to start with "91" (e.g.
+  // 9198765432) was previously misdetected as already coded, producing a broken wa.me link.
+  return trimmed.length === 12 && trimmed.startsWith('91') ? trimmed : `91${trimmed}`;
+};
+
+const getValidExternalUrl = (value?: string) => {
+  if (!value || value === '#') return null;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+  } catch {
+    return null;
+  }
 };
 
 const getMatchingListItems = (items: string[] | undefined, terms: string[]) => {
@@ -48,6 +69,30 @@ const getMatchingListItems = (items: string[] | undefined, terms: string[]) => {
     const normalized = item.toLowerCase();
     return terms.some((term) => normalized.includes(term));
   });
+};
+
+const clampDifficultyLevel = (value?: number | null) => {
+  const level = Number(value || 0);
+  if (!Number.isFinite(level) || level <= 0) return null;
+  return Math.max(1, Math.min(10, Math.round(level)));
+};
+
+const getPolicyGroups = (items: string[]) => {
+  const groups = [
+    { title: 'Confirmation Policy', terms: ['confirm', 'voucher', 'booking confirmation', 'email confirmation'], items: [] as string[] },
+    { title: 'Refund Policy', terms: ['refund', 'wallet', 'processed'], items: [] as string[] },
+    { title: 'Cancellation Policy', terms: ['cancel', 'cancellation'], items: [] as string[] },
+    { title: 'Payment Terms', terms: ['payment', 'paid', 'advance', 'balance'], items: [] as string[] },
+    { title: 'Travel Policies', terms: [] as string[], items: [] as string[] },
+  ];
+
+  items.forEach((item) => {
+    const normalized = item.toLowerCase();
+    const matched = groups.find((group) => group.terms.length && group.terms.some((term) => normalized.includes(term)));
+    (matched || groups[groups.length - 1]).items.push(item);
+  });
+
+  return groups.filter((group) => group.items.length > 0);
 };
 
 export default function PackageDetailView({
@@ -62,17 +107,28 @@ export default function PackageDetailView({
   onNavigate,
   packages = [],
   websiteCMS = DEFAULT_WEBSITE_CMS,
+  hotels = [],
+  previewMode = false,
 }: PackageDetailViewProps) {
   // Accordion state for itinerary days
   const [activeDay, setActiveDay] = useState<number | null>(1);
+  const [allItineraryExpanded, setAllItineraryExpanded] = useState(false);
   const [selectedGalleryImage, setSelectedGalleryImage] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [lightboxImages, setLightboxImages] = useState<string[]>([]);
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
+  const [isKnowBeforeExpanded, setIsKnowBeforeExpanded] = useState(false);
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
+  const [hasSummaryOverflow, setHasSummaryOverflow] = useState(false);
+  const summaryTextRef = useRef<HTMLParagraphElement>(null);
+  const summaryText = String(pkg.shortDescription || '').trim();
+  const [isOverviewExpanded, setIsOverviewExpanded] = useState(false);
+  const [hasOverviewOverflow, setHasOverviewOverflow] = useState(false);
+  const overviewTextRef = useRef<HTMLParagraphElement>(null);
+  const overviewText = String(pkg.fullDescription || pkg.shortDescription || '').trim();
   
   // Local editable itinerary for custom sorting/swapping (Drag and Drop)
   const [localItinerary, setLocalItinerary] = useState<any[]>([]);
-  const [isCustomizing, setIsCustomizing] = useState(false);
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
   // Sync with package when it changes
   useEffect(() => {
@@ -107,7 +163,50 @@ export default function PackageDetailView({
   useEffect(() => {
     setSelectedGalleryImage(0);
     setActiveFaq(null);
+    setActiveDay(1);
+    setAllItineraryExpanded(false);
+    setIsKnowBeforeExpanded(false);
+    setIsSummaryExpanded(false);
+    setIsOverviewExpanded(false);
+    setLightboxImages([]);
+    setIsLightboxOpen(false);
   }, [pkg.id]);
+
+  useEffect(() => {
+    if (isSummaryExpanded) return;
+
+    const measureSummary = () => {
+      const summaryElement = summaryTextRef.current;
+      if (!summaryElement) return;
+      setHasSummaryOverflow(summaryElement.scrollHeight > summaryElement.clientHeight + 1);
+    };
+
+    const animationFrame = window.requestAnimationFrame(measureSummary);
+    window.addEventListener('resize', measureSummary);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener('resize', measureSummary);
+    };
+  }, [isSummaryExpanded, summaryText]);
+
+  useEffect(() => {
+    if (isOverviewExpanded) return;
+
+    const measureOverview = () => {
+      const overviewElement = overviewTextRef.current;
+      if (!overviewElement) return;
+      setHasOverviewOverflow(overviewElement.scrollHeight > overviewElement.clientHeight + 1);
+    };
+
+    const animationFrame = window.requestAnimationFrame(measureOverview);
+    window.addEventListener('resize', measureOverview);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener('resize', measureOverview);
+    };
+  }, [isOverviewExpanded, overviewText]);
 
   useEffect(() => {
     let cancelled = false;
@@ -199,6 +298,28 @@ export default function PackageDetailView({
   const [bookingError, setBookingError] = useState('');
   const [selectedGuests, setSelectedGuests] = useState<number>(2);
   const [submittedBooking, setSubmittedBooking] = useState<any | null>(null);
+
+  const closeBookingModal = () => {
+    setIsBookingModalOpen(false);
+    setBookingError('');
+  };
+
+  useEffect(() => {
+    if (!isBookingModalOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeBookingModal();
+    };
+
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isBookingModalOpen]);
 
   // Prefill logged in user details when booking modal opens
   useEffect(() => {
@@ -304,6 +425,10 @@ export default function PackageDetailView({
 
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (previewMode) {
+      setBookingError('This is a preview — booking requests are not submitted here.');
+      return;
+    }
     setBookingSubmitting(true);
     setBookingError('');
 
@@ -468,68 +593,16 @@ export default function PackageDetailView({
   };
 
   const toggleDay = (day: number) => {
+    setAllItineraryExpanded(false);
     setActiveDay((prev) => (prev === day ? null : day));
-  };
-
-  // Reordering functions for Drag and Drop
-  const handleDragStart = (index: number) => {
-    setDraggedIndex(index);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = (index: number) => {
-    if (draggedIndex === null || draggedIndex === index) return;
-    const reordered = [...localItinerary];
-    const [removed] = reordered.splice(draggedIndex, 1);
-    reordered.splice(index, 0, removed);
-    
-    // Re-index days sequentially
-    const updated = reordered.map((item, idx) => ({
-      ...item,
-      day: idx + 1
-    }));
-    
-    setLocalItinerary(updated);
-    setDraggedIndex(null);
-    setActiveDay(index + 1);
-
-    // Update enquiry form text
-    setFormData(prev => ({
-      ...prev,
-      message: `Hi, I have customized the plan for the "${pkg.title}". Here is my custom day order:\n` + 
-        updated.map(d => `Day ${d.day}: ${d.title}`).join('\n')
-    }));
-  };
-
-  // Mobile reorder click assistants
-  const moveDay = (index: number, direction: 'up' | 'down') => {
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= localItinerary.length) return;
-
-    const reordered = [...localItinerary];
-    const [moved] = reordered.splice(index, 1);
-    reordered.splice(targetIndex, 0, moved);
-
-    const updated = reordered.map((item, idx) => ({
-      ...item,
-      day: idx + 1
-    }));
-
-    setLocalItinerary(updated);
-    setActiveDay(targetIndex + 1);
-
-    setFormData(prev => ({
-      ...prev,
-      message: `Hi, I have customized the plan for the "${pkg.title}". Here is my custom day order:\n` + 
-        updated.map(d => `Day ${d.day}: ${d.title}`).join('\n')
-    }));
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (previewMode) {
+      setErrorMsg('This is a preview — enquiries are not submitted here.');
+      return;
+    }
     setSubmitting(true);
     setErrorMsg('');
 
@@ -553,6 +626,7 @@ export default function PackageDetailView({
         packageId: pkg.id,
         packageName: pkg.title,
         status: 'New',
+        source: 'Package Enquiry',
         createdAt: new Date().toISOString()
       };
 
@@ -596,8 +670,20 @@ export default function PackageDetailView({
     ...(pkg.galleryImages || [])
   ].filter(Boolean);
   const uniquePackageGalleryImages = Array.from(new Set(packageGalleryImages));
-  const displayGalleryImages = uniquePackageGalleryImages.length > 0 ? uniquePackageGalleryImages : [DEFAULT_TRAVEL_IMAGE];
-  const visibleGalleryImages = displayGalleryImages.slice(0, 6);
+  const visibleGalleryImages = uniquePackageGalleryImages.slice(0, 6);
+  const hasPackageImages = visibleGalleryImages.length > 0;
+  const primaryPackageImage = visibleGalleryImages[0] || '';
+  const openLightbox = (images: string[], imageIndex = 0) => {
+    const cleanImages = Array.from(new Set(
+      images
+        .map((imageUrl) => String(imageUrl || '').trim())
+        .filter(Boolean)
+    ));
+    if (!cleanImages.length) return;
+    setLightboxImages(cleanImages);
+    setSelectedGalleryImage(Math.min(Math.max(imageIndex, 0), cleanImages.length - 1));
+    setIsLightboxOpen(true);
+  };
   const embeddedPackageReviews = Array.isArray((pkg as any).reviews) ? (pkg as any).reviews : [];
   const packageReviews = useMemo(() => {
     const reviewMap = new Map<string, any>();
@@ -624,10 +710,20 @@ export default function PackageDetailView({
   const includedItems = (pkg.inclusions || []).filter(Boolean).slice(0, 8);
   const excludedItems = (pkg.exclusions || []).filter(Boolean).slice(0, 8);
   const highlightItems = (pkg.highlights || []).filter(Boolean).slice(0, 8);
-  const packingItems = (pkg.thingsToCarry || []).filter(Boolean).slice(0, 6);
+  const packingItems = (pkg.thingsToCarry || []).filter(Boolean);
+  const knowBeforeItems = (pkg.knowBeforeYouGo || []).filter(Boolean);
   const departureWindowItems = (pkg.departureDates || []).filter(Boolean).slice(0, 6);
-  const policyItems = (pkg.policies || []).filter(Boolean).slice(0, 6);
+  const policyItems = (pkg.policies || []).filter(Boolean);
+  const policyGroups = getPolicyGroups(policyItems);
   const faqItems = (pkg.faqs || []).slice(0, 6);
+  const difficultyLevel = clampDifficultyLevel(pkg.difficultyLevel);
+  const packageOptions = (pkg.packageOptions && pkg.packageOptions.length > 0 ? pkg.packageOptions : [{
+    title: pkg.title,
+    description: pkg.shortDescription || pkg.fullDescription,
+    price: pkg.offerPrice || pkg.price,
+    originalPrice: pkg.offerPrice ? pkg.price : null,
+    inclusions: [...hotelItems, ...transportationItems, ...mealPlanItems].slice(0, 5),
+  }]).filter((option) => option.title);
   const mapQuery = (pkg as any).latitude && (pkg as any).longitude ? `${(pkg as any).latitude},${(pkg as any).longitude}` : pkg.destination;
   const mapEmbedUrl = `https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=12&output=embed`;
   const displayedRelatedPackages = useMemo(() => {
@@ -641,224 +737,337 @@ export default function PackageDetailView({
       ))
       .slice(0, 3);
   }, [packages, pkg.activityId, pkg.category, pkg.destination, pkg.id, pkg.location]);
-  const whatsappPhone = sanitizeWhatsAppPhone(websiteCMS.footerPhone) || sanitizeWhatsAppPhone(DEFAULT_WEBSITE_CMS.footerPhone);
+
+  const recommendedHotels = useMemo(() => {
+    const hotelIds = pkg.hotelIds || [];
+    if (hotelIds.length === 0) return [];
+    return hotels.filter((hotel) => hotel.status === 'Active' && hotelIds.includes(hotel.id));
+  }, [hotels, pkg.hotelIds]);
+
+  const upcomingDepartures = useMemo(() => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    return (pkg.departures || [])
+      .filter((departure) => departure.status !== 'Cancelled')
+      .filter((departure) => {
+        const date = new Date(departure.departureDate);
+        return !Number.isNaN(date.getTime()) && date >= todayStart;
+      })
+      .sort((a, b) => new Date(a.departureDate).getTime() - new Date(b.departureDate).getTime());
+  }, [pkg.departures]);
+
+  const companyName = websiteCMS.companyName || DEFAULT_WEBSITE_CMS.companyName || 'Pravaah Travels';
+  const whatsappPhone = (
+    sanitizeWhatsAppPhone(websiteCMS.whatsappNumber) ||
+    sanitizeWhatsAppPhone(websiteCMS.primaryPhone) ||
+    sanitizeWhatsAppPhone(websiteCMS.footerPhone) ||
+    sanitizeWhatsAppPhone(DEFAULT_WEBSITE_CMS.whatsappNumber) ||
+    sanitizeWhatsAppPhone(DEFAULT_WEBSITE_CMS.footerPhone)
+  );
   const packageWhatsAppUrl = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Hello,\nI am interested in the ${pkg.title} Package.\nPlease send complete details.`)}`;
+  const instagramUrl = getValidExternalUrl(websiteCMS.socialInstagram) || DEFAULT_WEBSITE_CMS.socialInstagram;
+  const youtubeUrl = getValidExternalUrl(websiteCMS.socialLinkedIn) || DEFAULT_WEBSITE_CMS.socialLinkedIn;
+  const openBookingModal = (prefillDeparture?: PackageDeparture) => {
+    setBookingSuccess(false);
+    setBookingError('');
+    if (prefillDeparture?.departureDate) {
+      setBookingForm((prev) => ({ ...prev, travelDate: prefillDeparture.departureDate }));
+    }
+    setIsBookingModalOpen(true);
+  };
 
   return (
-    <div id="package-detail-view" className="animate-fade-in overflow-hidden bg-[#fffaf1]">
-      <section className="relative overflow-hidden bg-stone-950 pt-28 text-white sm:pt-32">
-        <img
-          src={getTravelImage(pkg.packageBannerUrl || pkg.imageUrl)}
-          alt={pkg.title}
-          className="absolute inset-0 h-full w-full object-cover"
-          referrerPolicy="no-referrer"
-          loading="lazy"
-          decoding="async"
-          onError={handleTravelImageError}
-        />
-        <div className="absolute inset-0 bg-linear-to-r from-stone-950/92 via-stone-950/70 to-stone-950/20" />
-        <div className="absolute inset-0 bg-linear-to-t from-stone-950/86 via-transparent to-stone-950/20" />
-        <div className="absolute inset-x-0 bottom-0 h-28 bg-linear-to-t from-[#fffaf1] to-transparent" />
-
-        <div className="relative z-10 mx-auto flex min-h-[520px] max-w-[1320px] flex-col justify-end px-4 pb-24 sm:px-6 lg:px-8">
-          <div className="mb-8 flex flex-wrap items-center gap-3 text-[12px] font-bold uppercase tracking-[0.14em] text-white/75">
-            <button type="button" onClick={onBack} className="inline-flex cursor-pointer items-center gap-2 transition hover:text-[#4DA528]">
+    <div id="package-detail-view" className="animate-fade-in overflow-x-clip bg-[#f3f6f8] text-stone-900">
+      <section className="relative pt-24 sm:pt-28">
+        <div className="mx-auto max-w-[1500px] px-3 sm:px-5 lg:px-8">
+          <div className="mb-4 flex flex-wrap items-center gap-3 text-[11px] font-bold uppercase tracking-[0.14em] text-stone-500">
+            <button type="button" onClick={onBack} className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-2 shadow-sm transition hover:text-[#4DA528]">
               <ArrowLeft className="h-4 w-4" />
               <span>Packages</span>
             </button>
-            <span className="h-px w-8 bg-white/45" />
-            <span className="text-[#4DA528]">Tour Single</span>
+            <span className="h-px w-8 bg-stone-300" />
+            <span>{pkg.destination}</span>
           </div>
 
-          <div className="inner-heading-wrap flex-two grid gap-8 lg:grid-cols-[1fr_320px] lg:items-end">
-            <div className="inner-heading max-w-4xl">
-              <div className="mb-5 flex flex-wrap items-center gap-3">
-                <span className="feature rounded-[5px] bg-[#4DA528] px-4 py-2 text-[12px] font-bold uppercase tracking-[0.16em] text-white">
-                  {pkg.category}
-                </span>
-                <span className="inline-flex items-center gap-2 rounded-[5px] border border-white/20 bg-white/10 px-4 py-2 text-[12px] font-bold uppercase tracking-[0.14em] text-white backdrop-blur-md">
-                  <MapPin className="h-4 w-4 text-[#4DA528]" />
-                  {pkg.destination}
-                </span>
-              </div>
-              <h1 className="title max-w-5xl text-[46px] font-extrabold leading-[1.04] tracking-tight text-white sm:text-[64px] lg:text-[82px]">
-                {pkg.title}
-              </h1>
-              <p className="des mt-6 max-w-3xl text-[16px] leading-8 text-white/82">
-                {pkg.shortDescription}
-              </p>
-              <ul className="list-wrap-heading flex-three mt-8 flex flex-wrap gap-4 text-[14px] font-semibold text-white/86">
-                <li className="flex-three inline-flex items-center gap-2 rounded-[5px] border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-md">
-                  <Calendar className="h-4 w-4 text-[#4DA528]" />
-                  <span>{pkg.duration}</span>
-                </li>
-                <li className="flex-three inline-flex items-center gap-2 rounded-[5px] border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-md">
-                  <Users className="h-4 w-4 text-[#4DA528]" />
-                  <span>{pkg.maxGuests ? `Max Guests: ${pkg.maxGuests}` : 'Flexible group size'}</span>
-                </li>
-                <li className="flex-three inline-flex items-center gap-2 rounded-[5px] border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-md">
-                  <MapPin className="h-4 w-4 text-[#4DA528]" />
-                  <span>{pkg.destination}</span>
-                </li>
-              </ul>
-            </div>
+          <div className="grid min-h-[380px] overflow-hidden rounded-[8px] bg-stone-200 shadow-[0_24px_80px_rgba(15,23,42,0.16)] lg:grid-cols-[1.48fr_1fr]">
+            {hasPackageImages ? (
+              <>
+                <button type="button" onClick={() => openLightbox(visibleGalleryImages, 0)} className="group relative min-h-[320px] overflow-hidden text-left lg:min-h-[520px]">
+                  <TravelMedia
+                    src={primaryPackageImage}
+                    alt={pkg.title}
+                    className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+                    loading="eager"
+                    decoding="async"
+                    disableFallback
+                  />
+                  <div className="absolute inset-0 bg-linear-to-t from-stone-950/60 via-transparent to-transparent" />
+                  <div className="absolute bottom-6 left-6 max-w-xl text-white">
+                    <span className="inline-flex rounded-full bg-white/15 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.2em] backdrop-blur-md">{pkg.category}</span>
+                    <h2 className="mt-3 text-2xl font-extrabold tracking-tight sm:text-4xl">{pkg.destination}</h2>
+                  </div>
+                </button>
 
-            <div className="inner-price rounded-[14px] border border-white/18 bg-white/12 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.24)] backdrop-blur-xl">
-              <div className="start flex-three flex items-center gap-1 text-[#FF970D]">
-                {[...Array(5)].map((_, index) => (
-                  <Star key={index} className={`h-4 w-4 ${averageRating && index < Math.round(averageRating) ? 'fill-current' : 'text-white/35'}`} />
-                ))}
-                <span className="review ml-2 text-[13px] font-semibold text-white/78">
-                  {packageReviews.length > 0 ? `(${packageReviews.length} Review${packageReviews.length === 1 ? '' : 's'})` : '(No reviews yet)'}
-                </span>
+                <div className="grid grid-cols-2 gap-1 bg-white/70 p-1">
+                  {visibleGalleryImages.slice(1, 5).map((imageUrl, idx) => (
+                    <button
+                      key={`${imageUrl}-${idx}`}
+                      type="button"
+                      onClick={() => openLightbox(visibleGalleryImages, idx + 1)}
+                      className="group relative min-h-[150px] overflow-hidden bg-stone-200 text-left"
+                    >
+                      <TravelMedia
+                        src={imageUrl}
+                        alt={`${pkg.title} gallery ${idx + 2}`}
+                        className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+                        loading={idx === 0 ? 'eager' : 'lazy'}
+                        decoding="async"
+                        disableFallback
+                      />
+                      {idx === Math.min(3, visibleGalleryImages.slice(1, 5).length - 1) && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-stone-950/36 text-white">
+                          <span className="inline-flex items-center gap-2 rounded-full bg-stone-950/70 px-4 py-2 text-[11px] font-extrabold uppercase tracking-[0.16em] backdrop-blur-md">
+                            <Camera className="h-4 w-4" />
+                            Gallery
+                          </span>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                  {visibleGalleryImages.length === 1 && (
+                    <div className="col-span-2 flex min-h-[260px] items-center justify-center bg-[#f8f7f4] p-6 text-center text-sm font-semibold text-stone-400">
+                      Additional gallery images have not been uploaded yet.
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="col-span-full flex min-h-[380px] flex-col items-center justify-center gap-4 bg-[#f8f7f4] p-8 text-center lg:min-h-[520px]">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-stone-300 bg-white text-stone-300">
+                  <Camera className="h-7 w-7" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">{pkg.category}</p>
+                  <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-stone-900 sm:text-4xl">{pkg.destination}</h2>
+                  <p className="mt-3 text-sm font-medium text-stone-500">Package images have not been uploaded yet.</p>
+                </div>
               </div>
-              <p className="price-sale text-main mt-4 text-[34px] font-extrabold text-[#4DA528]">
-                {formatPrice(pkg.offerPrice || pkg.price)}
-                {pkg.offerPrice && <span className="price ml-3 text-[18px] font-semibold text-white/58 line-through">{formatPrice(pkg.price)}</span>}
-              </p>
-              <p className="mt-2 text-[13px] leading-6 text-white/72">Starting price per person. Final quote depends on route, dates, hotels, and group size.</p>
-            </div>
+            )}
           </div>
         </div>
       </section>
 
-      <div className="mx-auto max-w-[1320px] space-y-12 px-4 py-10 sm:px-6 sm:py-12 lg:px-8 lg:py-16">
-
-        {/* Main Content & Sticky Form Split */}
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-          
-          {/* Left: General Details, Itinerary, Inclusions */}
-          <div className="space-y-8 lg:col-span-2">
-
-            <div className="rounded-[28px] border border-stone-200/80 bg-gradient-to-br from-white via-[#fffdf8] to-[#f7f2e7] p-4 shadow-[0_30px_80px_rgba(18,38,32,0.08)] sm:p-6" id="package-gallery">
-              <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
-                <div className="space-y-4">
-                  <div className="group relative aspect-[4/3] overflow-hidden rounded-[18px] bg-stone-100">
-                    <img
-                      src={getTravelImage(visibleGalleryImages[selectedGalleryImage] || visibleGalleryImages[0] || DEFAULT_TRAVEL_IMAGE)}
-                      alt={`${pkg.title} gallery lead`}
-                      className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
-                      referrerPolicy="no-referrer"
-                      onError={handleTravelImageError}
-                    />
-                    <div className="absolute inset-0 bg-linear-to-t from-stone-950/55 via-stone-950/10 to-transparent" />
-                    <div className="absolute left-5 top-5 flex items-center gap-2 rounded-full border border-white/20 bg-white/15 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.2em] text-white backdrop-blur-md">
-                      <Camera className="h-3.5 w-3.5" />
-                      Premium Gallery
-                    </div>
-                    <div className="absolute bottom-5 left-5 right-5 flex items-end justify-between gap-4">
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/80">{pkg.destination}</p>
-                        <h3 className="mt-1 text-2xl font-semibold text-white">{pkg.title}</h3>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsLightboxOpen(true)}
-                        className="rounded-full border border-white/30 bg-white/15 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white backdrop-blur-md transition hover:bg-white/25"
-                      >
-                        View Lightbox
-                      </button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-                    {visibleGalleryImages.map((imageUrl, idx) => {
-                      const isSelected = idx === selectedGalleryImage;
-                      return (
-                        <button
-                          key={`${imageUrl}-${idx}`}
-                          type="button"
-                          onClick={() => setSelectedGalleryImage(idx)}
-                          className={`group relative aspect-[4/3] overflow-hidden rounded-[14px] border transition ${isSelected ? 'border-[#4DA528] ring-2 ring-[#4DA528]/20' : 'border-stone-200 hover:border-[#4DA528]/50'}`}
-                        >
-                          <img
-                            src={getTravelImage(imageUrl)}
-                            alt={`${pkg.title} thumbnail ${idx + 1}`}
-                            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                            referrerPolicy="no-referrer"
-                            onError={handleTravelImageError}
-                          />
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="rounded-[22px] border border-stone-200 bg-white/90 p-5 shadow-[0_16px_40px_rgba(15,23,42,0.06)]">
-                  <span className="inline-flex items-center rounded-full bg-[#4DA528]/10 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Journey Snapshot</span>
-                  <h3 className="mt-3 text-2xl font-extrabold tracking-tight text-stone-950">A premium travel experience</h3>
-                  <p className="mt-4 text-sm leading-7 text-stone-600">{pkg.shortDescription}</p>
-                  <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                    {quickInfoItems.map((item, idx) => {
-                      const Icon = item.icon;
-                      return (
-                        <div key={`${item.label}-${idx}`} className="rounded-[14px] border border-stone-200 bg-white p-3 shadow-sm transition hover:-translate-y-1">
-                          <div className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.16em] text-stone-500">
-                            <Icon className="h-3.5 w-3.5 text-[#4DA528]" />
-                            {item.label}
-                          </div>
-                          <p className="mt-2 text-sm font-semibold text-stone-900">{item.value}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+      <div className="mx-auto max-w-[1500px] space-y-8 px-3 py-6 sm:px-5 sm:py-8 lg:px-8 lg:py-10">
+        <section className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start xl:grid-cols-[minmax(0,1fr)_400px]">
+          <div className="rounded-[6px] border border-stone-200 bg-white p-6 shadow-[0_16px_45px_rgba(15,23,42,0.08)] sm:p-8">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="inline-flex rounded bg-[#ff5a1f] px-1 py-8 text-[0px]" aria-hidden="true" />
+              <h1 className="max-w-3xl text-3xl font-extrabold leading-tight tracking-tight text-stone-900 sm:text-4xl lg:text-[42px]">
+                {pkg.title}
+              </h1>
+            </div>
+            <div className="mt-5 flex flex-wrap items-center gap-4 text-sm font-semibold text-stone-500">
+              <span className="inline-flex items-center rounded-[6px] bg-[#10a31a] px-4 py-2 text-lg font-extrabold text-white">
+                {averageRating ? averageRating.toFixed(1) : '4.8'} / 5
+              </span>
+              <span>({packageReviews.length || 0} Reviews)</span>
+              <span className="inline-flex items-center gap-1.5"><Calendar className="h-4 w-4" />{pkg.duration}</span>
+              <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4" />{pkg.destination}</span>
+            </div>
+            <p
+              ref={summaryTextRef}
+              id="package-summary-description"
+              className={`mt-5 max-w-4xl whitespace-pre-line text-[15px] leading-8 text-stone-600 ${isSummaryExpanded ? '' : 'line-clamp-3'}`}
+            >
+              {summaryText}
+            </p>
+            {hasSummaryOverflow && (
+              <button
+                type="button"
+                onClick={() => setIsSummaryExpanded((current) => !current)}
+                className="mt-3 inline-flex items-center gap-2 text-sm font-extrabold text-[#ff5a1f] transition hover:text-[#4DA528]"
+                aria-expanded={isSummaryExpanded}
+                aria-controls="package-summary-description"
+              >
+                {isSummaryExpanded ? 'Read less' : 'Read full'}
+                {isSummaryExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </button>
+            )}
+            <div className="mt-6 flex flex-col gap-4 rounded-[8px] border border-sky-200 bg-sky-50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-semibold leading-6 text-sky-800">
+                Talk to a destination expert for custom hotels, routes, transfers and group discounts.
+              </p>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <a
+                  href={packageWhatsAppUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-9 items-center gap-2 rounded-[6px] bg-[#0f9f72] px-3 text-[10px] font-extrabold uppercase tracking-[0.12em] text-white transition hover:-translate-y-0.5 hover:bg-[#0b805c]"
+                  aria-label={`Ask about ${pkg.title} on WhatsApp`}
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  WhatsApp
+                </a>
+                <a
+                  href={instagramUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-[6px] bg-[#d94680] text-white transition hover:-translate-y-0.5 hover:bg-[#be185d]"
+                  aria-label="Open Pravaah Travels on Instagram"
+                  title="Instagram"
+                >
+                  <Instagram className="h-4 w-4" />
+                </a>
+                <a
+                  href={youtubeUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-[6px] bg-[#ef1b1b] text-white transition hover:-translate-y-0.5 hover:bg-[#c81717]"
+                  aria-label="Find Pravaah Travels on YouTube"
+                  title="YouTube"
+                >
+                  <Youtube className="h-4 w-4" />
+                </a>
               </div>
             </div>
+          </div>
 
-            <div className="information-content-tour rounded-[24px] border border-stone-200/80 bg-gradient-to-br from-white via-[#fffdf8] to-[#fcf6e8] p-6 shadow-[0_24px_70px_rgba(18,38,32,0.08)] md:p-8">
-              <div className="description-wrap mb-8 rounded-[18px] border border-stone-200/70 bg-white/80 p-5">
-                <span className="inline-flex rounded-full bg-[#4DA528]/10 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">About this package</span>
-                <h3 className="mt-3 text-3xl font-extrabold tracking-tight text-stone-950">A closer look at this journey</h3>
-                <p className="des mt-5 whitespace-pre-line text-sm leading-8 text-stone-600">
-                  {pkg.fullDescription || pkg.shortDescription}
-                </p>
-              </div>
+          <div className="rounded-[8px] border border-stone-200 bg-white p-6 shadow-[0_16px_45px_rgba(15,23,42,0.08)]">
+            <p className="text-sm text-stone-500">Starting from {pkg.offerPrice && <span className="ml-1 text-stone-400 line-through">{formatPrice(pkg.price)}</span>}</p>
+            <div className="mt-2 text-4xl font-extrabold tracking-tight text-[#ff5a1f]">{formatPrice(pkg.offerPrice || pkg.price)}</div>
+            <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-stone-500">per person</p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              {pkg.offerPrice && <span className="rounded bg-amber-100 px-3 py-2 text-[11px] font-extrabold uppercase tracking-[0.14em] text-amber-700">Best offer</span>}
+              <span className="rounded bg-[#4DA528]/10 px-3 py-2 text-[11px] font-extrabold uppercase tracking-[0.14em] text-[#4DA528]">Custom quote</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => openBookingModal()}
+              className="mt-6 flex w-full cursor-pointer items-center justify-center gap-2 rounded-[6px] bg-[#ff5a1f] px-5 py-4 text-[12px] font-extrabold uppercase tracking-[0.14em] text-white shadow-[0_14px_30px_rgba(255,90,31,0.24)] transition hover:-translate-y-0.5 hover:bg-[#e64a14]"
+            >
+              <Compass className="h-4 w-4" />
+              Send Booking Request
+            </button>
+          </div>
+        </section>
 
-              <div className="description-wrap mb-8 rounded-[18px] border border-stone-200/70 bg-white/80 p-5">
-                <div className="mb-5 flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-[#FF970D]" />
-                  <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Highlights</span>
+        <section className="rounded-[6px] border border-stone-200 bg-white p-5 shadow-[0_12px_35px_rgba(15,23,42,0.06)]">
+          <div className="grid gap-4 text-center sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              { label: hotelItems.length ? 'Stay Included' : 'Premium Stay', icon: BedDouble },
+              { label: transportationItems.length ? 'Transport Included' : 'Private Transfers', icon: Car },
+              { label: mealPlanItems.length ? 'Meals Included' : 'Meal Plan', icon: Utensils },
+              { label: 'Expert Support', icon: Phone },
+              { label: 'Handpicked Route', icon: Compass },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.label} className="rounded-[6px] border border-stone-100 bg-[#fcfbf9] px-4 py-5">
+                  <Icon className="mx-auto h-8 w-8 text-[#ff5a1f]" />
+                  <p className="mt-3 text-sm font-bold text-stone-700">{item.label}</p>
                 </div>
-                {highlightItems.length > 0 ? (
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {highlightItems.map((item, idx) => (
-                      <div key={`${item}-${idx}`} className="flex items-center gap-3 rounded-[12px] border border-stone-200 bg-[#fffaf1] p-4 text-sm font-medium text-stone-700 transition hover:-translate-y-1">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#4DA528]/10 text-[#4DA528]">
-                          <Compass className="h-4 w-4" />
-                        </div>
-                        <span>{item}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-[12px] border border-dashed border-stone-300 bg-[#fffaf1] p-5 text-sm leading-7 text-stone-500">
-                    Highlights have not been published for this package yet.
-                  </div>
-                )}
-              </div>
+              );
+            })}
+          </div>
+        </section>
 
-              <div className="expect-wrap rounded-[18px] border border-stone-200/70 bg-white/80 p-5">
-                <h4 className="title mb-5 text-2xl font-extrabold text-stone-950">Quick Facts</h4>
+        {/* Main Content & Sticky Form Split */}
+        <div className="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_400px]">
+          
+          {/* Left: General Details, Itinerary, Inclusions */}
+          <div className="space-y-7">
+            <nav className="hidden overflow-hidden rounded-[6px] border border-stone-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)] lg:block">
+              <div className="grid grid-cols-7 text-center text-sm font-bold text-stone-600">
+                {[
+                  ['Overview', '#tour-overview'],
+                  ['Itinerary', '#custom-itinerary-section'],
+                  ['Options', '#package-options'],
+                  ['Inclusions', '#tour-inclusions'],
+                  ['Map', '#tour-map'],
+                  ['Reviews', '#package-reviews'],
+                  ['Policies', '#tour-policies'],
+                ].map(([label, href]) => (
+                  <a key={href} href={href} className="border-r border-stone-100 px-3 py-4 transition hover:bg-[#fff4ec] hover:text-[#ff5a1f] last:border-r-0">{label}</a>
+                ))}
+              </div>
+            </nav>
+
+            <section className="rounded-[6px] border border-stone-200 bg-white p-6 shadow-[0_14px_40px_rgba(15,23,42,0.06)] md:p-8" id="tour-highlights">
+              <div className="border-l-4 border-[#ff5a1f] pl-5">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-[#FF970D]" />
+                  <span className="text-[12px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Highlights</span>
+                </div>
+                <h3 className="mt-3 text-2xl font-extrabold tracking-tight text-stone-950 sm:text-3xl">{pkg.title} Highlights</h3>
+              </div>
+              {highlightItems.length > 0 ? (
+                <div className="mt-6 grid gap-3 xl:grid-cols-2">
+                  {highlightItems.map((item, idx) => (
+                    <div key={`${item}-${idx}`} className="flex h-full items-start gap-3 rounded-[6px] border border-stone-100 bg-[#fcfbf9] p-4 text-sm font-medium leading-7 text-stone-700">
+                      <Compass className="mt-1 h-4 w-4 shrink-0 text-[#ff5a1f]" />
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-6 rounded-[6px] border border-dashed border-stone-300 bg-[#fcfbf9] p-5 text-sm leading-7 text-stone-500">
+                  Highlights have not been published for this package yet.
+                </div>
+              )}
+            </section>
+
+            <section className="information-content-tour rounded-[6px] border border-stone-200 bg-white p-6 shadow-[0_14px_40px_rgba(15,23,42,0.06)] md:p-8" id="tour-overview">
+              <div className="border-l-4 border-[#ff5a1f] pl-5">
+                <span className="text-[12px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Overview</span>
+                <h3 className="mt-3 text-2xl font-extrabold tracking-tight text-stone-950 sm:text-3xl">{pkg.title} Overview</h3>
+              </div>
+              <p
+                ref={overviewTextRef}
+                id="package-overview-description"
+                className={`mt-6 whitespace-pre-line text-[15px] leading-8 text-stone-600 ${isOverviewExpanded ? '' : 'line-clamp-6'}`}
+              >
+                {overviewText || 'Overview has not been published for this package yet.'}
+              </p>
+              {hasOverviewOverflow && (
+                <button
+                  type="button"
+                  onClick={() => setIsOverviewExpanded((current) => !current)}
+                  className="mt-5 inline-flex items-center gap-2 text-sm font-extrabold text-[#ff5a1f] transition hover:text-[#4DA528]"
+                  aria-expanded={isOverviewExpanded}
+                  aria-controls="package-overview-description"
+                >
+                  {isOverviewExpanded ? 'Read less' : 'Read full'}
+                  {isOverviewExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+              )}
+            </section>
+
+            <section className="rounded-[6px] border border-stone-200 bg-white p-6 shadow-[0_14px_40px_rgba(15,23,42,0.06)] md:p-8">
+              <div className="border-l-4 border-[#ff5a1f] pl-5">
+                <span className="text-[12px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">At a glance</span>
+                <h3 className="mt-3 text-2xl font-extrabold tracking-tight text-stone-950">Quick Info</h3>
+              </div>
+              <div className="mt-6 grid gap-x-8 sm:grid-cols-2">
                 {[
                   ['Departure/Return Location', pkg.pickup || pkg.destination],
                   ['Tour Duration', pkg.duration],
                   ['Travel Category', pkg.category],
                   ['Package Code', pkg.packageCode || pkg.id],
                 ].map(([label, value]) => (
-                  <div key={label} className="expect flex-three flex flex-col gap-1 border-t border-stone-100 py-4 sm:flex-row sm:items-center sm:justify-between">
-                    <span className="text-[13px] font-bold uppercase tracking-[0.12em] text-stone-500">{label}</span>
+                  <div key={label} className="flex min-h-20 flex-col justify-center gap-1 border-t border-stone-100 py-4">
+                    <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-stone-500">{label}</span>
                     <p className="text-sm font-semibold text-stone-900">{value}</p>
                   </div>
                 ))}
               </div>
-            </div>
+            </section>
 
-            <div className="rounded-[24px] border border-stone-200/80 bg-gradient-to-br from-white via-[#fffdf8] to-[#f7f2e7] p-4 shadow-[0_24px_70px_rgba(18,38,32,0.08)]">
+            <div className="rounded-[6px] border border-stone-200 bg-white p-5 shadow-[0_14px_40px_rgba(15,23,42,0.06)]" id="tour-map">
               <div className="mb-4 px-2 pt-2">
-                <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Location</span>
-                <h3 className="mt-2 text-3xl font-extrabold tracking-tight text-stone-950">Route and destination map</h3>
+                <span className="text-[12px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Map</span>
+                <h3 className="mt-2 text-2xl font-extrabold tracking-tight text-stone-950 sm:text-3xl">Route and destination map</h3>
               </div>
-              <div className="mb-6 overflow-hidden rounded-[14px] border border-stone-200">
+              <div className="mb-6 overflow-hidden rounded-[6px] border border-stone-200">
                 <iframe
                   title={`${pkg.destination} map`}
                   src={mapEmbedUrl}
@@ -867,134 +1076,125 @@ export default function PackageDetailView({
                   referrerPolicy="no-referrer-when-downgrade"
                 />
               </div>
-              <InteractiveRouteMap 
-                itinerary={localItinerary} 
-                destination={pkg.destination} 
-                category={pkg.category}
-                activeDay={activeDay}
-                onDayClick={(day) => setActiveDay(day)}
-              />
+              <div className="grid gap-3 sm:grid-cols-3">
+                {[
+                  ['Route', pkg.destination],
+                  ['Duration', pkg.duration],
+                  ['Pickup', pkg.pickup || 'As per package plan'],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-[6px] border border-stone-200 bg-[#fcfbf9] p-4">
+                    <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-stone-400">{label}</p>
+                    <p className="mt-1 text-sm font-bold text-stone-900">{value}</p>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Day Wise Itinerary */}
-            <div className="space-y-6 rounded-[24px] border border-stone-200/80 bg-gradient-to-br from-white via-[#fffdf8] to-[#fcf6e8] p-6 shadow-[0_24px_70px_rgba(18,38,32,0.08)] md:p-8" id="custom-itinerary-section">
+            <div className="space-y-6 rounded-[6px] border border-stone-200 bg-white p-6 shadow-[0_14px_40px_rgba(15,23,42,0.06)] md:p-8" id="custom-itinerary-section">
               <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                 <div className="space-y-2">
-                  <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Tour Planing</span>
-                  <h3 className="text-3xl font-extrabold tracking-tight text-stone-950">Interactive itinerary</h3>
-                  <p className="text-sm leading-6 text-stone-500">Click a day to focus its spot coordinate on the map above.</p>
+                  <span className="text-[12px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Itinerary</span>
+                  <h3 className="text-2xl font-extrabold tracking-tight text-stone-950 sm:text-3xl">{pkg.title} Itinerary</h3>
+                  <p className="text-sm leading-6 text-stone-500">Day-wise route, stays and travel plan.</p>
                 </div>
                 
-                {/* Drag-and-Drop / Interactive Toggle */}
                 <button
                   type="button"
-                  onClick={() => setIsCustomizing(!isCustomizing)}
-                  className={`flex cursor-pointer items-center gap-2 rounded-full border px-5 py-3 text-[10px] font-extrabold uppercase tracking-[0.14em] transition ${
-                    isCustomizing 
-                      ? 'border-amber-600 bg-amber-500 text-white shadow-md' 
-                      : 'border-stone-200 bg-[#fffaf1] text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'
-                  }`}
+                  onClick={() => {
+                    if (allItineraryExpanded) {
+                      setAllItineraryExpanded(false);
+                      setActiveDay(null);
+                    } else {
+                      setAllItineraryExpanded(true);
+                      setActiveDay(null);
+                    }
+                  }}
+                  className="flex cursor-pointer items-center gap-2 rounded-[6px] border border-stone-200 bg-[#fcfbf9] px-4 py-3 text-[10px] font-extrabold uppercase tracking-[0.14em] text-stone-700 transition hover:border-[#ff5a1f] hover:text-[#ff5a1f]"
                 >
-                  <Sliders className="h-4 w-4" />
-                  <span>{isCustomizing ? 'Lock Customized Order' : 'Customize Plan (Drag-n-Drop)'}</span>
+                  {allItineraryExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  <span>{allItineraryExpanded ? 'Collapse All' : 'Expand All'}</span>
                 </button>
               </div>
-              
-              {isCustomizing && (
-                <div className="flex animate-fade-in items-start gap-3 rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm leading-7 text-stone-700">
-                  <Sparkles className="mt-1 h-4 w-4 shrink-0 text-amber-500" />
-                  <div>
-                    <strong>Interactive Drag & Drop Mode Active:</strong> Rearrange your travel days! 
-                    Hover over a day card and drag it using the <strong>Grip Vertical</strong> handles, or click the 
-                    <strong> Up/Down</strong> keys. The coordinate lines on the map above will re-route instantly!
-                  </div>
-                </div>
-              )}
 
               <div className="relative space-y-5 before:absolute before:bottom-6 before:left-[22px] before:top-6 before:w-px before:bg-stone-200 sm:before:left-[28px]">
                 {localItinerary && localItinerary.length > 0 ? (
-                  localItinerary.map((dayItem, index) => {
-                    const isOpen = activeDay === dayItem.day;
+                  localItinerary.map((dayItem) => {
+                    const isOpen = allItineraryExpanded || activeDay === dayItem.day;
                     return (
                       <div 
                         key={dayItem.day}
-                        draggable={isCustomizing}
-                        onDragStart={() => handleDragStart(index)}
-                        onDragOver={handleDragOver}
-                        onDrop={() => handleDrop(index)}
-                        className={`relative ml-12 rounded-[14px] border transition-all duration-300 sm:ml-16 ${
-                          isCustomizing 
-                            ? 'border-amber-300 bg-[#fffaf1] shadow-sm hover:border-amber-500 hover:shadow-md' 
-                            : isOpen 
-                              ? 'border-[#4DA528]/60 shadow-sm ring-1 ring-[#4DA528]/10'
-                              : 'border-stone-200 bg-white'
+                        className={`relative ml-12 rounded-[6px] border transition-all duration-300 sm:ml-16 ${
+                          isOpen
+                            ? 'border-[#4DA528]/60 shadow-sm ring-1 ring-[#4DA528]/10'
+                            : 'border-stone-200 bg-white'
                         }`}
                       >
-                        <span className={`absolute -left-[49px] top-4 z-10 flex h-11 w-11 items-center justify-center rounded-full border-4 border-white text-[12px] font-extrabold shadow-md sm:-left-[61px] ${
-                          isOpen ? 'bg-[#4DA528] text-white' : 'bg-stone-100 text-stone-600'
+                        <span className={`absolute -left-[49px] top-4 z-10 flex h-11 w-11 items-center justify-center rounded-[6px] border-4 border-white text-[12px] font-extrabold shadow-md sm:-left-[61px] ${
+                          isOpen ? 'bg-[#ff5a1f] text-white' : 'bg-stone-100 text-stone-600'
                         }`}>
                           {dayItem.day}
                         </span>
                         <div
-                          className={`flex w-full items-center justify-between p-4 text-left transition sm:p-5 ${
-                            isCustomizing ? 'cursor-grab' : 'cursor-pointer hover:bg-[#fffaf1]'
-                          }`}
+                          className="flex w-full cursor-pointer items-center justify-between p-4 text-left transition hover:bg-[#fffaf1] sm:p-5"
                           onClick={() => {
-                            if (!isCustomizing) {
-                              toggleDay(dayItem.day);
-                              setActiveDay(dayItem.day);
-                            }
+                            toggleDay(dayItem.day);
                           }}
                         >
                           <div className="flex items-center gap-4">
-                            {/* Drag Handle or Index marker */}
-                            {isCustomizing ? (
-                              <div className="cursor-grab p-1 text-amber-500 hover:text-amber-700 active:cursor-grabbing">
-                                <GripVertical className="h-4.5 w-4.5" />
-                              </div>
-                            ) : (
-                              <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border font-mono text-[10px] font-extrabold shadow-sm transition-colors ${
-                                isOpen ? 'border-transparent bg-[#4DA528] text-white' : 'border-stone-200 bg-[#fffaf1] text-stone-600'
-                              }`}>
-                                D{dayItem.day}
-                              </span>
-                            )}
+                            <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border font-mono text-[10px] font-extrabold shadow-sm transition-colors ${
+                              isOpen ? 'border-transparent bg-[#ff5a1f] text-white' : 'border-stone-200 bg-[#fcfbf9] text-stone-600'
+                            }`}>
+                              D{dayItem.day}
+                            </span>
                             
                             <span className="text-sm font-semibold leading-snug text-stone-900 sm:text-base">
                               {dayItem.title}
                             </span>
                           </div>
 
-                          {/* Control arrows for mobile / non-drag reordering */}
-                          {isCustomizing ? (
-                            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                              <button
-                                type="button"
-                                disabled={index === 0}
-                                onClick={() => moveDay(index, 'up')}
-                                className="cursor-pointer rounded-full border border-stone-200 bg-white p-1 text-stone-500 hover:bg-stone-50 hover:text-[#4DA528] disabled:opacity-30"
-                              >
-                                <ArrowUp className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                disabled={index === localItinerary.length - 1}
-                                onClick={() => moveDay(index, 'down')}
-                                className="cursor-pointer rounded-full border border-stone-200 bg-white p-1 text-stone-500 hover:bg-stone-50 hover:text-[#4DA528] disabled:opacity-30"
-                              >
-                                <ArrowDown className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          ) : (
-                            <div>
-                              {isOpen ? <ChevronUp className="h-4 w-4 text-[#4DA528]" /> : <ChevronDown className="h-4 w-4 text-stone-400" />}
-                            </div>
-                          )}
+                          <div>
+                            {isOpen ? <ChevronUp className="h-4 w-4 text-[#4DA528]" /> : <ChevronDown className="h-4 w-4 text-stone-400" />}
+                          </div>
                         </div>
                         
-                        {isOpen && !isCustomizing && (
-                          <div className="animate-fade-in border-t border-stone-100 bg-[#fffaf1] p-5 text-sm leading-8 text-stone-600">
-                            {dayItem.description}
+                        {isOpen && (
+                          <div className="animate-fade-in border-t border-stone-100 bg-[#fcfbf9] p-5 text-sm leading-8 text-stone-600">
+                            {dayItem.location && (
+                              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-stone-500">
+                                <MapPin className="h-3.5 w-3.5 text-[#ff5a1f]" />
+                                {dayItem.location}
+                              </div>
+                            )}
+                            <p className="whitespace-pre-line">{dayItem.description}</p>
+                            {(() => {
+                              const dayImages = Array.from(new Set(((dayItem.images || []) as string[]))).filter(Boolean).slice(0, 3);
+                              if (!dayImages.length) return null;
+                              return (
+                                <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                                  {dayImages.map((imageUrl, imageIndex) => (
+                                    <button
+                                      key={`${dayItem.day}-${imageUrl}-${imageIndex}`}
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        openLightbox(dayImages, imageIndex);
+                                      }}
+                                      className="group relative aspect-[1.45/1] overflow-hidden rounded-[6px] bg-stone-200"
+                                    >
+                                      <TravelMedia
+                                        src={imageUrl}
+                                        alt={`${pkg.title} day ${dayItem.day} visual ${imageIndex + 1}`}
+                                        className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                                        loading="lazy"
+                                        decoding="async"
+                                        disableFallback
+                                      />
+                                    </button>
+                                  ))}
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
@@ -1006,129 +1206,204 @@ export default function PackageDetailView({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              <div className="space-y-5 rounded-[24px] border border-emerald-200/80 bg-gradient-to-br from-emerald-50/80 to-white p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8">
-                <h4 className="flex items-center gap-2 text-xl font-semibold text-[#0f766e]">
+            <div className="rounded-[6px] border border-stone-200 bg-white p-6 shadow-[0_14px_40px_rgba(15,23,42,0.06)] md:p-8" id="package-options">
+              <div className="mb-6 border-l-4 border-[#ff5a1f] pl-5">
+                <span className="text-[12px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Package Options</span>
+                <h3 className="mt-3 text-2xl font-extrabold tracking-tight text-stone-950 sm:text-3xl">Available Package</h3>
+              </div>
+              <div className="space-y-4">
+                {packageOptions.map((option, index) => (
+                  <article key={`${option.title}-${index}`} className="rounded-[8px] border border-stone-200 bg-[#fcfbf9] p-5 sm:p-6">
+                    <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+                      <div className="max-w-3xl">
+                        <h4 className="text-xl font-extrabold leading-snug text-stone-950">{option.title}</h4>
+                        {option.description && <p className="mt-3 text-sm leading-7 text-stone-600">{option.description}</p>}
+                        <p className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-stone-500">
+                          <Calendar className="h-4 w-4 text-[#ff5a1f]" />
+                          {pkg.duration}
+                        </p>
+                      </div>
+                      <div className="shrink-0 border-t border-stone-200 pt-4 text-left md:min-w-44 md:border-l md:border-t-0 md:pl-6 md:pt-0 md:text-right">
+                        {option.originalPrice ? <p className="text-sm font-semibold text-stone-400 line-through">{formatPrice(option.originalPrice)}</p> : null}
+                        <p className="mt-1 text-2xl font-extrabold text-[#ff5a1f]">{formatPrice(option.price || pkg.offerPrice || pkg.price)}</p>
+                        <p className="mt-1 text-xs font-semibold text-stone-400">per person</p>
+                        <button
+                          type="button"
+                          onClick={() => openBookingModal()}
+                          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[6px] bg-[#ff5a1f] px-4 py-3 text-[10px] font-extrabold uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5 hover:bg-[#df4512]"
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          Enquire now
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2" id="tour-inclusions">
+              <div className="space-y-5 rounded-[6px] border border-emerald-200 bg-white p-6 shadow-[0_14px_40px_rgba(15,23,42,0.06)] md:p-7">
+                <h4 className="flex items-center gap-2 text-xl font-extrabold text-[#0f766e]">
                   <Check className="h-5 w-5 text-[#0f766e]" />
                   <span>Included</span>
                 </h4>
                 {includedItems.length > 0 ? (
                   <ul className="space-y-3">
                     {includedItems.map((item, idx) => (
-                      <li key={`${item}-${idx}`} className="flex items-start gap-3 rounded-2xl bg-emerald-50/70 p-3 text-sm leading-6 text-stone-700">
-                        <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[#0f766e]" />
+                      <li key={`${item}-${idx}`} className="flex items-start gap-3 border-b border-stone-100 pb-3 text-sm leading-6 text-stone-700 last:border-0 last:pb-0">
+                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0f766e]" aria-hidden="true" />
                         <span>{item}</span>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="rounded-2xl border border-dashed border-emerald-200 bg-white/70 p-4 text-sm leading-7 text-stone-500">Inclusions have not been published for this package yet.</p>
+                  <p className="text-sm leading-7 text-stone-500">Inclusions have not been published for this package yet.</p>
                 )}
               </div>
 
-              <div className="space-y-5 rounded-[24px] border border-rose-200/80 bg-gradient-to-br from-rose-50/80 to-white p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8">
-                <h4 className="flex items-center gap-2 text-xl font-semibold text-rose-700">
+              <div className="space-y-5 rounded-[6px] border border-rose-200 bg-white p-6 shadow-[0_14px_40px_rgba(15,23,42,0.06)] md:p-7">
+                <h4 className="flex items-center gap-2 text-xl font-extrabold text-rose-700">
                   <X className="h-5 w-5 text-rose-600" />
                   <span>Excluded</span>
                 </h4>
                 {excludedItems.length > 0 ? (
                   <ul className="space-y-3">
                     {excludedItems.map((item, idx) => (
-                      <li key={`${item}-${idx}`} className="flex items-start gap-3 rounded-2xl bg-rose-50/70 p-3 text-sm leading-6 text-stone-700">
-                        <X className="mt-1 h-3.5 w-3.5 shrink-0 text-rose-600" />
+                      <li key={`${item}-${idx}`} className="flex items-start gap-3 border-b border-stone-100 pb-3 text-sm leading-6 text-stone-700 last:border-0 last:pb-0">
+                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-rose-600" aria-hidden="true" />
                         <span>{item}</span>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="rounded-2xl border border-dashed border-rose-200 bg-white/70 p-4 text-sm leading-7 text-stone-500">Exclusions have not been published for this package yet.</p>
+                  <p className="text-sm leading-7 text-stone-500">Exclusions have not been published for this package yet.</p>
                 )}
               </div>
             </div>
 
-            <div className="rounded-[24px] border border-stone-200/80 bg-gradient-to-br from-white via-[#fffdf8] to-[#fcf6e8] p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8" id="trip-essentials">
-              <div className="mb-6">
-                <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Stay, transfer & meals</span>
-                <h3 className="mt-3 text-3xl font-extrabold tracking-tight text-stone-950">Package logistics</h3>
+            <div className="rounded-[6px] border border-stone-200 bg-white p-6 shadow-[0_14px_40px_rgba(15,23,42,0.06)] md:p-8" id="trip-essentials">
+              <div className="mb-8 border-l-4 border-[#ff5a1f] pl-5">
+                <span className="text-[12px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">More Details</span>
+                <h3 className="mt-3 text-2xl font-extrabold tracking-tight text-stone-950 sm:text-3xl">More details about {pkg.title}</h3>
               </div>
+
               <div className="grid gap-4 md:grid-cols-3">
                 {[
                   { label: 'Hotels', icon: BedDouble, items: hotelItems },
-                  { label: 'Transportation', icon: Car, items: transportationItems },
-                  { label: 'Meal Plan', icon: Utensils, items: mealPlanItems },
+                  { label: 'Transfers', icon: Car, items: transportationItems },
+                  { label: 'Meals', icon: Utensils, items: mealPlanItems },
                 ].map((section) => {
                   const Icon = section.icon;
                   return (
-                    <div key={section.label} className="rounded-[18px] border border-stone-200/70 bg-white/80 p-5">
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#4DA528]/10 text-[#4DA528]">
-                          <Icon className="h-5 w-5" />
-                        </span>
-                        <h4 className="text-lg font-extrabold text-stone-950">{section.label}</h4>
-                      </div>
-                      {section.items.length > 0 ? (
-                        <ul className="mt-4 space-y-2">
-                          {section.items.slice(0, 3).map((item, idx) => (
-                            <li key={`${section.label}-${item}-${idx}`} className="rounded-[12px] border border-stone-200 bg-[#fffaf1] p-3 text-sm leading-6 text-stone-700">{item}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="mt-4 rounded-[12px] border border-dashed border-stone-300 bg-[#fffaf1] p-3 text-sm leading-6 text-stone-500">Not specified in package inclusions.</p>
-                      )}
+                    <div key={section.label} className="rounded-[6px] border border-stone-200 bg-[#fcfbf9] p-5">
+                      <Icon className="h-8 w-8 text-[#ff5a1f]" />
+                      <h4 className="mt-3 text-base font-extrabold text-stone-950">{section.label}</h4>
+                      <p className="mt-2 text-sm leading-6 text-stone-600">{section.items[0] || 'Details will be confirmed by our travel desk.'}</p>
                     </div>
                   );
                 })}
               </div>
 
-              <div className="mt-6 grid gap-6 lg:grid-cols-[1.02fr_0.98fr]">
-                <div className="rounded-[18px] border border-stone-200/70 bg-white/80 p-5">
-                  <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Pack smart</span>
-                  <h3 className="mt-3 text-2xl font-extrabold tracking-tight text-stone-950">Travel essentials</h3>
-                  {packingItems.length > 0 ? (
-                    <ul className="mt-5 space-y-3">
-                      {packingItems.map((item, idx) => (
-                        <li key={`${item}-${idx}`} className="flex items-start gap-3 rounded-[12px] border border-stone-200 bg-[#fffaf1] p-3 text-sm leading-6 text-stone-700">
-                          <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[#4DA528]" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="mt-5 rounded-[12px] border border-dashed border-stone-300 bg-[#fffaf1] p-4 text-sm leading-7 text-stone-500">Travel essentials have not been published for this package yet.</p>
-                  )}
-                </div>
-
-                <div className="rounded-[18px] border border-stone-200/70 bg-white/80 p-5">
-                  <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Departure & planning</span>
-                  <h3 className="mt-3 text-2xl font-extrabold tracking-tight text-stone-950">Flexible booking support</h3>
-                  <div className="mt-5 space-y-4">
-                    <div>
-                      <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-stone-500">Departure windows</p>
-                      {departureWindowItems.length > 0 ? (
-                        <ul className="mt-2 space-y-2">
-                          {departureWindowItems.map((item, idx) => (
-                            <li key={`${item}-${idx}`} className="rounded-[10px] border border-stone-200 bg-[#fffaf1] px-3 py-2 text-sm text-stone-700">{item}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="mt-2 rounded-[10px] border border-dashed border-stone-300 bg-[#fffaf1] px-3 py-2 text-sm text-stone-500">Departure windows are not listed yet.</p>
+              {(knowBeforeItems.length > 0 || packingItems.length > 0) && (
+                <div className="mt-8 space-y-6">
+                  {knowBeforeItems.length > 0 && (
+                    <div className="rounded-[6px] border border-stone-200 bg-white p-5">
+                      <h4 className="text-xl font-extrabold text-stone-950">Know Before You Go</h4>
+                      <ul className="mt-5 space-y-3">
+                        {(isKnowBeforeExpanded ? knowBeforeItems : knowBeforeItems.slice(0, 5)).map((item, idx) => (
+                          <li key={`${item}-${idx}`} className="flex items-start gap-3 text-sm leading-7 text-stone-600">
+                            <AlertCircle className="mt-1 h-4 w-4 shrink-0 text-[#ff5a1f]" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {knowBeforeItems.length > 5 && (
+                        <button
+                          type="button"
+                          onClick={() => setIsKnowBeforeExpanded((current) => !current)}
+                          aria-expanded={isKnowBeforeExpanded}
+                          className="mt-5 inline-flex items-center gap-2 text-sm font-extrabold text-[#ff5a1f] transition hover:text-[#d9480f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff5a1f]/30"
+                        >
+                          {isKnowBeforeExpanded ? 'Show less' : `View all ${knowBeforeItems.length} notes`}
+                          {isKnowBeforeExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </button>
                       )}
                     </div>
-                    <div>
-                      <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-stone-500">Planning notes</p>
-                      {policyItems.length > 0 ? (
-                        <ul className="mt-2 space-y-2">
-                          {policyItems.map((item, idx) => (
-                            <li key={`${item}-${idx}`} className="rounded-[10px] border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">{item}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="mt-2 rounded-[10px] border border-dashed border-stone-300 bg-stone-50 px-3 py-2 text-sm text-stone-500">Planning notes are not listed yet.</p>
-                      )}
+                  )}
+
+                  {packingItems.length > 0 && (
+                    <div className="rounded-[6px] border border-stone-200 bg-[#fcfbf9] p-5">
+                      <h4 className="text-xl font-extrabold text-stone-950">Things To Carry</h4>
+                      <ul className="mt-5 grid gap-3 sm:grid-cols-2">
+                        {packingItems.map((item, idx) => (
+                          <li key={`${item}-${idx}`} className="flex items-center gap-3 text-sm font-semibold text-stone-600">
+                            <CheckCircle2 className="h-4 w-4 shrink-0 text-[#ff5a1f]" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {difficultyLevel && (
+                <div className="mt-6 rounded-[6px] border border-stone-200 bg-white p-5">
+                  <h4 className="text-xl font-extrabold text-stone-700 sm:text-2xl">Tour Difficulty for {pkg.title}</h4>
+                  <div className="mt-7 max-w-2xl px-2 sm:px-4">
+                    <div
+                      className="relative h-[88px]"
+                      role="img"
+                      aria-label={`Tour difficulty ${difficultyLevel} out of 10`}
+                    >
+                      <div className="absolute left-5 right-5 top-10 h-[3px] rounded-full bg-stone-300" />
+                      <div
+                        className="absolute top-0 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full bg-white text-[#ff5a1f] shadow-[0_4px_14px_rgba(255,90,31,0.16)]"
+                        style={{ left: `calc(20px + ${((difficultyLevel - 1) / 9) * 100}% * (100% - 40px) / 100%)` }}
+                      >
+                        <Flame className="h-9 w-9 fill-[#ff7a2a] stroke-[#ff7a2a]" />
+                      </div>
+                      <div className="absolute inset-x-0 top-14 grid grid-cols-10">
+                        {Array.from({ length: 10 }).map((_, index) => {
+                          const step = index + 1;
+                          return (
+                            <span key={step} className={`text-center text-sm font-bold sm:text-base ${step === difficultyLevel ? 'text-[#ff5a1f]' : 'text-stone-500'}`}>
+                              {step}
+                            </span>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>
+              )}
+            </div>
+
+            <div className="rounded-[6px] border border-stone-200 bg-white p-6 shadow-[0_14px_40px_rgba(15,23,42,0.06)] md:p-8" id="tour-policies">
+              <div className="mb-6 border-l-4 border-[#ff5a1f] pl-5">
+                <span className="text-[12px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Policies</span>
+                <h3 className="mt-3 text-2xl font-extrabold tracking-tight text-stone-950 sm:text-3xl">{pkg.title} Policies</h3>
               </div>
+              {policyGroups.length > 0 ? (
+                <div className="space-y-5">
+                  {policyGroups.map((group) => (
+                    <div key={group.title} className="rounded-[6px] border border-stone-200 bg-[#fcfbf9] p-5">
+                      <h4 className="text-lg font-extrabold text-stone-950">{group.title}</h4>
+                      <ul className="mt-4 space-y-3">
+                        {group.items.map((item, idx) => (
+                          <li key={`${group.title}-${item}-${idx}`} className="flex items-start gap-3 text-sm leading-7 text-stone-600">
+                            <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-[#ff5a1f]" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-[6px] border border-dashed border-stone-300 bg-[#fcfbf9] p-5 text-sm leading-7 text-stone-500">Policies have not been published for this package yet.</p>
+              )}
             </div>
 
             <div className="rounded-[24px] border border-stone-200/80 bg-gradient-to-br from-white via-[#fffdf8] to-[#fcf6e8] p-6 shadow-[0_18px_50px_rgba(18,38,32,0.08)] md:p-8" id="package-faqs">
@@ -1167,21 +1442,21 @@ export default function PackageDetailView({
           </div>
 
           {/* Right: Sticky Enquiry Form */}
-          <div className="lg:col-span-1">
-            <div className="side-bar-right sticky top-28 space-y-6 rounded-[24px] border border-stone-200/80 bg-gradient-to-br from-white via-[#fffdf8] to-[#f7f2e7] p-6 shadow-[0_24px_70px_rgba(18,38,32,0.14)]" id="detail-enquiry-card">
+          <aside className="lg:sticky lg:top-24 lg:self-start">
+            <div className="side-bar-right space-y-5 rounded-[8px] border border-stone-200 bg-white p-6 shadow-[0_22px_60px_rgba(15,23,42,0.14)] lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:[scrollbar-width:thin]" id="detail-enquiry-card">
               <div className="sidebar-widget space-y-4 border-b border-stone-100 pb-5">
                 <div className="flex items-center justify-between">
-                  <h6 className="block-heading text-2xl font-extrabold text-stone-950">Book This Tour</h6>
-                  <span className="rounded-full bg-[#4DA528]/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Best Price</span>
+                  <h6 className="block-heading text-xl font-extrabold text-stone-950">Get Free Quote</h6>
+                  <span className="rounded bg-[#fff4ec] px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#ff5a1f]">Best Price</span>
                 </div>
-                <div className="rounded-[14px] bg-[#fffaf1] p-5">
+                <div className="rounded-[6px] border border-stone-200 bg-[#fcfbf9] p-5">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-[11px] font-extrabold uppercase tracking-wider text-stone-500">Starting from</div>
                     {pkg.offerPrice && pkg.offerPrice < (pkg.price || 0) ? (
-                      <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] text-amber-700">Save {formatPrice((pkg.price || 0) - pkg.offerPrice)}</span>
+                      <span className="rounded bg-amber-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] text-amber-700">Save {formatPrice((pkg.price || 0) - pkg.offerPrice)}</span>
                     ) : null}
                   </div>
-                  <div className="total text-main mt-1 text-3xl font-extrabold text-[#4DA528]">{formatPrice(pkg.offerPrice || pkg.price)}</div>
+                  <div className="total text-main mt-1 text-3xl font-extrabold text-[#ff5a1f]">{formatPrice(pkg.offerPrice || pkg.price)}</div>
                   <div className="mt-4 space-y-3 text-sm text-stone-600">
                     <div className="flex-two flex items-center justify-between gap-4">
                       <span className="label font-semibold">Duration:</span>
@@ -1198,7 +1473,7 @@ export default function PackageDetailView({
                   <select
                     value={selectedGuests}
                     onChange={(e) => setSelectedGuests(Number(e.target.value))}
-                    className="mt-2 w-full rounded-[12px] border border-stone-200 bg-[#fffaf1] px-3 py-3 text-sm font-semibold text-stone-800 focus:border-[#4DA528] focus:outline-none"
+                    className="mt-2 w-full rounded-[6px] border border-stone-200 bg-[#fcfbf9] px-3 py-3 text-sm font-semibold text-stone-800 focus:border-[#ff5a1f] focus:outline-none"
                   >
                     {[1,2,3,4,5,6,8,10,12].map((guestCount) => (
                       <option key={guestCount} value={guestCount}>{guestCount} Guest{guestCount > 1 ? 's' : ''}</option>
@@ -1212,16 +1487,16 @@ export default function PackageDetailView({
                     setBookingError('');
                     setIsBookingModalOpen(true);
                   }}
-                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-[12px] bg-[#4DA528] px-5 py-4 text-[12px] font-extrabold uppercase tracking-[0.14em] text-white shadow-[0_16px_35px_rgba(77,165,40,0.25)] transition hover:-translate-y-0.5 hover:bg-[#FF970D]"
+                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-[6px] bg-[#ff5a1f] px-5 py-4 text-[12px] font-extrabold uppercase tracking-[0.14em] text-white shadow-[0_16px_35px_rgba(255,90,31,0.22)] transition hover:-translate-y-0.5 hover:bg-[#e64a14]"
                 >
                   <Compass className="h-4 w-4" />
-                  <span>Book Now</span>
+                  <span>Send Booking Request</span>
                 </button>
                 <a
                   href={packageWhatsAppUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-[12px] border border-emerald-200 bg-emerald-50 px-5 py-3 text-[12px] font-extrabold uppercase tracking-[0.14em] text-emerald-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffaf1]"
+                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-[6px] border border-emerald-200 bg-emerald-50 px-5 py-3 text-[12px] font-extrabold uppercase tracking-[0.14em] text-emerald-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/25 focus-visible:ring-offset-2"
                   aria-label={`Ask on WhatsApp about ${pkg.title}`}
                 >
                   <MessageCircle className="h-4 w-4" />
@@ -1231,20 +1506,20 @@ export default function PackageDetailView({
                   type="button"
                   onClick={() => void handleSavePackage()}
                   disabled={savingPackage}
-                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-[12px] border border-[#4DA528]/20 bg-[#fffaf1] px-5 py-3 text-[12px] font-extrabold uppercase tracking-[0.14em] text-[#4DA528] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#f3f7eb] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffaf1] disabled:cursor-not-allowed disabled:opacity-70"
+                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-[6px] border border-[#4DA528]/20 bg-[#f4fbef] px-5 py-3 text-[12px] font-extrabold uppercase tracking-[0.14em] text-[#4DA528] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#edf8e5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/25 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   <Heart className={`h-4 w-4 transition ${Array.isArray(wishlistPackageIds) && wishlistPackageIds.includes(String(pkg.id ?? '')) ? 'fill-rose-600 text-rose-600' : ''}`} />
                   <span>{savingPackage ? 'Saving...' : Array.isArray(wishlistPackageIds) && wishlistPackageIds.includes(String(pkg.id ?? '')) ? 'Remove from Wishlist' : 'Add to Wishlist'}</span>
                 </button>
                 {saveNotice && (
-                  <div className={`rounded-[12px] border px-3 py-3 text-sm ${saveNotice.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>
+                  <div className={`rounded-[6px] border px-3 py-3 text-sm ${saveNotice.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>
                     {saveNotice.message}
                   </div>
                 )}
                 {isAdminLoggedIn && onDeletePackage && (
                   <button
                     onClick={() => onDeletePackage(pkg.id)}
-                    className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-[12px] bg-red-600 px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-red-700"
+                    className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-[6px] bg-red-600 px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-red-700"
                   >
                     <Trash2 className="h-4 w-4" />
                     <span>Delete Package</span>
@@ -1275,7 +1550,7 @@ export default function PackageDetailView({
                   </div>
                   <h4 className="text-lg font-semibold text-stone-950">Enquiry submitted</h4>
                   <p className="text-sm leading-7 text-stone-600">
-                    Thank you for reaching out to Pravaah Travels. Our travel expert will call you shortly on the provided contact number.
+                    Thank you for reaching out to {companyName}. Our travel expert will call you shortly on the provided contact number.
                   </p>
                   <button
                     onClick={() => {
@@ -1314,7 +1589,7 @@ export default function PackageDetailView({
                       placeholder="E.g. Yash Kumar"
                       value={formData.name}
                       onChange={handleInputChange}
-                      className="w-full rounded-2xl border border-stone-200 bg-[#fffaf1] px-4 py-3 text-sm font-medium text-stone-800 focus:border-[#0f766e] focus:bg-white focus:outline-none"
+                      className="w-full rounded-[6px] border border-stone-200 bg-[#fcfbf9] px-4 py-3 text-sm font-medium text-stone-800 focus:border-[#ff5a1f] focus:bg-white focus:outline-none"
                     />
                   </div>
 
@@ -1329,7 +1604,7 @@ export default function PackageDetailView({
                         placeholder="E.g. +91 98765..."
                         value={formData.phone}
                         onChange={handleInputChange}
-                        className="w-full rounded-2xl border border-stone-200 bg-[#fffaf1] px-4 py-3 text-sm font-medium text-stone-800 focus:border-[#0f766e] focus:bg-white focus:outline-none"
+                        className="w-full rounded-[6px] border border-stone-200 bg-[#fcfbf9] px-4 py-3 text-sm font-medium text-stone-800 focus:border-[#ff5a1f] focus:bg-white focus:outline-none"
                       />
                     </div>
 
@@ -1343,7 +1618,7 @@ export default function PackageDetailView({
                         placeholder="your@email.com"
                         value={formData.email}
                         onChange={handleInputChange}
-                        className="w-full rounded-2xl border border-stone-200 bg-[#fffaf1] px-4 py-3 text-sm font-medium text-stone-800 focus:border-[#0f766e] focus:bg-white focus:outline-none"
+                        className="w-full rounded-[6px] border border-stone-200 bg-[#fcfbf9] px-4 py-3 text-sm font-medium text-stone-800 focus:border-[#ff5a1f] focus:bg-white focus:outline-none"
                       />
                     </div>
                   </div>
@@ -1358,7 +1633,7 @@ export default function PackageDetailView({
                         required
                         value={formData.travelDate}
                         onChange={handleInputChange}
-                        className="w-full cursor-pointer rounded-2xl border border-stone-200 bg-[#fffaf1] px-4 py-3 text-sm font-medium text-stone-800 focus:border-[#0f766e] focus:bg-white focus:outline-none"
+                        className="w-full cursor-pointer rounded-[6px] border border-stone-200 bg-[#fcfbf9] px-4 py-3 text-sm font-medium text-stone-800 focus:border-[#ff5a1f] focus:bg-white focus:outline-none"
                       />
                     </div>
 
@@ -1372,7 +1647,7 @@ export default function PackageDetailView({
                         max="100"
                         value={formData.travelers}
                         onChange={handleInputChange}
-                        className="w-full rounded-2xl border border-stone-200 bg-[#fffaf1] px-4 py-3 text-sm font-medium text-stone-800 focus:border-[#0f766e] focus:bg-white focus:outline-none"
+                        className="w-full rounded-[6px] border border-stone-200 bg-[#fcfbf9] px-4 py-3 text-sm font-medium text-stone-800 focus:border-[#ff5a1f] focus:bg-white focus:outline-none"
                       />
                     </div>
                   </div>
@@ -1384,7 +1659,7 @@ export default function PackageDetailView({
                       name="budget"
                       value={formData.budget}
                       onChange={handleInputChange}
-                      className="w-full cursor-pointer rounded-2xl border border-stone-200 bg-[#fffaf1] px-4 py-3 text-sm font-medium text-stone-800 focus:border-[#0f766e] focus:bg-white focus:outline-none"
+                      className="w-full cursor-pointer rounded-[6px] border border-stone-200 bg-[#fcfbf9] px-4 py-3 text-sm font-medium text-stone-800 focus:border-[#ff5a1f] focus:bg-white focus:outline-none"
                     >
                       <option value="Under ₹20,000">Under ₹20,000</option>
                       <option value="₹20,000 - ₹50,000">₹20,000 - ₹50,000</option>
@@ -1403,7 +1678,7 @@ export default function PackageDetailView({
                       placeholder="Any specific hotel category, dietary preference..."
                       value={formData.message}
                       onChange={handleInputChange}
-                      className="w-full rounded-2xl border border-stone-200 bg-[#fffaf1] px-4 py-3 text-sm font-medium text-stone-800 focus:border-[#0f766e] focus:bg-white focus:outline-none"
+                      className="w-full rounded-[6px] border border-stone-200 bg-[#fcfbf9] px-4 py-3 text-sm font-medium text-stone-800 focus:border-[#ff5a1f] focus:bg-white focus:outline-none"
                     />
                   </div>
 
@@ -1411,7 +1686,7 @@ export default function PackageDetailView({
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-[#f97350] py-3.5 text-xs font-extrabold uppercase tracking-[0.14em] text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#ea5f3c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97350]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffaf1] disabled:opacity-50"
+                    className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-[6px] bg-[#ff5a1f] py-3.5 text-xs font-extrabold uppercase tracking-[0.14em] text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#e64a14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff5a1f]/40 focus-visible:ring-offset-2 disabled:opacity-50"
                   >
                     {submitting ? (
                       <div className="h-4 w-4 animate-spin rounded-full border border-white border-t-transparent" />
@@ -1425,9 +1700,14 @@ export default function PackageDetailView({
                 </form>
               )}
             </div>
-          </div>
+          </aside>
 
         </div>
+
+        <NearbyPlacesSection
+          destination={pkg.destination}
+          packageTitle={pkg.title}
+        />
 
         <section className="review-content-tour rounded-[24px] border border-stone-200/80 bg-gradient-to-br from-white via-[#fffdf8] to-[#fcf6e8] p-6 shadow-[0_24px_70px_rgba(18,38,32,0.08)] md:p-8" id="package-reviews">
           <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -1480,6 +1760,95 @@ export default function PackageDetailView({
           )}
         </section>
 
+        {recommendedHotels.length > 0 && (
+          <section className="rounded-[24px] border border-stone-200/80 bg-white p-6 shadow-[0_24px_70px_rgba(18,38,32,0.06)] md:p-8" id="recommended-hotels">
+            <div className="mb-8">
+              <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Where you'll stay</span>
+              <h3 className="mt-3 text-3xl font-extrabold tracking-tight text-stone-950">Recommended Hotels</h3>
+            </div>
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {recommendedHotels.map((hotel) => (
+                <article key={hotel.id} className="overflow-hidden rounded-[16px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(18,38,32,0.06)]">
+                  <div className="relative h-44 bg-stone-100">
+                    {hotel.heroImage ? (
+                      <TravelMedia src={hotel.heroImage} alt={hotel.name} className="h-full w-full object-cover" loading="lazy" decoding="async" disableFallback />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-stone-300"><BedDouble className="h-8 w-8" /></div>
+                    )}
+                    <span className="absolute left-3 top-3 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-700 shadow">{hotel.category}</span>
+                  </div>
+                  <div className="p-4">
+                    <h4 className="text-sm font-bold leading-snug text-stone-950">{hotel.name}</h4>
+                    <div className="mt-1 flex items-center gap-1 text-amber-500">
+                      {Array.from({ length: hotel.starRating }).map((_, idx) => <Star key={idx} className="h-3 w-3 fill-current" />)}
+                    </div>
+                    {(hotel.city || hotel.destination) && (
+                      <p className="mt-2 flex items-center gap-1 text-[11px] text-stone-500"><MapPin className="h-3 w-3 text-[#4DA528]" />{[hotel.city, hotel.destination].filter(Boolean).join(', ')}</p>
+                    )}
+                    {hotel.shortDescription && <p className="mt-2 line-clamp-2 text-xs leading-5 text-stone-500">{hotel.shortDescription}</p>}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {upcomingDepartures.length > 0 && (
+          <section className="rounded-[24px] border border-stone-200/80 bg-white p-6 shadow-[0_24px_70px_rgba(18,38,32,0.06)] md:p-8" id="upcoming-departures">
+            <div className="mb-8">
+              <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Plan your dates</span>
+              <h3 className="mt-3 text-3xl font-extrabold tracking-tight text-stone-950">Upcoming Departures</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-left">
+                <thead>
+                  <tr className="border-b border-stone-200 text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                    <th className="pb-3 pr-4">Departure Date</th>
+                    <th className="pb-3 pr-4">Duration</th>
+                    <th className="pb-3 pr-4">Available Seats</th>
+                    <th className="pb-3 pr-4">Price</th>
+                    <th className="pb-3" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100 text-sm">
+                  {upcomingDepartures.map((departure) => {
+                    const availableSeats = Math.max(0, (departure.totalSeats || 0) - (departure.bookedSeats || 0));
+                    const isSoldOut = availableSeats <= 0;
+                    const displayPrice = departure.priceOverride ?? pkg.offerPrice ?? pkg.price;
+                    return (
+                      <tr key={departure.id}>
+                        <td className="py-4 pr-4">
+                          <span className="font-bold text-stone-900">{new Date(departure.departureDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                          {departure.guaranteedDeparture && <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-700">Guaranteed</span>}
+                        </td>
+                        <td className="py-4 pr-4 text-stone-500">{departure.duration || pkg.duration}</td>
+                        <td className="py-4 pr-4">
+                          {isSoldOut ? (
+                            <span className="rounded-full bg-rose-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-rose-700">Sold Out</span>
+                          ) : (
+                            <span className="font-semibold text-stone-800">{availableSeats} seats</span>
+                          )}
+                        </td>
+                        <td className="py-4 pr-4 font-bold text-[#4DA528]">{formatPrice(displayPrice)}</td>
+                        <td className="py-4 text-right">
+                          <button
+                            type="button"
+                            disabled={isSoldOut}
+                            onClick={() => openBookingModal(departure)}
+                            className="rounded-[6px] bg-[#4DA528] px-4 py-2 text-[10px] font-extrabold uppercase tracking-wider text-white transition hover:bg-[#3d8a20] disabled:cursor-not-allowed disabled:bg-stone-300"
+                          >
+                            {isSoldOut ? 'Sold Out' : 'Book Now'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
         <section className="rounded-[24px] border border-stone-200/80 bg-gradient-to-br from-white via-[#fffdf8] to-[#fcf6e8] p-6 shadow-[0_24px_70px_rgba(18,38,32,0.08)] md:p-8" id="related-packages">
           <div className="mb-8">
             <span className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Explore more</span>
@@ -1488,35 +1857,45 @@ export default function PackageDetailView({
 
           {displayedRelatedPackages.length > 0 ? (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {displayedRelatedPackages.map((related: TravelPackage, index: number) => (
-                <article key={related.id || `${related.title || 'related'}-${index}`} className="tour-listing group overflow-hidden rounded-[14px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_24px_55px_rgba(18,38,32,0.16)]">
-                  <div className="tour-listing-image relative block aspect-[1.22/1] w-full overflow-hidden bg-stone-100 text-left">
-                    <img src={getTravelImage(related.imageUrl || pkg.imageUrl)} alt={related.title || 'Related package'} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" loading="lazy" decoding="async" onError={handleTravelImageError} />
-                    <span className="feature absolute left-4 top-4 rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">{related.category || 'Tour'}</span>
-                  </div>
-                  <div className="tour-listing-content p-5">
-                    {related.destination && (
-                      <p className="map flex items-center gap-2 text-[13px] font-semibold text-stone-500">
-                        <MapPin className="h-4 w-4 text-[#4DA528]" />
-                        {related.destination}
-                      </p>
-                    )}
-                    <h4 className="title-tour-list mt-3 line-clamp-2 text-[20px] font-extrabold leading-tight text-stone-950">{related.title}</h4>
-                    <div className="mt-4 flex items-center justify-between border-t border-stone-100 pt-4">
-                      <span className="text-sm text-stone-500">{related.duration}</span>
-                      <span className="font-extrabold text-[#4DA528]">{formatPrice(related.price)}</span>
+              {displayedRelatedPackages.map((related: TravelPackage, index: number) => {
+                const relatedImage = String(related.imageUrl || related.packageBannerUrl || '').trim();
+
+                return (
+                  <article key={related.id || `${related.title || 'related'}-${index}`} className="tour-listing group overflow-hidden rounded-[14px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_24px_55px_rgba(18,38,32,0.16)]">
+                    <div className="tour-listing-image relative block aspect-[1.22/1] w-full overflow-hidden bg-stone-100 text-left">
+                      {relatedImage ? (
+                        <TravelMedia src={relatedImage} alt={related.title || 'Related package'} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" loading="lazy" decoding="async" disableFallback />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-[#f8f7f4] px-5 text-center text-xs font-semibold text-stone-400">
+                          Package image not uploaded
+                        </div>
+                      )}
+                      <span className="feature absolute left-4 top-4 rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">{related.category || 'Tour'}</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => onNavigate?.('package-detail', getPackageRouteSegment(related))}
-                      className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[5px] bg-stone-950 px-4 py-3 text-[10px] font-extrabold uppercase tracking-[0.16em] text-white transition hover:bg-[#4DA528]"
-                    >
-                      View Similar Tour
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </article>
-              ))}
+                    <div className="tour-listing-content p-5">
+                      {related.destination && (
+                        <p className="map flex items-center gap-2 text-[13px] font-semibold text-stone-500">
+                          <MapPin className="h-4 w-4 text-[#4DA528]" />
+                          {related.destination}
+                        </p>
+                      )}
+                      <h4 className="title-tour-list mt-3 line-clamp-2 text-[20px] font-extrabold leading-tight text-stone-950">{related.title}</h4>
+                      <div className="mt-4 flex items-center justify-between border-t border-stone-100 pt-4">
+                        <span className="text-sm text-stone-500">{related.duration}</span>
+                        <span className="font-extrabold text-[#4DA528]">{formatPrice(related.price)}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onNavigate?.('package-detail', getPackageRouteSegment(related))}
+                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[5px] bg-stone-950 px-4 py-3 text-[10px] font-extrabold uppercase tracking-[0.16em] text-white transition hover:bg-[#4DA528]"
+                      >
+                        View Similar Tour
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           ) : (
             <div className="rounded-[14px] border border-dashed border-stone-300 bg-[#fffaf1] p-8 text-center">
@@ -1527,7 +1906,7 @@ export default function PackageDetailView({
 
       </div>
 
-      {isLightboxOpen && visibleGalleryImages.length > 0 && (
+      {isLightboxOpen && lightboxImages.length > 0 && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-stone-950/85 p-4 backdrop-blur-sm" onClick={() => setIsLightboxOpen(false)}>
           <div className="relative w-full max-w-5xl overflow-hidden rounded-[24px] border border-white/10 bg-stone-950 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <button
@@ -1538,14 +1917,13 @@ export default function PackageDetailView({
             >
               <X className="h-5 w-5" />
             </button>
-            <img
-              src={getTravelImage(visibleGalleryImages[selectedGalleryImage] || visibleGalleryImages[0])}
+            <TravelMedia
+              src={lightboxImages[selectedGalleryImage] || lightboxImages[0]}
               alt={`${pkg.title} lightbox view`}
               className="max-h-[80vh] w-full object-contain"
-              referrerPolicy="no-referrer"
               loading="lazy"
               decoding="async"
-              onError={handleTravelImageError}
+              disableFallback
             />
             <div className="absolute bottom-0 left-0 right-0 bg-linear-to-t from-stone-950/90 to-transparent p-6 text-white">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1554,7 +1932,7 @@ export default function PackageDetailView({
                   <h3 className="text-xl font-semibold">{pkg.title}</h3>
                 </div>
                 <div className="flex items-center gap-2">
-                  {visibleGalleryImages.map((imageUrl, idx) => (
+                  {lightboxImages.map((imageUrl, idx) => (
                     <button
                       key={`${imageUrl}-${idx}-thumb`}
                       type="button"
@@ -1610,41 +1988,87 @@ export default function PackageDetailView({
         </div>
       </div>
 
-      {/* BOOKING REQUEST MODAL (12 Fields, No Payment Gateway) */}
+      {!isBookingModalOpen && (
+        <button
+          type="button"
+          onClick={() => {
+            setBookingSuccess(false);
+            setBookingError('');
+            setIsBookingModalOpen(true);
+          }}
+          className="fixed right-0 top-1/2 z-[8900] hidden -translate-y-1/2 flex-col items-start rounded-l-[10px] border border-r-0 border-white/20 bg-[#ff5a1f] px-5 py-4 text-left text-white shadow-[0_20px_55px_rgba(255,90,31,0.34)] transition hover:bg-[#e64a14] min-[1700px]:flex"
+        >
+          <span className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.16em]">
+            <Send className="h-4 w-4" />
+            Get Free Quote
+          </span>
+          <span className="mt-1 text-[10px] font-semibold normal-case tracking-normal text-white/80">From {formatPrice(pkg.offerPrice || pkg.price)}</span>
+        </button>
+      )}
+
+      {/* BOOKING REQUEST MODAL */}
       {isBookingModalOpen && (
-        <div className="fixed inset-0 bg-[#000000]/65 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-fade-in" id="booking-request-modal">
-          <div className="bg-[#fcfbf9] border border-stone-250 rounded-lg shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto font-sans flex flex-col">
-            
-            {/* Modal Header */}
-            <div className="bg-[#4DA528] text-white p-6 relative shrink-0">
-              <button
-                onClick={() => setIsBookingModalOpen(false)}
-                className="absolute top-5 right-5 text-white/80 hover:text-white hover:rotate-90 transition-all duration-300 cursor-pointer"
-                aria-label="Close modal"
-              >
-                <X className="w-5 h-5" />
-              </button>
-              <span className="text-[9px] font-bold uppercase tracking-wider text-[#FF970D] bg-white/10 px-2 py-0.5 rounded-sm">Step-Free Offline Coordination</span>
-              <h3 className="text-xl font-serif italic text-white mt-2">Book Your Holiday</h3>
-              <p className="text-xs text-stone-100 font-light mt-1">
-                Request custom travel planning for <strong className="font-bold">{pkg.title}</strong>. No payment/deposit is required to book.
-              </p>
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-stone-950/70 p-3 backdrop-blur-sm animate-fade-in sm:p-4"
+          id="booking-request-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="booking-request-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeBookingModal();
+          }}
+        >
+          <div className="relative flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-[10px] border border-white/10 bg-white shadow-2xl lg:grid lg:grid-cols-[0.9fr_1.1fr]">
+            <button
+              type="button"
+              onClick={closeBookingModal}
+              className="absolute right-3 top-3 z-30 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-white/70 bg-stone-950 text-white shadow-[0_8px_24px_rgba(0,0,0,0.28)] transition hover:scale-105 hover:bg-[#ff5a1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ff5a1f] focus-visible:ring-offset-2 sm:right-4 sm:top-4"
+              aria-label="Close booking request"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <div className="relative min-h-[220px] overflow-hidden bg-stone-950 text-white lg:min-h-full">
+              {primaryPackageImage && (
+                <TravelMedia
+                  src={primaryPackageImage}
+                  alt={pkg.title}
+                  className="absolute inset-0 h-full w-full object-cover opacity-70"
+                  loading="lazy"
+                  decoding="async"
+                  disableFallback
+                />
+              )}
+              <div className="absolute inset-0 bg-linear-to-t from-stone-950 via-stone-950/55 to-stone-950/10" />
+              <div className="relative z-10 flex h-full min-h-[220px] flex-col justify-end p-6 lg:min-h-[680px] lg:p-8">
+                <span className="inline-flex w-fit rounded bg-white/12 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/78 backdrop-blur">Booking Request</span>
+                <h3 className="mt-4 text-3xl font-extrabold leading-tight tracking-tight">{pkg.title}</h3>
+                <div className="mt-5 grid gap-3 text-sm text-white/82">
+                  <span className="inline-flex items-center gap-2"><MapPin className="h-4 w-4 text-[#ff5a1f]" />{pkg.destination}</span>
+                  <span className="inline-flex items-center gap-2"><Calendar className="h-4 w-4 text-[#ff5a1f]" />{pkg.duration}</span>
+                  <span className="inline-flex items-center gap-2"><Users className="h-4 w-4 text-[#ff5a1f]" />{selectedGuests} guest{selectedGuests > 1 ? 's' : ''}</span>
+                </div>
+                <div className="mt-6 rounded-[8px] border border-white/15 bg-white/12 p-4 backdrop-blur-md">
+                  <p className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-white/60">Starting from</p>
+                  <p className="mt-1 text-3xl font-extrabold text-white">{formatPrice(pkg.offerPrice || pkg.price)}</p>
+                </div>
+              </div>
             </div>
 
-            {bookingSuccess ? (
-              <div className="p-8 text-center space-y-4 animate-fade-in flex-1 flex flex-col justify-center items-center">
-                <div className="w-16 h-16 bg-[#4DA528]/10 text-[#4DA528] rounded-full flex items-center justify-center shadow-inner">
+            <div className="max-h-[92vh] overflow-y-auto">
+              {bookingSuccess ? (
+              <div className="flex min-h-[620px] flex-col items-center justify-center space-y-5 p-8 text-center animate-fade-in">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#4DA528]/10 text-[#4DA528] shadow-inner">
                   <CheckCircle2 className="w-10 h-10" />
                 </div>
                 <h4 className="text-xl font-extrabold text-stone-950">Booking Request Submitted</h4>
                 <p className="max-w-md text-sm leading-7 text-stone-600">Thank you, <strong className="font-semibold text-stone-900">{bookingForm.name}</strong>. Your request has been received and is being reviewed by our travel desk.</p>
-                <div className="w-full rounded-[18px] border border-stone-200 bg-white p-4 text-left shadow-sm">
+                <div className="w-full rounded-[8px] border border-stone-200 bg-[#fcfbf9] p-4 text-left shadow-sm">
                   <div className="flex items-center justify-between gap-3 border-b border-stone-100 pb-3">
                     <div>
                       <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Booking ID</p>
                       <p className="mt-1 text-lg font-bold text-stone-950">{submittedBooking?.bookingId || 'PRV-2026-0001'}</p>
                     </div>
-                    <span className="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.16em] text-amber-700">Pending</span>
+                    <span className="rounded bg-amber-100 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.16em] text-amber-700">Pending</span>
                   </div>
                   <div className="mt-4 grid gap-3 text-sm text-stone-600 sm:grid-cols-2">
                     <div>
@@ -1673,7 +2097,7 @@ export default function PackageDetailView({
                       setIsBookingModalOpen(false);
                       onNavigate?.('portal');
                     }}
-                    className="flex-1 rounded-[5px] bg-[#4DA528] px-4 py-2.5 text-xs font-extrabold uppercase tracking-[0.16em] text-white transition hover:bg-[#3f8f21]"
+                    className="flex-1 rounded-[6px] bg-[#4DA528] px-4 py-3 text-xs font-extrabold uppercase tracking-[0.16em] text-white transition hover:bg-[#3f8f21]"
                   >
                     View My Bookings
                   </button>
@@ -1683,261 +2107,96 @@ export default function PackageDetailView({
                       setIsBookingModalOpen(false);
                       onNavigate?.('packages');
                     }}
-                    className="flex-1 rounded-[5px] border border-stone-200 bg-white px-4 py-2.5 text-xs font-extrabold uppercase tracking-[0.16em] text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
+                    className="flex-1 rounded-[6px] border border-stone-200 bg-white px-4 py-3 text-xs font-extrabold uppercase tracking-[0.16em] text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
                   >
                     Continue Exploring
                   </button>
                 </div>
                 <a
-                  href={`https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Hello Pravaah Travels,\nI have submitted my booking.\nBooking ID: ${submittedBooking?.bookingId || 'PRV-2026-0001'}\nPackage: ${submittedBooking?.packageTitle || bookingForm.packageTitle}\nPlease confirm my booking.`)}`}
+                  href={`https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Hello ${companyName},\nI have submitted my booking.\nBooking ID: ${submittedBooking?.bookingId || 'PRV-2026-0001'}\nPackage: ${submittedBooking?.packageTitle || bookingForm.packageTitle}\nPlease confirm my booking.`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-[11px] font-extrabold uppercase tracking-[0.16em] text-emerald-700"
+                  className="inline-flex items-center justify-center gap-2 rounded-[6px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-[11px] font-extrabold uppercase tracking-[0.16em] text-emerald-700"
                 >
                   <Phone className="h-4 w-4" />
                   Contact on WhatsApp
                 </a>
               </div>
             ) : (
-              <form onSubmit={handleBookingSubmit} className="p-6 space-y-5">
+              <form onSubmit={handleBookingSubmit} className="space-y-5 p-6 sm:p-8">
+                <div>
+                  <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#ff5a1f]">No payment required</span>
+                  <h3 id="booking-request-title" className="mt-2 text-2xl font-extrabold tracking-tight text-stone-950">Request a custom booking</h3>
+                  <p className="mt-2 text-sm leading-7 text-stone-500">Share your basic travel details. Our team will verify availability, hotel options and route before confirming.</p>
+                </div>
+
                 {bookingError && (
-                  <div role="alert" className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm font-semibold text-rose-700 shadow-sm">
+                  <div role="alert" className="flex items-start gap-2 rounded-[6px] border border-rose-200 bg-rose-50 px-3 py-3 text-sm font-semibold text-rose-700 shadow-sm">
                     <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                     <span>{bookingError}</span>
                   </div>
                 )}
 
-                <div className="rounded-[16px] border border-stone-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Professional Booking Engine</p>
-                      <h4 className="mt-1 text-lg font-extrabold text-stone-950">Step {bookingStep} of 8</h4>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {Array.from({ length: 8 }).map((_, index) => (
-                        <span key={index} className={`h-2.5 w-2.5 rounded-full ${index + 1 <= bookingStep ? 'bg-[#4DA528]' : 'bg-stone-200'}`} />
-                      ))}
-                    </div>
+                <div className="rounded-[8px] border border-stone-200 bg-[#fcfbf9] p-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Package Summary</p>
+                  <div className="mt-3 space-y-3 text-sm text-stone-700">
+                    <div className="flex items-start justify-between gap-3"><span className="font-semibold">Package</span><span className="text-right font-semibold text-stone-950">{bookingForm.packageTitle}</span></div>
+                    <div className="flex items-start justify-between gap-3"><span className="font-semibold">Price</span><span className="text-right font-semibold text-[#ff5a1f]">{formatPrice(pkg.offerPrice || pkg.price)}</span></div>
+                    <div className="flex items-start justify-between gap-3"><span className="font-semibold">Destination</span><span className="text-right font-semibold text-stone-950">{pkg.destination}</span></div>
                   </div>
                 </div>
 
-                {bookingStep === 1 && (
-                  <div className="space-y-4">
-                    <div className="rounded-[16px] border border-stone-200 bg-stone-50 p-4">
-                      <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Package Summary</p>
-                      <div className="mt-3 space-y-3 text-sm text-stone-700">
-                        <div className="flex items-start justify-between gap-3"><span className="font-semibold">Package</span><span className="text-right font-semibold text-stone-950">{bookingForm.packageTitle}</span></div>
-                        <div className="flex items-start justify-between gap-3"><span className="font-semibold">Price</span><span className="text-right font-semibold text-stone-950">{formatPrice(pkg.offerPrice || pkg.price)}</span></div>
-                        <div className="flex items-start justify-between gap-3"><span className="font-semibold">Selected Date</span><span className="text-right font-semibold text-stone-950">{bookingForm.travelDate || 'Flexible'}</span></div>
-                        <div className="flex items-start justify-between gap-3"><span className="font-semibold">Travellers</span><span className="text-right font-semibold text-stone-950">{Number(bookingForm.adults) + Number(bookingForm.children)} travellers</span></div>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Your Full Name *</label>
-                        <input type="text" name="name" required value={bookingForm.name} onChange={handleBookingInputChange} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none" />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Email Address *</label>
-                        <input type="email" name="email" required value={bookingForm.email} onChange={handleBookingInputChange} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none" />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Mobile Number *</label>
-                        <input type="tel" name="phone" required value={bookingForm.phone} onChange={handleBookingInputChange} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none" />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">WhatsApp Number *</label>
-                        <input type="tel" name="whatsapp" required value={bookingForm.whatsapp} onChange={handleBookingInputChange} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none" />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Travel Date *</label>
-                        <input type="date" name="travelDate" required value={bookingForm.travelDate} onChange={handleBookingInputChange} className="w-full cursor-pointer rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none" />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Travellers</label>
-                        <div className="grid grid-cols-2 gap-3">
-                          <input type="number" name="adults" min="1" value={bookingForm.adults} onChange={handleBookingInputChange} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none" />
-                          <input type="number" name="children" min="0" value={bookingForm.children} onChange={handleBookingInputChange} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none" />
-                        </div>
-                      </div>
-                    </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="space-y-1">
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Full Name *</span>
+                    <input type="text" name="name" required value={bookingForm.name} onChange={handleBookingInputChange} className="w-full rounded-[6px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-800 focus:border-[#ff5a1f] focus:outline-none" />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Email Address *</span>
+                    <input type="email" name="email" required value={bookingForm.email} onChange={handleBookingInputChange} className="w-full rounded-[6px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-800 focus:border-[#ff5a1f] focus:outline-none" />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Mobile Number *</span>
+                    <input type="tel" name="phone" required value={bookingForm.phone} onChange={handleBookingInputChange} className="w-full rounded-[6px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-800 focus:border-[#ff5a1f] focus:outline-none" />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">WhatsApp Number *</span>
+                    <input type="tel" name="whatsapp" required value={bookingForm.whatsapp} onChange={handleBookingInputChange} className="w-full rounded-[6px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-800 focus:border-[#ff5a1f] focus:outline-none" />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Travel Date *</span>
+                    <input type="date" name="travelDate" required value={bookingForm.travelDate} onChange={handleBookingInputChange} className="w-full cursor-pointer rounded-[6px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-800 focus:border-[#ff5a1f] focus:outline-none" />
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="space-y-1">
+                      <span className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Adults</span>
+                      <input type="number" name="adults" min="1" value={bookingForm.adults} onChange={handleBookingInputChange} className="w-full rounded-[6px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-800 focus:border-[#ff5a1f] focus:outline-none" />
+                    </label>
+                    <label className="space-y-1">
+                      <span className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Children</span>
+                      <input type="number" name="children" min="0" value={bookingForm.children} onChange={handleBookingInputChange} className="w-full rounded-[6px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-800 focus:border-[#ff5a1f] focus:outline-none" />
+                    </label>
                   </div>
-                )}
-
-                {bookingStep === 2 && (
-                  <div className="space-y-4">
-                    <div className="rounded-[16px] border border-stone-200 bg-stone-50 p-4">
-                      <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Lead Traveller</p>
-                      <p className="mt-1 text-sm text-stone-600">Primary traveller details will be used for booking records and coordination.</p>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-1"><label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">First Name *</label><input value={leadTraveller.firstName} onChange={(e) => updateLeadTraveller('firstName', e.target.value)} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none" /></div>
-                      <div className="space-y-1"><label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Last Name *</label><input value={leadTraveller.lastName} onChange={(e) => updateLeadTraveller('lastName', e.target.value)} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none" /></div>
-                      <div className="space-y-1"><label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Phone *</label><input value={leadTraveller.phone} onChange={(e) => updateLeadTraveller('phone', e.target.value)} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none" /></div>
-                      <div className="space-y-1"><label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Email *</label><input type="email" value={leadTraveller.email} onChange={(e) => updateLeadTraveller('email', e.target.value)} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none" /></div>
-                      <div className="space-y-1"><label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Gender</label><select value={leadTraveller.gender} onChange={(e) => updateLeadTraveller('gender', e.target.value)} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none"><option>Prefer not to say</option><option>Male</option><option>Female</option><option>Other</option></select></div>
-                      <div className="space-y-1"><label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">DOB</label><input type="date" value={leadTraveller.dob} onChange={(e) => updateLeadTraveller('dob', e.target.value)} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none" /></div>
-                      <div className="space-y-1 sm:col-span-2"><label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Nationality</label><input value={leadTraveller.nationality} onChange={(e) => updateLeadTraveller('nationality', e.target.value)} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none" /></div>
-                    </div>
-                  </div>
-                )}
-
-                {bookingStep === 3 && (
-                  <div className="space-y-4">
-                    <div className="rounded-[16px] border border-stone-200 bg-stone-50 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Other Travellers</p>
-                          <p className="mt-1 text-sm text-stone-600">Add companion details as needed for the booking file.</p>
-                        </div>
-                        <button type="button" onClick={addTraveller} className="rounded-[8px] border border-[#4DA528]/20 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#4DA528]">+ Add Traveller</button>
-                      </div>
-                    </div>
-                    {travellerList.length === 0 ? (
-                      <div className="rounded-[14px] border border-dashed border-stone-300 bg-white p-4 text-sm text-stone-500">No other travellers added yet. You can continue without adding any companion details.</div>
-                    ) : (
-                      <div className="space-y-3">
-                        {travellerList.map((traveller) => (
-                          <div key={traveller.id} className="rounded-[14px] border border-stone-200 bg-white p-4">
-                            <div className="mb-3 flex items-center justify-between">
-                              <p className="text-sm font-semibold text-stone-900">Traveller</p>
-                              <button type="button" onClick={() => removeTraveller(traveller.id)} className="text-[10px] font-bold uppercase tracking-[0.16em] text-rose-600">Remove</button>
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              <input value={traveller.name} onChange={(e) => updateTraveller(traveller.id, 'name', e.target.value)} placeholder="Name" className="rounded-[10px] border border-stone-200 px-3 py-2 text-sm focus:border-[#4DA528] focus:outline-none" />
-                              <input value={traveller.age} onChange={(e) => updateTraveller(traveller.id, 'age', e.target.value)} placeholder="Age" className="rounded-[10px] border border-stone-200 px-3 py-2 text-sm focus:border-[#4DA528] focus:outline-none" />
-                              <select value={traveller.gender} onChange={(e) => updateTraveller(traveller.id, 'gender', e.target.value)} className="rounded-[10px] border border-stone-200 px-3 py-2 text-sm focus:border-[#4DA528] focus:outline-none"><option>Prefer not to say</option><option>Male</option><option>Female</option><option>Other</option></select>
-                              <select value={traveller.idType} onChange={(e) => updateTraveller(traveller.id, 'idType', e.target.value)} className="rounded-[10px] border border-stone-200 px-3 py-2 text-sm focus:border-[#4DA528] focus:outline-none"><option>Passport</option><option>Aadhaar</option><option>Driving License</option><option>Other</option></select>
-                              <input value={traveller.idNumber} onChange={(e) => updateTraveller(traveller.id, 'idNumber', e.target.value)} placeholder="ID Number" className="rounded-[10px] border border-stone-200 px-3 py-2 text-sm focus:border-[#4DA528] focus:outline-none sm:col-span-2" />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {bookingStep === 4 && (
-                  <div className="space-y-4">
-                    <div className="rounded-[16px] border border-stone-200 bg-stone-50 p-4">
-                      <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Emergency Contact</p>
-                      <p className="mt-1 text-sm text-stone-600">This information helps us respond quickly in case of an urgent travel need.</p>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-1 sm:col-span-2"><label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Name *</label><input value={emergencyContact.name} onChange={(e) => setEmergencyContact((prev) => ({ ...prev, name: e.target.value }))} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none" /></div>
-                      <div className="space-y-1"><label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Phone *</label><input value={emergencyContact.phone} onChange={(e) => setEmergencyContact((prev) => ({ ...prev, phone: e.target.value }))} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none" /></div>
-                      <div className="space-y-1"><label className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Relationship *</label><input value={emergencyContact.relationship} onChange={(e) => setEmergencyContact((prev) => ({ ...prev, relationship: e.target.value }))} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-[#4DA528] focus:outline-none" /></div>
-                    </div>
-                  </div>
-                )}
-
-                {bookingStep === 5 && (
-                  <div className="space-y-4">
-                    <div className="rounded-[16px] border border-stone-200 bg-stone-50 p-4">
-                      <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Coupons</p>
-                      <p className="mt-1 text-sm text-stone-600">Apply a coupon to unlock an auto discount before final payment.</p>
-                    </div>
-                    <div className="rounded-[16px] border border-stone-200 bg-white p-4">
-                      <div className="flex flex-col gap-3 sm:flex-row">
-                        <input value={couponCode} onChange={(e) => setCouponCode(e.target.value)} placeholder="Enter coupon code" className="flex-1 rounded-[12px] border border-stone-200 px-3 py-2.5 text-sm focus:border-[#4DA528] focus:outline-none" />
-                        <button type="button" onClick={handleApplyCoupon} className="rounded-[10px] bg-[#4DA528] px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-white">Apply Coupon</button>
-                      </div>
-                      <div className="mt-3 rounded-[12px] border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-700">{appliedCoupon ? `Applied: ${appliedCoupon.label}` : 'Auto discount available for eligible bookings and first-time travellers.'}</div>
-                    </div>
-                  </div>
-                )}
-
-                {bookingStep === 6 && (
-                  <div className="space-y-4">
-                    <div className="rounded-[16px] border border-stone-200 bg-stone-50 p-4">
-                      <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Price Summary</p>
-                      <p className="mt-1 text-sm text-stone-600">Estimated charges for your selected package and travellers.</p>
-                    </div>
-                    <div className="rounded-[16px] border border-stone-200 bg-white p-4 text-sm text-stone-700">
-                      <div className="flex items-center justify-between border-b border-stone-100 py-2"><span>Package Price</span><span>{formatPrice(bookingBreakdown.packagePrice)}</span></div>
-                      <div className="flex items-center justify-between border-b border-stone-100 py-2"><span>Taxes</span><span>{formatPrice(bookingBreakdown.taxes)}</span></div>
-                      <div className="flex items-center justify-between border-b border-stone-100 py-2"><span>Discount</span><span>- {formatPrice(bookingBreakdown.discount)}</span></div>
-                      <div className="flex items-center justify-between border-b border-stone-100 py-2"><span>Booking Amount</span><span className="font-semibold text-stone-950">{formatPrice(bookingBreakdown.bookingAmount)}</span></div>
-                      <div className="flex items-center justify-between border-b border-stone-100 py-2"><span>Remaining Amount</span><span>{formatPrice(bookingBreakdown.remainingAmount)}</span></div>
-                      <div className="flex items-center justify-between py-2"><span>Grand Total</span><span className="font-extrabold text-[#4DA528]">{formatPrice(bookingBreakdown.grandTotal)}</span></div>
-                    </div>
-                  </div>
-                )}
-
-                {bookingStep === 7 && (
-                  <div className="space-y-4">
-                    <div className="rounded-[16px] border border-stone-200 bg-stone-50 p-4">
-                      <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Payment</p>
-                      <p className="mt-1 text-sm text-stone-600">Choose how you would like to secure your booking.</p>
-                    </div>
-                    <div className="grid gap-3">
-                      {[
-                        { id: 'razorpay', label: 'Razorpay Placeholder', description: 'Secure online payment gateway' },
-                        { id: 'cash', label: 'Cash', description: 'Pay at the agency office' },
-                        { id: 'bank', label: 'Bank Transfer', description: 'Transfer to the registered account' },
-                        { id: 'pay-later', label: 'Pay Later', description: 'Reserve now and pay later' },
-                      ].map((option) => (
-                        <button key={option.id} type="button" onClick={() => setPaymentMethod(option.id as typeof paymentMethod)} className={`rounded-[14px] border px-4 py-3 text-left ${paymentMethod === option.id ? 'border-[#4DA528] bg-[#f5fbef]' : 'border-stone-200 bg-white'}`}>
-                          <div className="text-sm font-semibold text-stone-900">{option.label}</div>
-                          <div className="mt-1 text-xs text-stone-500">{option.description}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {bookingStep === 8 && (
-                  <div className="space-y-4">
-                    <div className="rounded-[16px] border border-stone-200 bg-stone-50 p-4">
-                      <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-stone-400">Confirmation</p>
-                      <p className="mt-1 text-sm text-stone-600">Review the booking details and confirm the reservation.</p>
-                    </div>
-                    <div className="rounded-[16px] border border-stone-200 bg-white p-4 text-sm text-stone-700">
-                      <div className="flex items-center justify-between border-b border-stone-100 py-2"><span>Booking ID</span><span className="font-semibold text-stone-950">{submittedBooking?.bookingId || 'PRV-2026-0001'}</span></div>
-                      <div className="flex items-center justify-between border-b border-stone-100 py-2"><span>Package</span><span>{bookingForm.packageTitle}</span></div>
-                      <div className="flex items-center justify-between border-b border-stone-100 py-2"><span>Travel Date</span><span>{bookingForm.travelDate}</span></div>
-                      <div className="flex items-center justify-between border-b border-stone-100 py-2"><span>Travellers</span><span>{Number(bookingForm.adults) + Number(bookingForm.children)}</span></div>
-                      <div className="flex items-center justify-between py-2"><span>Grand Total</span><span className="font-extrabold text-[#4DA528]">{formatPrice(bookingBreakdown.grandTotal)}</span></div>
-                    </div>
-                    <div className="flex flex-col gap-3 sm:flex-row">
-                      <button type="button" onClick={() => downloadBookingDocument('voucher')} className="flex-1 rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-700">Download Voucher</button>
-                      <button type="button" onClick={() => downloadBookingDocument('invoice')} className="flex-1 rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-700">Download Invoice</button>
-                    </div>
-                    <a href={`https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Hello Pravaah Travels, I have booked ${bookingForm.packageTitle}. Booking ID: ${submittedBooking?.bookingId || 'PRV-2026-0001'}`)}`} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">WhatsApp Confirmation</a>
-                  </div>
-                )}
-
-                <div className="flex flex-col gap-3 border-t border-stone-200 pt-3 font-sans sm:flex-row sm:justify-between">
-                  {bookingStep > 1 ? (
-                    <button type="button" onClick={() => { setBookingError(''); setBookingStep((prev) => Math.max(1, prev - 1)); }} className="px-4 py-2 border border-stone-250 hover:bg-stone-50 rounded text-stone-600 text-xs font-bold transition-all duration-200">Back</button>
-                  ) : <div />}
-                  {bookingStep < 8 ? (
-                    <button type="button" onClick={() => {
-                      if (!bookingForm.name || !bookingForm.phone || !bookingForm.whatsapp || !bookingForm.email || !bookingForm.travelDate) {
-                        setBookingError('Please complete the required package details before continuing.');
-                        return;
-                      }
-                      if (bookingStep === 2 && (!leadTraveller.firstName || !leadTraveller.lastName || !leadTraveller.phone || !leadTraveller.email)) {
-                        setBookingError('Please complete the lead traveller details before continuing.');
-                        return;
-                      }
-                      if (bookingStep === 4 && (!emergencyContact.name || !emergencyContact.phone || !emergencyContact.relationship)) {
-                        setBookingError('Please complete the emergency contact details before continuing.');
-                        return;
-                      }
-                      setBookingError('');
-                      setBookingStep((prev) => Math.min(8, prev + 1));
-                    }} className="px-6 py-2 bg-[#4DA528] hover:bg-[#3f8f21] text-white text-xs font-bold rounded shadow-sm hover:shadow transition-all duration-200 flex items-center gap-1.5">Continue</button>
-                  ) : (
-                    <button type="submit" disabled={bookingSubmitting} className="px-6 py-2 bg-[#4DA528] hover:bg-[#3f8f21] text-white text-xs font-bold rounded shadow-sm hover:shadow transition-all duration-200 disabled:opacity-60 flex items-center gap-1.5">
-                      {bookingSubmitting ? (<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />) : (<><Check className="w-4 h-4" /><span>Confirm Booking</span></>) }
-                    </button>
-                  )}
+                  <label className="space-y-1 sm:col-span-2">
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Pickup City</span>
+                    <input type="text" name="pickupCity" value={bookingForm.pickupCity} onChange={handleBookingInputChange} placeholder="Delhi, Dehradun, Chandigarh..." className="w-full rounded-[6px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-800 focus:border-[#ff5a1f] focus:outline-none" />
+                  </label>
+                  <label className="space-y-1 sm:col-span-2">
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-stone-500">Message</span>
+                    <textarea name="specialRequests" rows={4} value={bookingForm.specialRequests} onChange={handleBookingInputChange} placeholder="Hotel category, food preference, pickup needs..." className="w-full rounded-[6px] border border-stone-200 bg-white px-3 py-3 text-sm text-stone-800 focus:border-[#ff5a1f] focus:outline-none" />
+                  </label>
                 </div>
+
+                <div className="rounded-[8px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-7 text-emerald-800">
+                  We will confirm route availability, hotels and final pricing before any payment is collected.
+                </div>
+
+                <button type="submit" disabled={bookingSubmitting} className="flex w-full items-center justify-center gap-2 rounded-[6px] bg-[#ff5a1f] px-6 py-4 text-xs font-extrabold uppercase tracking-[0.16em] text-white shadow-[0_14px_30px_rgba(255,90,31,0.22)] transition hover:bg-[#e64a14] disabled:opacity-60">
+                  {bookingSubmitting ? (<div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />) : (<><Check className="h-4 w-4" /><span>Submit Booking Request</span></>)}
+                </button>
               </form>
             )}
-
+            </div>
           </div>
         </div>
       )}

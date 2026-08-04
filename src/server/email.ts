@@ -40,17 +40,19 @@ export function generateEmailHtml(trigger: string, metadata: any): { subject: st
   const textDark = '#1c1917';
   const bgLight = '#f8f7f4';
 
+  const companyName = metadata.companyName || 'Pravaah Travels';
+  const companyTagline = metadata.companyTagline || 'Flow into the Sacred Mountains';
   const headerHtml = `
     <div style="background-color: #1f2937; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
-      <h1 style="color: #ffffff; font-family: 'Georgia', serif; font-style: italic; margin: 0; font-size: 26px; font-weight: normal; letter-spacing: 1px;">Pravaah Travels</h1>
-      <p style="color: ${accentCoral}; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; margin: 6px 0 0 0;">Flow into the Sacred Mountains</p>
+      <h1 style="color: #ffffff; font-family: 'Georgia', serif; font-style: italic; margin: 0; font-size: 26px; font-weight: normal; letter-spacing: 1px;">${companyName}</h1>
+      <p style="color: ${accentCoral}; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; margin: 6px 0 0 0;">${companyTagline}</p>
     </div>
   `;
 
   const footerHtml = `
     <div style="background-color: #f5f5f4; border-top: 1px solid #e7e5e4; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; font-family: 'Helvetica Neue', Arial, sans-serif;">
       <p style="color: #78716c; font-size: 11px; line-height: 1.6; margin: 0;">
-        This is an automated system notification from <strong>Pravaah Travels Private Limited</strong>.<br/>
+        This is an automated system notification from <strong>${companyName}</strong>.<br/>
         For immediate ground assistance or trip adjustments, please coordinate directly via our WhatsApp support.
       </p>
       <div style="margin-top: 12px;">
@@ -64,7 +66,7 @@ export function generateEmailHtml(trigger: string, metadata: any): { subject: st
 
   switch (trigger) {
     case 'booking-received':
-      subject = 'Booking Request Logged Successfully - Pravaah Travels';
+      subject = `Booking Request Logged Successfully - ${companyName}`;
       contentHtml = `
         <h2 style="color: ${brandTeal}; font-family: 'Georgia', serif; font-style: italic; font-size: 20px; margin-top: 0;">Namaste ${metadata.customerName || 'Traveler'},</h2>
         <p style="color: ${textDark}; font-size: 14px; line-height: 1.6; font-family: Arial, sans-serif;">
@@ -84,7 +86,7 @@ export function generateEmailHtml(trigger: string, metadata: any): { subject: st
       break;
 
     case 'booking-confirmed':
-      subject = 'Your Booking is CONFIRMED! 🎉 - Pravaah Travels';
+      subject = `Your Booking is CONFIRMED! 🎉 - ${companyName}`;
       contentHtml = `
         <h2 style="color: #15803d; font-family: 'Georgia', serif; font-style: italic; font-size: 20px; margin-top: 0;">Congratulations, ${metadata.customerName || 'Traveler'}!</h2>
         <p style="color: ${textDark}; font-size: 14px; line-height: 1.6; font-family: Arial, sans-serif;">
@@ -103,7 +105,7 @@ export function generateEmailHtml(trigger: string, metadata: any): { subject: st
       break;
 
     case 'booking-cancelled':
-      subject = 'Booking Request Cancelled - Pravaah Travels';
+      subject = `Booking Request Cancelled - ${companyName}`;
       contentHtml = `
         <h2 style="color: #b91c1c; font-family: 'Georgia', serif; font-style: italic; font-size: 20px; margin-top: 0;">Booking Notice,</h2>
         <p style="color: ${textDark}; font-size: 14px; line-height: 1.6; font-family: Arial, sans-serif;">
@@ -121,7 +123,7 @@ export function generateEmailHtml(trigger: string, metadata: any): { subject: st
       break;
 
     case 'enquiry-received':
-      subject = 'We Have Received Your Holiday Enquiry - Pravaah Travels';
+      subject = `We Have Received Your Holiday Enquiry - ${companyName}`;
       contentHtml = `
         <h2 style="color: ${brandTeal}; font-family: 'Georgia', serif; font-style: italic; font-size: 20px; margin-top: 0;">Hello ${metadata.name},</h2>
         <p style="color: ${textDark}; font-size: 14px; line-height: 1.6; font-family: Arial, sans-serif;">
@@ -208,7 +210,7 @@ export function generateEmailHtml(trigger: string, metadata: any): { subject: st
       break;
 
     default:
-      subject = 'Notification from Pravaah Travels';
+      subject = `Notification from ${companyName}`;
       contentHtml = `
         <h2 style="color: ${brandTeal}; font-family: 'Georgia', serif; font-style: italic; font-size: 20px; margin-top: 0;">Notice</h2>
         <p style="color: ${textDark}; font-size: 14px; line-height: 1.6; font-family: Arial, sans-serif;">
@@ -247,11 +249,12 @@ export async function triggerSystemEmail(trigger: string, recipientEmail: string
 
   let emailStatus = 'simulated';
   let emailError = '';
+  const companyName = metadata?.companyName || 'Pravaah Travels';
 
   const transporter = getSMTPTransporter();
   if (transporter) {
     try {
-      const fromAddr = process.env.SMTP_FROM || '"Pravaah Travels" <no-reply@pravaahtravels.com>';
+      const fromAddr = process.env.SMTP_FROM || `"${companyName}" <no-reply@pravaahtravels.com>`;
       await transporter.sendMail({
         from: fromAddr,
         to: recipientEmail,

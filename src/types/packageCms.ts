@@ -7,6 +7,7 @@ export type PackageCmsAction =
   | 'archive'
   | 'restore'
   | 'delete'
+  | 'permanent-delete'
   | 'import'
   | 're-import'
   | 'duplicate';
@@ -40,6 +41,16 @@ export interface PackageItineraryDay {
   day: number | null;
   title: string | null;
   description: string | null;
+  location?: string | null;
+  images?: string[];
+}
+
+export interface PackageOption {
+  title: string;
+  description?: string | null;
+  price?: number | null;
+  originalPrice?: number | null;
+  inclusions?: string[];
 }
 
 export interface PackageFaq {
@@ -78,6 +89,7 @@ export interface PackageCmsDocument {
   sourceDomain: string | null;
   heroImage: string | null;
   gallery: string[];
+  activityId?: string | null;
   duration: string | null;
   destinations: string[];
   overview: string | null;
@@ -86,6 +98,10 @@ export interface PackageCmsDocument {
   pricing: PackagePricing | null;
   inclusions: string[];
   exclusions: string[];
+  packageOptions?: PackageOption[];
+  knowBeforeYouGo?: string[];
+  thingsToCarry?: string[];
+  difficultyLevel?: number | null;
   faqs: PackageFaq[];
   policies: string[];
   importQuality: ImportQuality | null;
@@ -118,6 +134,7 @@ export interface PackageCmsInput {
   sourceUrl?: string | null;
   heroImage?: string | null;
   gallery?: string[];
+  activityId?: string | null;
   duration?: string | null;
   destinations?: string[];
   destination?: string | null;
@@ -128,6 +145,10 @@ export interface PackageCmsInput {
   price?: number | null;
   inclusions?: string[];
   exclusions?: string[];
+  packageOptions?: PackageOption[];
+  knowBeforeYouGo?: string[];
+  thingsToCarry?: string[];
+  difficultyLevel?: number | null;
   faqs?: PackageFaq[];
   policies?: string[];
   importQuality?: ImportQuality | null;

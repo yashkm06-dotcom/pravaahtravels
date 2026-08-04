@@ -107,16 +107,43 @@ export const normalizeHotels = (value: unknown): PackageHotel[] => {
 export const normalizeItinerary = (value: unknown): PackageItineraryDay[] => {
   if (!Array.isArray(value)) return [];
   return value
-    .map((item, index) => {
+    .map((item, index): PackageItineraryDay | null => {
       if (!item || typeof item !== 'object') return null;
       const record = item as Record<string, unknown>;
       const day = normalizeNumber(record.day) ?? index + 1;
       const title = cleanPackageText(record.title) || null;
       const description = cleanPackageText(record.description) || null;
+      const location = cleanPackageText(record.location) || null;
+      const images = normalizeStringArray(record.images);
       if (!title && !description) return null;
-      return { day, title, description };
+      return {
+        day,
+        title,
+        description,
+        ...(location ? { location } : {}),
+        ...(images.length ? { images } : {}),
+      };
     })
     .filter((item): item is PackageItineraryDay => Boolean(item));
+};
+
+export const normalizePackageOptions = (value: unknown) => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const record = item as Record<string, unknown>;
+      const title = cleanPackageText(record.title);
+      if (!title) return null;
+      return {
+        title,
+        description: cleanPackageText(record.description) || null,
+        price: normalizeNumber(record.price),
+        originalPrice: normalizeNumber(record.originalPrice),
+        inclusions: normalizeStringArray(record.inclusions),
+      };
+    })
+    .filter(Boolean);
 };
 
 export const normalizeFaqs = (value: unknown): PackageFaq[] => {
@@ -223,10 +250,15 @@ export const comparePackages = (
     'pricing',
     'inclusions',
     'exclusions',
+    'packageOptions',
+    'knowBeforeYouGo',
+    'thingsToCarry',
+    'difficultyLevel',
     'faqs',
     'policies',
     'gallery',
     'heroImage',
+    'activityId',
   ];
   const fields: PackageDiffField[] = [];
 
@@ -262,6 +294,7 @@ export const normalizePackageCmsInput = (input: PackageCmsInput): Omit<PackageCm
     sourceDomain: input.sourceDomain || getSourceDomain(input.sourceUrl),
     heroImage: input.heroImage || null,
     gallery: normalizeStringArray(input.gallery),
+    activityId: cleanPackageText(input.activityId) || null,
     duration: cleanPackageText(input.duration) || null,
     destinations,
     overview: cleanPackageText(input.overview) || null,
@@ -270,6 +303,10 @@ export const normalizePackageCmsInput = (input: PackageCmsInput): Omit<PackageCm
     pricing,
     inclusions: normalizeStringArray(input.inclusions),
     exclusions: normalizeStringArray(input.exclusions),
+    packageOptions: normalizePackageOptions(input.packageOptions),
+    knowBeforeYouGo: normalizeStringArray(input.knowBeforeYouGo),
+    thingsToCarry: normalizeStringArray(input.thingsToCarry),
+    difficultyLevel: normalizeNumber(input.difficultyLevel),
     faqs: normalizeFaqs(input.faqs),
     policies: normalizeStringArray(input.policies),
     importQuality: input.importQuality || validatePackageImport(input),
@@ -281,41 +318,53 @@ export const normalizePackageCmsInput = (input: PackageCmsInput): Omit<PackageCm
   };
 };
 
-export const mapCmsToLegacyPackageFields = (input: Omit<PackageCmsDocument, 'id' | 'version' | 'createdAt' | 'updatedAt' | 'publishedAt' | 'createdBy' | 'updatedBy'>) => ({
-  title: input.title,
-  destination: input.destinations[0] || '',
-  destinations: input.destinations,
-  duration: input.duration || '',
-  price: input.pricing?.price || 0,
-  offerPrice: input.pricing?.originalPrice || undefined,
-  shortDescription: input.overview || '',
-  fullDescription: input.overview || '',
-  imageUrl: input.heroImage || '',
-  packageBannerUrl: input.heroImage || '',
-  galleryImages: input.gallery,
-  gallery: input.gallery,
-  itinerary: input.itinerary.map((day, index) => ({
-    day: day.day || index + 1,
-    title: day.title || '',
-    description: day.description || '',
-  })),
-  inclusions: input.inclusions,
-  exclusions: input.exclusions,
-  faqs: input.faqs.map((faq) => ({
-    question: faq.question || '',
-    answer: faq.answer || '',
-  })),
-  policies: input.policies,
-  heroImage: input.heroImage,
-  overview: input.overview,
-  hotels: input.hotels,
-  pricing: input.pricing,
-  sourceUrl: input.sourceUrl,
-  sourceDomain: input.sourceDomain,
-  parserVersion: input.parserVersion,
-  importQuality: input.importQuality,
-  cmsStatus: input.status,
-  active: input.active,
-  status: input.legacyStatus,
-});
+export const mapCmsToLegacyPackageFields = (input: Omit<PackageCmsDocument, 'id' | 'version' | 'createdAt' | 'updatedAt' | 'publishedAt' | 'createdBy' | 'updatedBy'>) => {
+  const currentPrice = input.pricing?.price || 0;
+  const originalPrice = input.pricing?.originalPrice || 0;
+  const hasOfferPrice = originalPrice > 0 && currentPrice > 0 && currentPrice < originalPrice;
 
+  return {
+    title: input.title,
+    destination: input.destinations[0] || '',
+    destinations: input.destinations,
+    duration: input.duration || '',
+    price: hasOfferPrice ? originalPrice : currentPrice,
+    offerPrice: hasOfferPrice ? currentPrice : undefined,
+    shortDescription: input.overview || '',
+    fullDescription: input.overview || '',
+    imageUrl: input.gallery[0] || input.heroImage || '',
+    packageBannerUrl: input.heroImage || '',
+    activityId: input.activityId || null,
+    galleryImages: input.gallery,
+    gallery: input.gallery,
+    itinerary: input.itinerary.map((day, index) => ({
+      day: day.day || index + 1,
+      title: day.title || '',
+      description: day.description || '',
+      location: day.location || '',
+      images: day.images || [],
+    })),
+    inclusions: input.inclusions,
+    exclusions: input.exclusions,
+    packageOptions: input.packageOptions || [],
+    knowBeforeYouGo: input.knowBeforeYouGo || [],
+    thingsToCarry: input.thingsToCarry || [],
+    difficultyLevel: input.difficultyLevel ?? null,
+    faqs: input.faqs.map((faq) => ({
+      question: faq.question || '',
+      answer: faq.answer || '',
+    })),
+    policies: input.policies,
+    heroImage: input.heroImage,
+    overview: input.overview,
+    hotels: input.hotels,
+    pricing: input.pricing,
+    sourceUrl: input.sourceUrl,
+    sourceDomain: input.sourceDomain,
+    parserVersion: input.parserVersion,
+    importQuality: input.importQuality,
+    cmsStatus: input.status,
+    active: input.active,
+    status: input.legacyStatus,
+  };
+};

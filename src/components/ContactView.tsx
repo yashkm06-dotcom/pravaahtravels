@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Send, Mail, Phone, MapPin, Check, Compass, Clock, AlertCircle } from 'lucide-react';
 import { db, collection, addDoc } from '../lib/firebase';
-import { Enquiry } from '../types';
+import { DEFAULT_WEBSITE_CMS, Enquiry, WebsiteCMSSettings } from '../types';
 
 interface ContactViewProps {
   onEnquirySuccess: () => void;
+  websiteCMS?: WebsiteCMSSettings;
 }
 
-export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
+export default function ContactView({ onEnquirySuccess, websiteCMS }: ContactViewProps) {
   // Form State
   const [formData, setFormData] = useState({
     name: '',
@@ -54,6 +55,7 @@ export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
         budget: formData.budget,
         message: formData.message || 'Hi, I want to discuss a customized package.',
         status: 'New',
+        source: 'Contact Form',
         createdAt: new Date().toISOString()
       };
 
@@ -68,10 +70,32 @@ export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
     }
   };
 
+  const cmsSettings = { ...DEFAULT_WEBSITE_CMS, ...(websiteCMS || {}) };
+  const companyName = cmsSettings.companyName || DEFAULT_WEBSITE_CMS.companyName;
+  const contactData = {
+    officeName: cmsSettings.officeName || cmsSettings.companyName,
+    officeAddress: cmsSettings.officeAddress || cmsSettings.footerAddress,
+    city: cmsSettings.city || '',
+    state: cmsSettings.state || '',
+    country: cmsSettings.country || '',
+    postalCode: cmsSettings.postalCode || '',
+    primaryPhone: cmsSettings.primaryPhone || cmsSettings.footerPhone,
+    secondaryPhone: cmsSettings.secondaryPhone || '',
+    whatsappNumber: cmsSettings.whatsappNumber || cmsSettings.primaryPhone || cmsSettings.footerPhone,
+    primaryEmail: cmsSettings.primaryEmail || cmsSettings.footerEmail,
+    secondaryEmail: cmsSettings.secondaryEmail || '',
+    googleMapsEmbedUrl: cmsSettings.googleMapsEmbedUrl || '',
+    officeWorkingHours: cmsSettings.officeWorkingHours || '',
+    weekendHours: cmsSettings.weekendHours || '',
+    contactHeading: cmsSettings.contactHeading || DEFAULT_WEBSITE_CMS.contactHeading,
+    contactDescription: cmsSettings.contactDescription || DEFAULT_WEBSITE_CMS.contactDescription,
+  };
+
+  const fullAddress = [contactData.officeAddress, [contactData.city, contactData.state].filter(Boolean).join(', '), [contactData.country, contactData.postalCode].filter(Boolean).join(' ')].filter(Boolean).join(' • ');
   const officeHours = [
-    { days: 'Monday - Friday', hours: '09:00 AM - 07:00 PM' },
-    { days: 'Saturday', hours: '10:00 AM - 04:00 PM' },
-    { days: 'Sunday', hours: 'Emergency Support Only' }
+    { days: 'Monday - Friday', hours: contactData.officeWorkingHours },
+    { days: 'Saturday', hours: contactData.weekendHours },
+    { days: 'Sunday', hours: contactData.weekendHours },
   ];
 
   return (
@@ -82,11 +106,11 @@ export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
         <div className="text-center max-w-3xl mx-auto space-y-3">
           <span className="text-xs font-extrabold text-[#4DA528] tracking-[0.2em] uppercase">Plan with Experts</span>
           <h2 className="text-[38px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">
-            Initiate Your Custom Holiday Flow
+            {contactData.contactHeading}
           </h2>
           <div className="w-16 h-0.5 bg-[#FF970D] mx-auto mt-3" />
           <p className="text-stone-500 text-sm sm:text-base leading-7 max-w-md mx-auto">
-            Fill out our structured holiday planner form, and get assigned to a dedicated travel curator within hours.
+            {contactData.contactDescription}
           </p>
         </div>
 
@@ -102,7 +126,7 @@ export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
                 </div>
                 <h3 className="text-2xl font-extrabold text-stone-950">Enquiry Received!</h3>
                 <p className="text-stone-600 text-xs sm:text-sm max-w-md mx-auto leading-relaxed font-light">
-                  Thank you for submitting your custom holiday plan. A holiday curator from Pravaah Travels will review your dates and destination, draft a preliminary itinerary, and connect with you shortly.
+                  Thank you for submitting your custom holiday plan. A holiday curator from {companyName} will review your dates and destination, draft a preliminary itinerary, and connect with you shortly.
                 </p>
                 <button
                   onClick={() => {
@@ -280,7 +304,7 @@ export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
             {/* Quick Contacts Card */}
             <div className="bg-stone-900 text-white rounded-[12px] p-6 sm:p-8 space-y-6 shadow-md" id="contact-details-card">
               <h3 className="text-xl font-extrabold border-b border-stone-800 pb-4 text-[#FF970D]">
-                Pravaah Headquarters
+                {contactData.officeName}
               </h3>
               
               <ul className="space-y-6 text-sm">
@@ -289,8 +313,19 @@ export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
                   <div className="space-y-1">
                     <strong className="block text-white font-bold text-sm">Office Address</strong>
                     <span className="text-stone-300 font-light leading-relaxed block text-xs">
-                      402, Signature Towers, Sector 30, Gurugram, Haryana - 122001, India
+                      {fullAddress}
                     </span>
+                    {contactData.googleMapsEmbedUrl ? (
+                      <div className="mt-3 overflow-hidden rounded-[10px] border border-stone-800">
+                        <iframe
+                          title="Office location"
+                          src={contactData.googleMapsEmbedUrl}
+                          className="h-40 w-full border-0"
+                          loading="lazy"
+                          referrerPolicy="no-referrer-when-downgrade"
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 </li>
                 
@@ -298,25 +333,34 @@ export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
                   <Phone className="w-6 h-6 text-[#4DA528] shrink-0 mt-1" />
                   <div className="space-y-1">
                     <strong className="block text-white font-bold text-sm">Direct Hotlines</strong>
-                    <a href="tel:+919876543210" className="hover:text-[#F4C430] transition text-stone-300 font-light block text-xs">
-                      +91 98765 43210
+                    <a href={`tel:${contactData.primaryPhone.replace(/[^0-9+]/g, '')}`} className="hover:text-[#F4C430] transition text-stone-300 font-light block text-xs">
+                      {contactData.primaryPhone}
                     </a>
-                    <a href="tel:+911244098765" className="hover:text-[#F4C430] transition text-stone-300 font-light block text-xs">
-                      +91 124 4098765 (Office desk)
-                    </a>
+                    {contactData.secondaryPhone ? (
+                      <a href={`tel:${contactData.secondaryPhone.replace(/[^0-9+]/g, '')}`} className="hover:text-[#F4C430] transition text-stone-300 font-light block text-xs">
+                        {contactData.secondaryPhone}
+                      </a>
+                    ) : null}
+                    {contactData.whatsappNumber ? (
+                      <a href={`https://wa.me/${contactData.whatsappNumber.replace(/[^0-9]/g, '')}`} target="_blank" rel="noreferrer" className="hover:text-[#F4C430] transition text-stone-300 font-light block text-xs">
+                        WhatsApp: {contactData.whatsappNumber}
+                      </a>
+                    ) : null}
                   </div>
                 </li>
 
                 <li className="flex items-start gap-4">
                   <Mail className="w-6 h-6 text-[#4DA528] shrink-0 mt-1" />
                   <div className="space-y-1">
-                    <strong className="block text-white font-bold text-sm">Email Addresses</strong>
-                    <a href="mailto:info@pravaahtravels.com" className="hover:text-[#F4C430] transition text-stone-300 font-light block text-xs">
-                      info@pravaahtravels.com
+                    <strong className="block text-white font-bold text-sm">Email Address</strong>
+                    <a href={`mailto:${contactData.primaryEmail}`} className="hover:text-[#F4C430] transition text-stone-300 font-light block text-xs">
+                      {contactData.primaryEmail}
                     </a>
-                    <a href="mailto:bookings@pravaahtravels.com" className="hover:text-[#F4C430] transition text-stone-300 font-light block text-xs">
-                      bookings@pravaahtravels.com
-                    </a>
+                    {contactData.secondaryEmail ? (
+                      <a href={`mailto:${contactData.secondaryEmail}`} className="hover:text-[#F4C430] transition text-stone-300 font-light block text-xs">
+                        {contactData.secondaryEmail}
+                      </a>
+                    ) : null}
                   </div>
                 </li>
               </ul>

@@ -19,8 +19,9 @@ import {
   X,
 } from 'lucide-react';
 import { DEFAULT_WEBSITE_CMS, PACKAGE_LOCATIONS, TravelPackage, WebsiteCMSSettings, formatPrice } from '../types';
+import { comparePackagesForDisplay } from '../utils/packageOrdering';
 import { SkeletonPackage } from './SkeletonLoader';
-import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
+import TravelMedia from './TravelMedia';
 
 interface PackagesViewProps {
   packages: TravelPackage[];
@@ -113,7 +114,11 @@ const getPackageRouteSegment = (pkg: Pick<TravelPackage, 'id' | 'title'>) => {
 const sanitizeWhatsAppPhone = (value?: string) => {
   const digits = String(value ?? '').replace(/[^\d]/g, '');
   if (!digits) return '';
-  return digits.startsWith('91') ? digits : `91${digits.replace(/^0+/, '')}`;
+  const trimmed = digits.replace(/^0+/, '');
+  // Only treat the number as already carrying the "91" country code at the full 12-digit
+  // length — a raw 10-digit Indian mobile number that happens to start with "91" (e.g.
+  // 9198765432) was previously misdetected as already coded, producing a broken wa.me link.
+  return trimmed.length === 12 && trimmed.startsWith('91') ? trimmed : `91${trimmed}`;
 };
 
 export default function PackagesView({
@@ -242,7 +247,10 @@ export default function PackagesView({
       if (sortOrder === 'price-desc') return (b.offerPrice || b.price || 0) - (a.offerPrice || a.price || 0);
       if (sortOrder === 'duration-asc') return getDurationDays(a.duration) - getDurationDays(b.duration);
       if (sortOrder === 'duration-desc') return getDurationDays(b.duration) - getDurationDays(a.duration);
-      return 0;
+      // Default browsing order: Featured packages first, then admin Display Order — relies
+      // on Array.prototype.sort's stability for the final tiebreak (equal-priority packages
+      // keep their existing relative order, same as the previous no-op `return 0`).
+      return comparePackagesForDisplay(a, b, 0, 0);
     });
 
     return sorted;
@@ -337,9 +345,9 @@ export default function PackagesView({
         <div className="relative mx-auto grid min-h-[340px] max-w-[1320px] items-center gap-10 lg:grid-cols-[1fr_360px]">
           <div className="max-w-4xl">
             <div className="mb-5 flex items-center gap-3 text-[12px] font-bold uppercase tracking-[0.16em] text-white/75">
-              <button type="button" onClick={() => onNavigate('home')} className="cursor-pointer transition hover:text-[#4DA528]">
+              <a href="/" onClick={(event) => { event.preventDefault(); onNavigate('home'); }} className="cursor-pointer transition hover:text-[#4DA528]">
                 Home
-              </button>
+              </a>
               <span className="h-px w-8 bg-white/45" />
               <span className="text-[#4DA528]">Tour Packages</span>
             </div>
@@ -553,6 +561,7 @@ export default function PackagesView({
               const displayPrice = hasOffer ? pkg.offerPrice || pkg.price : pkg.price;
               const rating = getPackageRating(pkg);
               const reviewCount = getPackageReviewCount(pkg);
+              const packageImage = String(pkg.imageUrl || pkg.packageBannerUrl || '').trim();
 
               return (
                 <article
@@ -560,15 +569,20 @@ export default function PackagesView({
                   className="group flex h-full flex-col overflow-hidden rounded-[22px] border border-stone-200 bg-white shadow-[0_14px_38px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-2 hover:shadow-[0_28px_70px_rgba(18,38,32,0.16)]"
                 >
                   <div className="relative aspect-[1.2/1] overflow-hidden bg-stone-100">
-                    <img
-                      src={getTravelImage(pkg.imageUrl)}
-                      alt={pkg.title}
-                      className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
-                      referrerPolicy="no-referrer"
-                      loading="lazy"
-                      decoding="async"
-                      onError={handleTravelImageError}
-                    />
+                    {packageImage ? (
+                      <TravelMedia
+                        src={packageImage}
+                        alt={pkg.title}
+                        className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+                        loading="lazy"
+                        decoding="async"
+                        disableFallback
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-[#f8f7f4] px-5 text-center text-xs font-semibold text-stone-400">
+                        Package image not uploaded
+                      </div>
+                    )}
                     <div className="absolute inset-0 bg-linear-to-t from-stone-950/65 via-stone-950/5 to-transparent" />
                     <div className="absolute left-4 right-4 top-4 z-20 flex items-start justify-between gap-3">
                       <div className="flex flex-wrap gap-2">
@@ -688,21 +702,21 @@ export default function PackagesView({
                         >
                           <MessageCircle className="h-4 w-4" />
                         </a>
-                        <button
-                          type="button"
-                          onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))}
+                        <a
+                          href={`/packages/${getPackageRouteSegment(pkg)}`}
+                          onClick={(event) => { event.preventDefault(); onNavigate('package-detail', getPackageRouteSegment(pkg)); }}
                           className="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-[5px] border border-stone-200 bg-white px-4 py-3 text-[10px] font-extrabold uppercase tracking-[0.14em] text-stone-800 transition hover:-translate-y-0.5 hover:border-[#4DA528] hover:text-[#4DA528]"
                         >
                           View Details
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))}
+                        </a>
+                        <a
+                          href={`/packages/${getPackageRouteSegment(pkg)}`}
+                          onClick={(event) => { event.preventDefault(); onNavigate('package-detail', getPackageRouteSegment(pkg)); }}
                           className="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-[5px] bg-[#4DA528] px-4 py-3 text-[10px] font-extrabold uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5 hover:bg-[#FF970D]"
                         >
                           <span>Book Now</span>
                           <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
-                        </button>
+                        </a>
                       </div>
                     </div>
                   </div>

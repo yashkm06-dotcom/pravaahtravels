@@ -1,4 +1,5 @@
 import { db, collection, addDoc, getDocs, query, limit } from './firebase';
+import { hasCookieConsent } from '../utils/cookieConsent';
 
 // Helper to get or create a session ID
 function getSessionId(): string {
@@ -23,6 +24,8 @@ export async function logAnalyticsEvent(
   targetId: string,
   targetName: string = ''
 ): Promise<void> {
+  if (!hasCookieConsent('analytics')) return;
+
   try {
     // Avoid double logging page view in the same session tab
     if (eventType === 'page_view') {

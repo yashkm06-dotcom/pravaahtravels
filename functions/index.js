@@ -6,6 +6,7 @@ const net = require('node:net');
 
 const MAX_HTML_CHARACTERS = 12_000_000;
 const MAX_CONTENT_CHARACTERS = 28_000;
+const MAX_ITINERARY_DAYS = 365;
 const FETCH_TIMEOUT_MS = 20_000;
 const MAX_REDIRECTS = 4;
 const SCRIPT_TAG_PATTERN = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
@@ -21,8 +22,14 @@ const PACKAGE_PREVIEW_FIELDS = [
   'itinerary',
   'inclusions',
   'exclusions',
+  'hotels',
+  'packageOptions',
+  'knowBeforeYouGo',
+  'thingsToCarry',
+  'policies',
   'bestTime',
   'difficulty',
+  'difficultyLevel',
   'faqs',
   'metaTitle',
   'metaDescription',
@@ -36,6 +43,11 @@ const ARRAY_PREVIEW_FIELDS = new Set([
   'itinerary',
   'inclusions',
   'exclusions',
+  'hotels',
+  'packageOptions',
+  'knowBeforeYouGo',
+  'thingsToCarry',
+  'policies',
   'faqs',
   'galleryImages',
 ]);
@@ -50,6 +62,10 @@ const SECTION_KEYS = [
   'transport',
   'meals',
   'pricing',
+  'packageOptions',
+  'knowBeforeYouGo',
+  'thingsToCarry',
+  'policies',
   'faqs',
   'bestTime',
   'difficulty',
@@ -116,6 +132,11 @@ const DAY_WORDS = {
   nineteen: 19,
   twenty: 20,
 };
+const DAY_WORD_PATTERN = Object.keys(DAY_WORDS).join('|');
+const DAY_HEADING_PATTERN = new RegExp(
+  `^day\\s*(?:(\\d{1,3})(?:st|nd|rd|th)?|(${DAY_WORD_PATTERN}))\\b\\s*(?::|\\||-|–|—|\\.)?\\s*(.*)$`,
+  'i',
+);
 
 const SECTION_ALIASES = [
   { key: 'highlights', patterns: [/^highlights?$/, /^trip\s+highlights?$/, /^why\s+this\s+trip$/, /^why\s+choose/i, /^experience/i] },
@@ -128,6 +149,10 @@ const SECTION_ALIASES = [
   { key: 'meals', patterns: [/^meals?$/, /^meal\s+plan$/, /^food$/, /^breakfast|lunch|dinner/] },
   { key: 'transport', patterns: [/^transport$/, /^transfers?$/, /^vehicle$/, /^cab$/, /^transportation$/] },
   { key: 'pricing', patterns: [/^pricing$/, /^cost$/, /^price$/, /^package\s+cost$/, /^tour\s+cost$/, /^tariff$/] },
+  { key: 'packageOptions', patterns: [/^package\s+options?$/, /^select\s+package\s+options?$/, /^tour\s+options?$/, /^trip\s+options?$/, /^variants?$/, /^plans?$/, /^available\s+packages?$/] },
+  { key: 'knowBeforeYouGo', patterns: [/^know\s+before\s+you\s+go$/, /^things?\s+to\s+know$/, /^important\s+(information|notes?)$/, /^travel\s+tips?$/, /^before\s+you\s+go$/, /^quick\s+info$/, /^more\s+details?$/] },
+  { key: 'thingsToCarry', patterns: [/^things?\s+to\s+carry$/, /^what\s+to\s+carry$/, /^packing\s+(list|essentials?)$/, /^travel\s+essentials?$/, /^things?\s+to\s+pack$/] },
+  { key: 'policies', patterns: [/^policies$/, /^policy$/, /^cancellation\s+policy$/, /^refund\s+policy$/, /^booking\s+policy$/, /^payment\s+policy$/, /^confirmation\s+policy$/, /^terms\s+and\s+conditions?$/] },
   { key: 'bestTime', patterns: [/^best\s+time$/, /^best\s+season$/, /^when\s+to\s+visit$/, /^season$/] },
   { key: 'difficulty', patterns: [/^difficulty$/, /^grade$/, /^level$/, /^trek\s+grade$/] },
   { key: 'duration', patterns: [/^duration$/, /^tour\s+duration$/, /^trip\s+duration$/] },
@@ -438,11 +463,11 @@ const normalizeDuration = (value) => {
     if (hours) return `${hours} Hours`;
   }
 
-  const compactMatch = text.match(/\b(\d{1,2})\s*d\s*\/\s*(\d{1,2})\s*n\b/i);
+  const compactMatch = text.match(/\b(\d{1,3})\s*d\s*\/\s*(\d{1,3})\s*n\b/i);
   if (compactMatch) return `${Number(compactMatch[1])} Days / ${Number(compactMatch[2])} Nights`;
 
-  const daysNightsMatch = text.match(/\b(\d{1,2})\s*days?\s*(?:&|and|\/|\+|-)?\s*(\d{1,2})\s*nights?\b/i) ||
-    text.match(/\b(\d{1,2})\s*nights?\s*(?:&|and|\/|\+|-)?\s*(\d{1,2})\s*days?\b/i);
+  const daysNightsMatch = text.match(/\b(\d{1,3})\s*days?\s*(?:&|and|\/|\+|-)?\s*(\d{1,3})\s*nights?\b/i) ||
+    text.match(/\b(\d{1,3})\s*nights?\s*(?:&|and|\/|\+|-)?\s*(\d{1,3})\s*days?\b/i);
   if (daysNightsMatch) {
     if (/nights?/i.test(daysNightsMatch[0].split(/\d+/)[1] || '')) {
       return `${Number(daysNightsMatch[2])} Days / ${Number(daysNightsMatch[1])} Nights`;
@@ -450,8 +475,8 @@ const normalizeDuration = (value) => {
     return `${Number(daysNightsMatch[1])} Days / ${Number(daysNightsMatch[2])} Nights`;
   }
 
-  const daysMatch = text.match(/\b(\d{1,2})\s*days?\b/i);
-  const nightsMatch = text.match(/\b(\d{1,2})\s*nights?\b/i);
+  const daysMatch = text.match(/\b(\d{1,3})\s*days?\b/i);
+  const nightsMatch = text.match(/\b(\d{1,3})\s*nights?\b/i);
   if (daysMatch && nightsMatch) return `${Number(daysMatch[1])} Days / ${Number(nightsMatch[1])} Nights`;
   if (daysMatch) return `${Number(daysMatch[1])} Days`;
   if (nightsMatch) return `${Number(nightsMatch[1])} Nights`;
@@ -461,15 +486,40 @@ const normalizeDuration = (value) => {
 
 const parseDayHeading = (value) => {
   const text = cleanText(value);
-  const match = text.match(/^day\s*(0?\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b\s*[:\-–—]?\s*(.*)$/i);
+  const match = text.match(DAY_HEADING_PATTERN);
   if (!match) return null;
-  const token = match[1].toLowerCase();
-  const day = /^\d+$/.test(token) ? Number(token) : DAY_WORDS[token];
-  if (!day) return null;
+  const wordToken = match[2]?.toLowerCase();
+  const day = match[1] ? Number(match[1]) : DAY_WORDS[wordToken];
+  if (!Number.isInteger(day) || day <= 0 || day > MAX_ITINERARY_DAYS) return null;
   return {
     day,
-    title: cleanText(match[2]) || null,
+    title: cleanText(match[3]) || null,
   };
+};
+
+const extractNormalizedDurationDays = (duration) => {
+  const match = cleanText(duration).match(/\b(\d{1,3})\s*days?\b/i);
+  if (!match) return null;
+  const days = Number(match[1]);
+  return Number.isInteger(days) && days > 0 && days <= MAX_ITINERARY_DAYS ? days : null;
+};
+
+const reconcileLongItineraryDuration = (duration, itinerary) => {
+  const itineraryDays = Array.isArray(itinerary) ? itinerary.length : 0;
+  if (itineraryDays <= 10 || itineraryDays > MAX_ITINERARY_DAYS) return duration;
+
+  const durationDays = extractNormalizedDurationDays(duration);
+  if (durationDays === itineraryDays || (durationDays !== null && durationDays > 10)) return duration;
+
+  const nightsMatch = cleanText(duration).match(/\b(\d{1,3})\s*nights?\b/i);
+  const durationNights = nightsMatch ? Number(nightsMatch[1]) : null;
+  const nights = durationDays !== null && durationNights === durationDays - 1
+    ? itineraryDays - 1
+    : null;
+
+  return nights === null
+    ? `${itineraryDays} Days`
+    : `${itineraryDays} Days / ${nights} Nights`;
 };
 
 const getJsonLdTypes = (node) => {
@@ -648,6 +698,10 @@ const extractJsonLdData = (nodes, baseUrl) => {
     hotels: [],
     transport: [],
     meals: [],
+    packageOptions: [],
+    knowBeforeYouGo: [],
+    thingsToCarry: [],
+    policies: [],
   };
 
   for (const node of nodes.filter(isSupportedJsonLdNode)) {
@@ -675,6 +729,10 @@ const extractJsonLdData = (nodes, baseUrl) => {
       else if (/hotel|accommodation|stay/i.test(nodeName)) data.hotels.push(...items);
       else if (/transport|transfer|vehicle/i.test(nodeName)) data.transport.push(...items);
       else if (/meal|food/i.test(nodeName)) data.meals.push(...items);
+      else if (/option|variant|plan/i.test(nodeName)) data.packageOptions.push(...items);
+      else if (/know|important|before|quick info/i.test(nodeName)) data.knowBeforeYouGo.push(...items);
+      else if (/carry|pack|essential/i.test(nodeName)) data.thingsToCarry.push(...items);
+      else if (/policy|terms|cancel|refund/i.test(nodeName)) data.policies.push(...items);
       else data.highlights.push(...items.filter((item) => item.length < 180));
     }
 
@@ -718,6 +776,10 @@ const extractJsonLdData = (nodes, baseUrl) => {
       if (/hotel|accommodation|stay/.test(name)) data.hotels.push(...toList(value));
       if (/transport|transfer|vehicle/.test(name)) data.transport.push(...toList(value));
       if (/meal|food/.test(name)) data.meals.push(...toList(value));
+      if (/option|variant|plan/.test(name)) data.packageOptions.push(...toList(value));
+      if (/know|important|before|quick/.test(name)) data.knowBeforeYouGo.push(...toList(value));
+      if (/carry|pack|essential/.test(name)) data.thingsToCarry.push(...toList(value));
+      if (/policy|terms|cancel|refund/.test(name)) data.policies.push(...toList(value));
     }
   }
 
@@ -729,6 +791,10 @@ const extractJsonLdData = (nodes, baseUrl) => {
   data.hotels = unique(data.hotels);
   data.transport = unique(data.transport);
   data.meals = unique(data.meals);
+  data.packageOptions = unique(data.packageOptions);
+  data.knowBeforeYouGo = unique(data.knowBeforeYouGo);
+  data.thingsToCarry = unique(data.thingsToCarry);
+  data.policies = unique(data.policies);
   return data;
 };
 
@@ -779,7 +845,7 @@ const isContentElement = ($, element) => {
 
   const attrs = element.attribs || {};
   const marker = `${attrs.id || ''} ${attrs.class || ''} ${attrs.role || ''} ${attrs['aria-label'] || ''}`.toLowerCase();
-  if (/(accordion|collapse|panel|content|body|description|overview|highlight|itinerary|inclusion|exclusion|faq|day|tour-plan|trip-plan)/.test(marker)) {
+  if (/(accordion|collapse|panel|content|body|description|overview|highlight|itinerary|inclusion|exclusion|faq|day|tour-plan|trip-plan|policy|terms|carry|packing|important|know-before|package-option|variant)/.test(marker)) {
     return true;
   }
 
@@ -822,6 +888,7 @@ const collectVisibleData = ($) => {
         day: dayHeading ? dayHeading.day : dayEntries.length + 1,
         title: dayHeading ? dayHeading.title : null,
         description: '',
+        images: [],
       };
       dayEntries.push(currentDay);
       if (dayHeading && dayHeading.title) sections.itinerary.push(dayHeading.title);
@@ -838,6 +905,10 @@ const collectVisibleData = ($) => {
       sections[currentSection].push(text);
       if (currentSection === 'itinerary' && currentDay) {
         currentDay.description = cleanText(`${currentDay.description} ${text}`);
+        currentDay.images = uniqueUrls([
+          currentDay.images,
+          extractImagesFromElement($, element),
+        ]).slice(0, 6);
       }
     }
   }
@@ -846,7 +917,11 @@ const collectVisibleData = ($) => {
     lines: unique(lines).slice(0, 900),
     sections,
     dayEntries: dayEntries
-      .map((entry) => ({ ...entry, description: cleanText(entry.description) || null }))
+      .map((entry) => ({
+        ...entry,
+        description: cleanText(entry.description) || null,
+        images: uniqueUrls(entry.images || []),
+      }))
       .filter((entry) => entry.title || entry.description),
   };
 };
@@ -1037,6 +1112,23 @@ const extractImagesFromHtml = ($, baseUrl, metaImages = []) => {
   return uniqueUrls(images).slice(0, 24);
 };
 
+const extractImagesFromElement = ($, element) => {
+  const baseUrl = $.root().attr('data-base-url') || '';
+  if (!baseUrl) return [];
+
+  const images = [];
+  $(element).find('img, source').each((_, imageElement) => {
+    const node = $(imageElement);
+    const attrs = imageElement.attribs || {};
+    const marker = `${attrs.id || ''} ${attrs.class || ''} ${attrs.alt || ''} ${attrs.title || ''}`.toLowerCase();
+    for (const candidate of getImageCandidates(node, baseUrl)) {
+      if (isLikelyLargeTravelImage(candidate, marker)) images.push(candidate.url);
+    }
+  });
+
+  return uniqueUrls(images).slice(0, 6);
+};
+
 const sectionList = (sections, key) => unique(sections[key] || []);
 
 const isThrillophiliaUrl = (finalUrl) => {
@@ -1078,12 +1170,46 @@ const extractThrillophiliaData = ($, finalUrl) => {
     '[class*="exclusion"] li',
     '[class*="excluded"] li',
   ]);
+  const knowBeforeYouGo = extractListBySelectors($, [
+    '[id*="know"] li',
+    '[class*="know"] li',
+    '[id*="important"] li',
+    '[class*="important"] li',
+    '[id*="more-detail"] li',
+    '[class*="more-detail"] li',
+    '[class*="quick-info"] li',
+  ]);
+  const thingsToCarry = extractListBySelectors($, [
+    '[id*="carry"] li',
+    '[class*="carry"] li',
+    '[id*="packing"] li',
+    '[class*="packing"] li',
+  ]);
+  const policies = extractListBySelectors($, [
+    '[id*="policy"] li',
+    '[class*="policy"] li',
+    '[id*="terms"] li',
+    '[class*="terms"] li',
+    '[id*="cancellation"] li',
+    '[class*="cancellation"] li',
+  ]);
   const itineraryLines = extractListBySelectors($, [
     '[id*="itinerary"] h3, [id*="itinerary"] h4, [id*="itinerary"] p, [id*="itinerary"] li',
     '[class*="itinerary"] h3, [class*="itinerary"] h4, [class*="itinerary"] p, [class*="itinerary"] li',
     '[class*="day"] h3, [class*="day"] h4, [class*="day"] p',
   ]);
   const pricingText = extractTextBySelectors($, ['[class*="price"]', '[id*="price"]', '[class*="cost"]']);
+  const packageOptionLines = extractListBySelectors($, [
+    '[id*="option"] li, [id*="option"] tr, [id*="option"] [class*="price"]',
+    '[class*="option"] li, [class*="option"] tr, [class*="option"] [class*="price"]',
+    '[class*="variant"] li, [class*="variant"] tr, [class*="variant"] [class*="price"]',
+  ]);
+  const difficultyText = extractTextBySelectors($, [
+    '[class*="difficulty"]',
+    '[id*="difficulty"]',
+    '[class*="grade"]',
+    '[id*="grade"]',
+  ]);
 
   return {
     title,
@@ -1091,9 +1217,15 @@ const extractThrillophiliaData = ($, finalUrl) => {
     highlights,
     inclusions,
     exclusions,
+    knowBeforeYouGo,
+    thingsToCarry,
+    policies,
     itinerary: parseItineraryFromLines(itineraryLines),
+    packageOptions: parsePackageOptionsFromLines(packageOptionLines, title),
     price: parsePrice(pricingText),
     duration: normalizeDuration(extractLabeledValue(itineraryLines, ['duration']) || extractTextBySelectors($, ['[class*="duration"]', '[id*="duration"]'])),
+    difficulty: difficultyText,
+    difficultyLevel: parseDifficultyLevel(difficultyText),
     destination: pickDestination([
       extractTextBySelectors($, ['[class*="destination"]', '[id*="destination"]', '[class*="location"]']),
       destinationFromTitle(title),
@@ -1106,6 +1238,174 @@ const extractRegexData = (lines, title) => ({
   duration: normalizeDuration(lines.find((line) => normalizeDuration(line)) || ''),
   destination: destinationFromTitle(title),
 });
+
+const parseDifficultyLevel = (value) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const rounded = Math.round(value);
+    return rounded >= 1 && rounded <= 10 ? rounded : null;
+  }
+
+  const text = cleanText(value);
+  if (!text) return null;
+
+  const numericMatch = text.match(/\b(10|[1-9])\b/);
+  if (numericMatch) return Number(numericMatch[1]);
+  if (/\b(easy|beginner|low|simple|light)\b/i.test(text)) return 2;
+  if (/\b(moderate|medium|average)\b/i.test(text)) return 5;
+  if (/\b(difficult|challenging|hard)\b/i.test(text)) return 7;
+  if (/\b(strenuous|extreme|expert)\b/i.test(text)) return 9;
+  return null;
+};
+
+const parseNightCount = (value) => {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return Math.round(value);
+  const text = cleanText(value);
+  const match = text.match(/\b(\d{1,2})\s*nights?\b/i);
+  return match ? Number(match[1]) : null;
+};
+
+const cleanHotelName = (value) => cleanText(value)
+  .replace(/\bor\s+similar\b/ig, '')
+  .replace(/(?:\/|,)?\s*similar\b/ig, '')
+  .replace(/\b\d+\s*star\b/ig, '')
+  .replace(/\b(?:standard|deluxe|super\s+deluxe|luxury)\s+rooms?\b/ig, '')
+  .replace(/\b(?:breakfast|lunch|dinner|meal\s+plan|check-?in|check-?out).*$/ig, '')
+  .trim();
+
+const parseHotelLine = (value) => {
+  const text = cleanText(value);
+  if (!text) return null;
+
+  let match = text.match(/^([^:()\-–—,]{2,80})\s*[-–—]\s*(.+?)\s*\((\d{1,2})\s*nights?\)/i);
+  if (match) {
+    const city = cleanText(match[1]);
+    const hotel = cleanHotelName(match[2]);
+    const nights = Number(match[3]);
+    return city && hotel ? { city, hotel, nights } : null;
+  }
+
+  match = text.match(/\b(\d{1,2})\s*nights?\s+(?:at|in)\s+(.+?)(?:,\s*|\s+in\s+)([^,()]{2,80})$/i);
+  if (match) {
+    const nights = Number(match[1]);
+    const hotel = cleanHotelName(match[2]);
+    const city = cleanText(match[3]);
+    return city && hotel ? { city, hotel, nights } : null;
+  }
+
+  match = text.match(/^([^:]{2,80})\s*:\s*(.+)$/);
+  if (match && /\b(hotels?|camps?|resorts?|homestays?|hostels?|guest\s*houses?|residenc(?:e|y|ies)|heritage|villas?|lodges?|inns?|palaces?)\b/i.test(match[2])) {
+    const city = cleanText(match[1]);
+    const hotel = cleanHotelName(match[2]);
+    return city && hotel ? { city, hotel, nights: parseNightCount(text) } : null;
+  }
+
+  return null;
+};
+
+const normalizeHotelObjects = (groups) => {
+  const seen = new Set();
+  const hotels = [];
+
+  for (const entry of groups.flat(Infinity)) {
+    let normalized = null;
+
+    if (typeof entry === 'string') {
+      normalized = parseHotelLine(entry);
+    } else if (entry && typeof entry === 'object') {
+      const city = cleanText(firstNonEmpty(
+        entry.city,
+        entry.location,
+        entry.destination,
+        entry.place,
+        entry.address && entry.address.addressLocality,
+        getNodeText(entry.address)
+      ));
+      const hotel = cleanHotelName(firstNonEmpty(
+        entry.hotel,
+        entry.name,
+        entry.title,
+        entry.property_name,
+        entry.accommodation,
+        entry.stay
+      ));
+      const nights = parseNightCount(firstNonEmpty(entry.nights, entry.duration, entry.stayDuration, entry.description));
+      if (city && hotel) normalized = { city, hotel, nights };
+    }
+
+    if (!normalized) continue;
+    const key = `${normalized.city.toLowerCase()}::${normalized.hotel.toLowerCase()}::${normalized.nights}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    hotels.push(normalized);
+  }
+
+  return hotels;
+};
+
+const parsePackageOptionLine = (value, fallbackTitle = null) => {
+  const text = cleanText(value);
+  if (!text || /(emi|cashback|coupon|tax|fee|booking amount|partial payment)/i.test(text)) return null;
+  const price = parseDirectPrice(text) || parsePrice(text);
+  const title = cleanText(text
+    .replace(/(?:\u20b9|rs\.?|inr)\s*[0-9][0-9,\s]*(?:\.\d+)?/ig, '')
+    .replace(/[0-9][0-9,\s]*(?:\.\d+)?\s*(?:\u20b9|rs\.?|inr)/ig, '')
+    .replace(/\bper\s+(adult|person|couple|group)\b/ig, '')
+    .replace(/\bstarting\s+from\b/ig, '')) || fallbackTitle;
+
+  if (!title && price == null) return null;
+  return {
+    title: title || 'Package Option',
+    description: null,
+    price,
+    originalPrice: null,
+    inclusions: [],
+  };
+};
+
+const normalizePackageOptions = (groups, fallbackTitle = null) => {
+  const seen = new Set();
+  const options = [];
+
+  for (const entry of groups.flat(Infinity)) {
+    let option = null;
+
+    if (typeof entry === 'string') {
+      option = parsePackageOptionLine(entry, fallbackTitle);
+    } else if (entry && typeof entry === 'object') {
+      const inventory = Array.isArray(entry.bookable_inventories) ? entry.bookable_inventories[0] : null;
+      const title = cleanText(firstNonEmpty(
+        entry.title,
+        entry.name,
+        entry.variant_name,
+        entry.package_name,
+        entry.label,
+        fallbackTitle
+      ));
+      if (title) {
+        option = {
+          title,
+          description: htmlToText(firstNonEmpty(entry.description, entry.short_description, entry.overview)),
+          price: parseDirectPrice(firstNonEmpty(entry.price, entry.starting_price, entry.amount, inventory && inventory.amount)),
+          originalPrice: parseDirectPrice(firstNonEmpty(entry.originalPrice, entry.strike_through_price, inventory && inventory.strike_through_amount)),
+          inclusions: unique([
+            richFieldToList(entry.inclusions),
+            richFieldToList(entry.includes),
+          ]),
+        };
+      }
+    }
+
+    if (!option || !option.title) continue;
+    const key = `${option.title.toLowerCase()}::${option.price || ''}::${option.originalPrice || ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    options.push(option);
+  }
+
+  return options;
+};
+
+const parsePackageOptionsFromLines = (lines, fallbackTitle = null) => normalizePackageOptions(lines, fallbackTitle);
 
 const skipJavaScriptTrivia = (source, startIndex) => {
   let cursor = startIndex;
@@ -1307,8 +1607,9 @@ const richFieldToList = (value) => {
   return toList(text);
 };
 
-const parseLongDescription = (description) => {
+const parseLongDescription = (description, baseUrl = '') => {
   const $description = cheerio.load(`<main>${description || ''}</main>`, { decodeEntities: true });
+  if (baseUrl) $description.root().attr('data-base-url', baseUrl);
   removeNonContentElements($description);
   const visible = collectVisibleData($description);
   return {
@@ -1332,7 +1633,7 @@ const collectImageUrlsDeep = (value, baseUrl, depth = 0) => {
   return urls;
 };
 
-const normalizeTourItinerary = (value) => {
+const normalizeTourItinerary = (value, baseUrl = '') => {
   const entries = Array.isArray(value)
     ? value
     : (value && typeof value === 'object' && Array.isArray(value.itinerary_days) ? value.itinerary_days : []);
@@ -1345,6 +1646,13 @@ const normalizeTourItinerary = (value) => {
     const rawDay = entry.day || entry.day_number || entry.dayNumber || entry.day_count || entry.sequence || entry.position || index + 1;
     const dayNumber = typeof rawDay === 'number' ? rawDay : Number(String(rawDay).replace(/\D/g, ''));
     const title = firstNonEmpty(entry.title, entry.name, entry.day_title, entry.heading, entry.location);
+    const location = firstNonEmpty(
+      getNodeText(entry.location),
+      getNodeText(entry.city),
+      getNodeText(entry.destination),
+      getNodeText(entry.place),
+      getNodeText(entry.stop)
+    );
     const eventDescriptions = Array.isArray(entry.events)
       ? entry.events.map((event) => cleanText([
         event.title,
@@ -1367,6 +1675,8 @@ const normalizeTourItinerary = (value) => {
       day: Number.isFinite(dayNumber) ? dayNumber : index + 1,
       title,
       description,
+      location,
+      images: uniqueUrls(collectImageUrlsDeep(entry, baseUrl)).slice(0, 6),
     };
   }).filter(Boolean));
 };
@@ -1428,7 +1738,7 @@ const extractTourPreviewFromPreloadedStore = (html, finalUrl, meta) => {
 
   const primaryVariant = getPrimaryVariant(tour);
   const longDescription = firstNonEmpty(tour.long_description, tour.description);
-  const longDescriptionData = parseLongDescription(longDescription);
+  const longDescriptionData = parseLongDescription(longDescription, finalUrl);
   const galleryImages = uniqueUrls([
     collectImageUrlsDeep(tour, finalUrl),
     normalizeImageValue([
@@ -1446,7 +1756,7 @@ const extractTourPreviewFromPreloadedStore = (html, finalUrl, meta) => {
     ], finalUrl),
   ]).slice(0, 12);
   const overview = htmlToText(firstNonEmpty(tour.overview, longDescription));
-  const duration = normalizeDuration(firstNonEmpty(
+  const extractedDuration = normalizeDuration(firstNonEmpty(
     variantDuration(primaryVariant),
     tour.duration,
     overview,
@@ -1470,12 +1780,54 @@ const extractTourPreviewFromPreloadedStore = (html, finalUrl, meta) => {
     richFieldToList(tour.highlights),
     sectionList(longDescriptionData.visible.sections, 'highlights'),
   ]);
+  const difficulty = firstNonEmpty(tour.trip_difficulty, tour.difficulty, sectionList(longDescriptionData.visible.sections, 'difficulty'));
+  const packageOptions = normalizePackageOptions([
+    tour.package_options,
+    tour.packageOptions,
+    tour.options,
+    tour.variants,
+    sectionList(longDescriptionData.visible.sections, 'packageOptions'),
+  ], tour.name);
+  const knowBeforeYouGo = unique([
+    richFieldToList(tour.know_before_you_go),
+    richFieldToList(tour.knowBeforeYouGo),
+    richFieldToList(tour.things_to_know),
+    richFieldToList(tour.important_notes),
+    richFieldToList(tour.quick_info),
+    sectionList(longDescriptionData.visible.sections, 'knowBeforeYouGo'),
+  ]);
+  const thingsToCarry = unique([
+    richFieldToList(tour.things_to_carry),
+    richFieldToList(tour.thingsToCarry),
+    richFieldToList(tour.packing_list),
+    richFieldToList(tour.packingList),
+    sectionList(longDescriptionData.visible.sections, 'thingsToCarry'),
+  ]);
+  const policies = unique([
+    richFieldToList(tour.policies),
+    richFieldToList(tour.policy),
+    richFieldToList(tour.cancellation_policy),
+    richFieldToList(tour.refund_policy),
+    richFieldToList(tour.confirmation_policy),
+    richFieldToList(tour.terms_and_conditions),
+    sectionList(longDescriptionData.visible.sections, 'policies'),
+  ]);
+  const hotels = normalizeHotelObjects([
+    tour.hotels,
+    tour.hotel_details,
+    tour.accommodations,
+    tour.stays,
+    sectionList(longDescriptionData.visible.sections, 'hotels'),
+    packageOptions.flatMap((option) => option.inclusions || []),
+  ]);
+  const itinerary = normalizeTourItinerary(tour.itinerary, finalUrl);
+  const duration = reconcileLongItineraryDuration(extractedDuration, itinerary);
 
   logger.info('PRELOADED_STORE tour preview extracted', {
     title: tour?.name,
     galleryImages: galleryImages.length,
     highlights: highlights.length,
-    itinerary: normalizeTourItinerary(tour.itinerary).length
+    itinerary: itinerary.length
   });
 
   return {
@@ -1490,10 +1842,16 @@ const extractTourPreviewFromPreloadedStore = (html, finalUrl, meta) => {
       highlights,
       inclusions,
       exclusions,
-      itinerary: normalizeTourItinerary(tour.itinerary),
+      hotels,
+      packageOptions,
+      knowBeforeYouGo,
+      thingsToCarry,
+      policies,
+      itinerary,
       gallery: galleryImages,
       bestTime: firstNonEmpty(tour.best_time, tour.bestTime, tour.best_time_to_visit, tour.season),
-      difficulty: firstNonEmpty(tour.trip_difficulty, tour.difficulty),
+      difficulty,
+      difficultyLevel: parseDifficultyLevel(difficulty),
       faqs: normalizeTourFaqs(tour.faqs),
       metaTitle: meta.title,
       metaDescription: meta.description,
@@ -1546,7 +1904,7 @@ const extractPackagePreview = (html, finalUrl) => {
     genericDestination,
     regex.destination,
   ]);
-  const duration = normalizeDuration(firstNonEmpty(
+  const extractedDuration = normalizeDuration(firstNonEmpty(
     jsonLd.duration,
     custom.duration,
     extractLabeledValue(visible.lines, ['duration', 'tour duration', 'trip duration']),
@@ -1577,6 +1935,7 @@ const extractPackagePreview = (html, finalUrl) => {
     visible.dayEntries,
     parseItineraryFromLines(visible.sections.itinerary),
   ]);
+  const duration = reconcileLongItineraryDuration(extractedDuration, itinerary);
   const inclusions = unique([
     jsonLd.inclusions,
     custom.inclusions,
@@ -1593,6 +1952,43 @@ const extractPackagePreview = (html, finalUrl) => {
     parseFaqsFromLines(visible.sections.faqs),
   ]);
   const allImages = uniqueUrls([jsonLd.images, htmlImages]).slice(0, 12);
+  const difficulty = firstNonEmpty(
+    custom.difficulty,
+    extractLabeledValue(visible.lines, ['difficulty', 'grade', 'level']),
+    visible.sections.difficulty
+  );
+  const directHotels = normalizeHotelObjects([
+    jsonLd.hotels,
+    custom.hotels,
+    sectionList(visible.sections, 'hotels'),
+  ]);
+  const packageOptions = normalizePackageOptions([
+    custom.packageOptions,
+    jsonLd.packageOptions,
+    parsePackageOptionsFromLines([
+      sectionList(visible.sections, 'packageOptions'),
+      sectionList(visible.sections, 'pricing'),
+    ], title),
+  ], title);
+  const hotels = normalizeHotelObjects([
+    directHotels,
+    packageOptions.flatMap((option) => option.inclusions || []),
+  ]);
+  const knowBeforeYouGo = unique([
+    jsonLd.knowBeforeYouGo,
+    custom.knowBeforeYouGo,
+    sectionList(visible.sections, 'knowBeforeYouGo'),
+  ]);
+  const thingsToCarry = unique([
+    jsonLd.thingsToCarry,
+    custom.thingsToCarry,
+    sectionList(visible.sections, 'thingsToCarry'),
+  ]);
+  const policies = unique([
+    jsonLd.policies,
+    custom.policies,
+    sectionList(visible.sections, 'policies'),
+  ]);
 
   return {
     preview: normalizePreview({
@@ -1605,8 +2001,14 @@ const extractPackagePreview = (html, finalUrl) => {
       itinerary,
       inclusions,
       exclusions,
+      hotels,
+      packageOptions,
+      knowBeforeYouGo,
+      thingsToCarry,
+      policies,
       bestTime: firstNonEmpty(extractLabeledValue(visible.lines, ['best time', 'best season', 'season']), visible.sections.bestTime),
-      difficulty: firstNonEmpty(extractLabeledValue(visible.lines, ['difficulty', 'grade', 'level']), visible.sections.difficulty),
+      difficulty,
+      difficultyLevel: parseDifficultyLevel(difficulty || custom.difficultyLevel),
       faqs,
       metaTitle: meta.title || title,
       metaDescription: meta.description || overview,
@@ -1653,13 +2055,19 @@ const uniqueItinerary = (groups) => {
         day: day ? day.day : null,
         title: day ? day.title : null,
         description: day ? null : cleanText(entry),
+        location: null,
+        images: [],
       };
     } else if (typeof entry === 'object') {
       const day = typeof entry.day === 'number' && Number.isFinite(entry.day) ? entry.day : null;
+      const location = cleanText(entry.location) || cleanText(entry.city) || cleanText(entry.destination) || null;
+      const images = uniqueUrls(entry.images || entry.gallery || entry.photos || []);
       normalized = {
         day,
         title: cleanText(entry.title) || (day ? `Day ${day}` : null),
         description: cleanText(entry.description) || cleanText(entry.text) || cleanText(entry.details) || null,
+        location,
+        images,
       };
     }
 
@@ -1704,6 +2112,12 @@ const normalizePreview = (value) => {
       normalized.destination = pickDestination([source.destination]);
     } else if (field === 'itinerary') {
       normalized.itinerary = normalizeItinerary(source.itinerary);
+    } else if (field === 'hotels') {
+      normalized.hotels = normalizeHotelObjects(source.hotels);
+    } else if (field === 'packageOptions') {
+      normalized.packageOptions = normalizePackageOptions(source.packageOptions, source.title);
+    } else if (field === 'difficultyLevel') {
+      normalized.difficultyLevel = parseDifficultyLevel(source.difficultyLevel || source.difficulty);
     } else if (field === 'faqs') {
       normalized.faqs = normalizeFaqs(source.faqs);
     } else if (ARRAY_PREVIEW_FIELDS.has(field)) {

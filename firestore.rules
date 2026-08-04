@@ -52,6 +52,14 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    match /imports/{importId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /activityLogs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
     match /enquiries/{enquiryId} {
       allow create: if true;
       allow read, update, delete: if isAdmin();
@@ -116,6 +124,11 @@ service cloud.firestore {
     }
 
     match /blogs/{blogId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /hotels/{hotelId} {
       allow read: if true;
       allow write: if isAdmin();
     }

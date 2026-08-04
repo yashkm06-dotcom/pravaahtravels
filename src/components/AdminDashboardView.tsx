@@ -1,12 +1,29 @@
-import React, { useState, useMemo, useEffect, useCallback, lazy, Suspense } from 'react';
-import { 
-  Compass, LayoutDashboard, FileText, Package, Image as ImageIcon, 
-  Plus, Edit2, Trash2, X, Search, Download, 
+import React, { useState, useMemo, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import {
+  Compass, LayoutDashboard, FileText, Package, Image as ImageIcon,
+  Plus, Edit2, Trash2, X, Search, Download,
   Calendar, DollarSign, Users, LogOut, Globe, Eye, ChevronDown, ChevronUp,
   Upload, CheckCircle, Clock, Phone, Mail, MessageSquare, Clipboard, ExternalLink, Star, LineChart as LineChartIcon, RefreshCw, MapPin, Briefcase,
-  Menu, Bell, Settings, Palette, Home, Megaphone, Images, PanelLeftClose, PanelLeftOpen, Heart, Sparkles, ChevronRight
+  Menu, Bell, Settings, Palette, Home, Megaphone, Images, PanelLeftClose, PanelLeftOpen, Heart, Sparkles, ChevronRight, Database,
+  Building2, PlaneTakeoff, MessageCircle
 } from 'lucide-react';
-import { TravelPackage, Enquiry, GalleryImage, ActivityItem, DestinationCategory, EnquiryStatus, EnquiryPriority, EnquiryPaymentStatus, Review, formatPrice, WebsiteCMSSettings, PACKAGE_LOCATIONS, type BookingDocumentStatus, type CustomerProfile, type TripChecklistKey, type TripCustomerStatus, type TripDocument, type TripOperationDocument, type TripOperationDocumentType, type TripOperations } from '../types';
+import { MasterDataSelectField, MasterDataTagPicker } from './admin/MasterDataFormControls';
+import {
+  MASTER_DATA_MODULES,
+  MasterDataFieldKey,
+  MasterDataItem,
+  MasterDataKey,
+  buildDynamicOptionNames,
+  cleanMasterDataName,
+  createMasterDataItem,
+  findDuplicateMasterDataItem,
+  getActiveItems,
+  getMasterDataModule,
+  migrateMasterDataList,
+  sortFeaturedFirst,
+  sortForDisplay,
+} from '../utils/masterData';
+import { TravelPackage, Enquiry, GalleryImage, ActivityItem, DestinationCategory, EnquiryStatus, EnquiryPriority, EnquiryPaymentStatus, EnquirySource, Review, Hotel, PackageDeparture, formatPrice, WebsiteCMSSettings, DEFAULT_WEBSITE_CMS, PACKAGE_LOCATIONS, DEFAULT_DESTINATION_CATEGORIES, type BookingDocumentStatus, type CustomerProfile, type TripChecklistKey, type TripCustomerStatus, type TripDocument, type TripOperationDocument, type TripOperationDocumentType, type TripOperations } from '../types';
 import { auth, db, storage, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, setDoc, writeBatch, getDoc } from '../lib/firebase';
 import { collectionGroup } from 'firebase/firestore';
 import { triggerSystemEmail } from '../lib/emailClient';
@@ -14,16 +31,20 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as XLSX from 'xlsx';
 import { fetchAnalyticsEvents } from '../lib/analytics';
 import { handleTravelImageError } from '../utils/imageFallback';
+import TravelMedia from './TravelMedia';
 import {
   archivePackage,
   duplicatePackage,
   formPackageToCmsInput,
+  permanentlyDeletePackage,
   publishPackage,
+  restorePackage,
   saveDraftPackage,
   softDeletePackage,
   travelPackageToCmsInput,
   updatePackage,
 } from '../services/packageCmsService';
+import { mapCmsToLegacyPackageFields, normalizePackageCmsInput, slugifyPackageTitle } from '../utils/packageCmsUtils';
 
 const OverviewTab = lazy(() => import('./admin/AdminDashboardSections').then((module) => ({ default: module.OverviewTab })));
 const WebsiteTab = lazy(() => import('./admin/AdminDashboardSections').then((module) => ({ default: module.WebsiteTab })));
@@ -38,12 +59,17 @@ const BlogsTab = lazy(() => import('./admin/AdminDashboardSections').then((modul
 const AnalyticsTab = lazy(() => import('./admin/AdminDashboardSections').then((module) => ({ default: module.AnalyticsTab })));
 const SettingsTab = lazy(() => import('./admin/AdminDashboardSections').then((module) => ({ default: module.SettingsTab })));
 const AiPackageImporter = lazy(() => import('./admin/AiPackageImporter'));
+const MasterDataTab = lazy(() => import('./admin/MasterDataTab'));
+const HotelsTab = lazy(() => import('./admin/HotelsTab'));
+const DeparturesTab = lazy(() => import('./admin/DeparturesTab'));
+const PackageDetailView = lazy(() => import('./PackageDetailView'));
 
 interface AdminDashboardViewProps {
   packages: TravelPackage[];
   enquiries: Enquiry[];
   gallery: GalleryImage[];
   activities: ActivityItem[];
+  hotels: Hotel[];
   adminEmail: string;
   onLogout: () => void;
   onNavigatePublic: () => void;
@@ -51,14 +77,36 @@ interface AdminDashboardViewProps {
   websiteCMS: WebsiteCMSSettings;
 }
 
-type AdminTab = 'overview' | 'packages' | 'enquiries' | 'customers' | 'gallery' | 'media-library' | 'website' | 'activities' | 'bookings' | 'reviews' | 'blogs' | 'analytics' | 'settings' | 'ai-importer';
+type AdminTab = 'overview' | 'packages' | 'enquiries' | 'customers' | 'gallery' | 'media-library' | 'website' | 'activities' | 'bookings' | 'reviews' | 'blogs' | 'analytics' | 'settings' | 'ai-importer' | 'master-data' | 'hotels' | 'departures';
 
-const CRM_ENQUIRY_STATUS_OPTIONS: EnquiryStatus[] = ['New', 'Contacted', 'Quote Sent', 'Booking Confirmed', 'Cancelled', 'Completed'];
+const CRM_ENQUIRY_STATUS_OPTIONS: EnquiryStatus[] = ['New', 'Contacted', 'Follow-up', 'Quote Sent', 'Booking Confirmed', 'Cancelled', 'Lost', 'Completed'];
 const CRM_PRIORITY_OPTIONS: EnquiryPriority[] = ['Low', 'Medium', 'High'];
 const CRM_PAYMENT_STATUS_OPTIONS: EnquiryPaymentStatus[] = ['Pending', 'Partial', 'Paid'];
 const BOOKING_DOCUMENT_TYPES = ['Passport', 'Aadhaar', 'Visa', 'Medical Certificate', 'Travel Insurance', 'Emergency Contact'] as const;
 const TRIP_STATUS_OPTIONS: TripCustomerStatus[] = ['Upcoming', 'Ready To Travel', 'In Progress', 'Completed', 'Cancelled'];
 const TRIP_OPERATION_DOCUMENT_TYPES: TripOperationDocumentType[] = ['Final Itinerary', 'Hotel Voucher', 'Transport Voucher', 'Meeting Instructions'];
+const ADD_PACKAGE_CATEGORY_VALUE = '__add_package_category__';
+const ADD_PACKAGE_BOOKING_TYPE_VALUE = '__add_package_booking_type__';
+const ADD_PACKAGE_ACTIVITY_VALUE = '__add_package_activity__';
+const DEFAULT_PACKAGE_BOOKING_TYPES = ['Standard', 'Original', 'Premium', 'Luxury'];
+const SUPPORTED_IMAGE_ACCEPT = '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp';
+const SUPPORTED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const SUPPORTED_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
+const SUPPORTED_MEDIA_ACCEPT = '.jpg,.jpeg,.png,.webp,.webm,image/jpeg,image/png,image/webp,video/webm';
+const SUPPORTED_MEDIA_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'video/webm'];
+const SUPPORTED_MEDIA_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'webm'];
+
+const isSupportedImageFile = (file: File) => {
+  const mimeType = file.type.toLowerCase();
+  const extension = file.name.split('.').pop()?.toLowerCase() || '';
+  return SUPPORTED_IMAGE_MIME_TYPES.includes(mimeType) || SUPPORTED_IMAGE_EXTENSIONS.includes(extension);
+};
+
+const isSupportedMediaFile = (file: File) => {
+  const mimeType = file.type.toLowerCase();
+  const extension = file.name.split('.').pop()?.toLowerCase() || '';
+  return SUPPORTED_MEDIA_MIME_TYPES.includes(mimeType) || SUPPORTED_MEDIA_EXTENSIONS.includes(extension);
+};
 
 type BookingConversionFormData = {
   packageId: string;
@@ -87,6 +135,42 @@ const toSafeCsvCell = (value: unknown) => {
   const protectedValue = /^[=+\-@]/.test(rawValue.trim()) ? `'${rawValue}` : rawValue;
   return `"${protectedValue.replace(/"/g, '""')}"`;
 };
+
+type PackageImageUploadTarget = 'package' | 'gallery' | 'packageBanner' | 'packageGallery';
+
+const parseImageLines = (value: string) => value
+  .split('\n')
+  .map((item) => item.trim())
+  .filter(Boolean);
+
+const mergeImageLines = (currentValue: string, imageUrls: string[]) => Array.from(new Set([
+  ...parseImageLines(currentValue),
+  ...imageUrls.map((item) => item.trim()).filter(Boolean),
+])).join('\n');
+
+const removeImageLine = (currentValue: string, imageUrl: string) => parseImageLines(currentValue)
+  .filter((item) => item !== imageUrl)
+  .join('\n');
+
+const dedupeTextOptions = (values: string[]) => {
+  const seen = new Set<string>();
+  return values
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .filter((value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
+const readMediaFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = (event) => resolve(String(event.target?.result || ''));
+  reader.onerror = () => reject(new Error('Unable to read media file.'));
+  reader.readAsDataURL(file);
+});
 
 const getAdminActorId = () => auth.currentUser?.uid || auth.currentUser?.email || 'admin';
 
@@ -130,18 +214,29 @@ const getOperationalTripStatus = (booking: any): TripCustomerStatus => {
   return ready ? 'Ready To Travel' : 'Upcoming';
 };
 
+const sanitizeWhatsAppPhone = (value?: string) => {
+  const digits = String(value ?? '').replace(/[^\d]/g, '');
+  if (!digits) return '';
+  const trimmed = digits.replace(/^0+/, '');
+  return trimmed.length === 12 && trimmed.startsWith('91') ? trimmed : `91${trimmed}`;
+};
+
 const getEnquiryStatusBadgeClass = (status?: EnquiryStatus) => {
   switch (normalizeEnquiryStatus(status)) {
     case 'New':
       return 'border-blue-200 bg-blue-50 text-blue-700';
     case 'Contacted':
       return 'border-sky-200 bg-sky-50 text-sky-700';
+    case 'Follow-up':
+      return 'border-amber-200 bg-amber-50 text-amber-700';
     case 'Quote Sent':
       return 'border-violet-200 bg-violet-50 text-violet-700';
     case 'Booking Confirmed':
       return 'border-emerald-200 bg-emerald-50 text-emerald-700';
     case 'Cancelled':
       return 'border-rose-200 bg-rose-50 text-rose-700';
+    case 'Lost':
+      return 'border-stone-300 bg-stone-100 text-stone-600';
     case 'Completed':
       return 'border-teal-200 bg-teal-50 text-teal-700';
     default:
@@ -160,11 +255,51 @@ const getEnquiryPriorityBadgeClass = (priority?: EnquiryPriority) => {
   }
 };
 
-const getInitialAdminTab = (): AdminTab => {
-  if (typeof window !== 'undefined' && (window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/'))) {
-    return 'activities';
+const ADMIN_TAB_PATHS: Record<AdminTab, string> = {
+  overview: '/admin-dashboard',
+  website: '/admin-dashboard/website',
+  'media-library': '/admin-dashboard/media-library',
+  'ai-importer': '/admin-dashboard/import-package',
+  analytics: '/admin-dashboard/analytics',
+  settings: '/admin-dashboard/settings',
+  activities: '/admin-dashboard/activities',
+  packages: '/admin-dashboard/packages',
+  bookings: '/admin-dashboard/bookings',
+  customers: '/admin-dashboard/customers',
+  enquiries: '/admin-dashboard/enquiries',
+  reviews: '/admin-dashboard/reviews',
+  gallery: '/admin-dashboard/gallery',
+  blogs: '/admin-dashboard/blogs',
+  'master-data': '/admin-dashboard/master-data',
+  hotels: '/admin-dashboard/hotels',
+  departures: '/admin-dashboard/departures',
+};
+
+const getAdminTabFromPath = (path: string): AdminTab => {
+  if (path === '/admin/packages' || path.startsWith('/admin/packages/')) return 'packages';
+  if (path === '/admin' || path.startsWith('/admin/')) return 'activities';
+  if (path === '/admin-dashboard/ai-importer') return 'ai-importer';
+
+  const matchedTab = Object.entries(ADMIN_TAB_PATHS).find(([, tabPath]) => tabPath === path)?.[0] as AdminTab | undefined;
+  return matchedTab || 'overview';
+};
+
+const getAdminPackageIdFromPath = (path: string) => {
+  const match = path.match(/^\/admin\/packages\/([^/]+)\/?$/);
+  if (!match) return null;
+
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
   }
-  return 'overview';
+};
+
+const getAdminPathForTab = (tab: AdminTab) => ADMIN_TAB_PATHS[tab] || ADMIN_TAB_PATHS.overview;
+
+const getInitialAdminTab = (): AdminTab => {
+  if (typeof window === 'undefined') return 'overview';
+  return getAdminTabFromPath(window.location.pathname);
 };
 
 function AdminDashboardView({
@@ -172,6 +307,7 @@ function AdminDashboardView({
   enquiries,
   gallery,
   activities,
+  hotels,
   adminEmail,
   onLogout,
   onNavigatePublic,
@@ -180,27 +316,36 @@ function AdminDashboardView({
 }: AdminDashboardViewProps) {
   // Navigation inside Dashboard
   const [activeTab, setActiveTab] = useState<AdminTab>(() => getInitialAdminTab());
+  const openedPackageRouteRef = useRef<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [adminSearch, setAdminSearch] = useState('');
   const [mediaLibrarySearch, setMediaLibrarySearch] = useState('');
   const [mediaLibraryCategory, setMediaLibraryCategory] = useState('All');
-  const [cmsFormData, setCmsFormData] = useState<WebsiteCMSSettings>(websiteCMS);
+  const [cmsFormData, setCmsFormData] = useState<WebsiteCMSSettings>({ ...DEFAULT_WEBSITE_CMS, ...websiteCMS });
   const [cmsSaving, setCmsSaving] = useState(false);
   const [cmsUploadingField, setCmsUploadingField] = useState<'heroBackgroundImageUrl' | 'logoUrl' | null>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
 
   const handleAdminTabChange = useCallback((tab: AdminTab) => {
     setActiveTab(tab);
-    if (tab !== 'activities' && (window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/'))) {
-      window.history.pushState(null, '', '/admin-dashboard');
+    const nextPath = getAdminPathForTab(tab);
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState(null, '', nextPath);
+    }
+  }, []);
+
+  const handleNavigateToImportedPackage = useCallback((packageId: string) => {
+    const nextPath = `/admin/packages/${encodeURIComponent(packageId)}`;
+    openedPackageRouteRef.current = null;
+    setActiveTab('packages');
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState(null, '', nextPath);
     }
   }, []);
 
   useEffect(() => {
     const handleAdminPopState = () => {
-      if (window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/')) {
-        setActiveTab('activities');
-      }
+      setActiveTab(getAdminTabFromPath(window.location.pathname));
     };
 
     window.addEventListener('popstate', handleAdminPopState);
@@ -230,19 +375,31 @@ function AdminDashboardView({
   const [bookingDocuments, setBookingDocuments] = useState<TripDocument[]>([]);
   const [wishlistLoading, setWishlistLoading] = useState(false);
   const [settingsFormData, setSettingsFormData] = useState({
-    agencyName: 'Pravaah Travels',
-    phoneNumber: '+91 91231 36692',
-    whatsappNumber: '+91 91231 36692',
-    email: 'pravaahtravels@gmail.com',
-    officeAddress: '402, Signature Towers, Sector 30, Gurugram, HR - 122001, India',
-    instagram: 'https://instagram.com',
-    facebook: 'https://facebook.com',
-    youtube: 'https://youtube.com',
-    websiteFooter: 'Premium Himalayan journeys, sacred valleys, and tailor-made comfort handled by local curators.',
-    heroBannerText: 'Journey beyond the ordinary with curated Himalayan escapes.',
-    supportEmail: 'support@pravaahtravels.com',
+    agencyName: DEFAULT_WEBSITE_CMS.companyName,
+    phoneNumber: DEFAULT_WEBSITE_CMS.primaryPhone,
+    whatsappNumber: DEFAULT_WEBSITE_CMS.whatsappNumber,
+    email: DEFAULT_WEBSITE_CMS.primaryEmail,
+    officeAddress: DEFAULT_WEBSITE_CMS.officeAddress,
+    instagram: DEFAULT_WEBSITE_CMS.socialInstagram,
+    facebook: DEFAULT_WEBSITE_CMS.socialFacebook,
+    youtube: '',
+    websiteFooter: DEFAULT_WEBSITE_CMS.footerText || DEFAULT_WEBSITE_CMS.footerContactInfo,
+    heroBannerText: DEFAULT_WEBSITE_CMS.heroSubtitle,
+    supportEmail: DEFAULT_WEBSITE_CMS.supportEmail || DEFAULT_WEBSITE_CMS.primaryEmail,
+    packageCategories: [] as string[],
+    packageBookingTypes: [] as string[],
+    masterCountries: [] as MasterDataItem[],
+    masterDestinations: [] as MasterDataItem[],
+    masterCities: [] as MasterDataItem[],
+    masterActivityTypes: [] as MasterDataItem[],
+    masterPackageTags: [] as MasterDataItem[],
+    masterDifficultyLevels: [] as MasterDataItem[],
+    masterMealPlans: [] as MasterDataItem[],
+    masterTransportTypes: [] as MasterDataItem[],
+    masterHomepageCategories: [] as MasterDataItem[],
     updatedAt: '',
   });
+  const [masterDataSaving, setMasterDataSaving] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [systemHealth, setSystemHealth] = useState({
@@ -545,7 +702,7 @@ function AdminDashboardView({
   }, []);
 
   useEffect(() => {
-    setCmsFormData(websiteCMS);
+    setCmsFormData({ ...DEFAULT_WEBSITE_CMS, ...websiteCMS });
   }, [websiteCMS]);
 
   const fetchWishlistAnalytics = async () => {
@@ -589,18 +746,34 @@ function AdminDashboardView({
       const snapshot = await getDoc(doc(db, 'settings', 'general'));
       if (snapshot.exists()) {
         const data = snapshot.data();
+        const nowIsoForMigration = new Date().toISOString();
         setSettingsFormData({
-          agencyName: String(data.agencyName || 'Pravaah Travels'),
-          phoneNumber: String(data.phoneNumber || '+91 91231 36692'),
-          whatsappNumber: String(data.whatsappNumber || '+91 91231 36692'),
-          email: String(data.email || 'pravaahtravels@gmail.com'),
-          officeAddress: String(data.officeAddress || '402, Signature Towers, Sector 30, Gurugram, HR - 122001, India'),
+          agencyName: String(data.agencyName || DEFAULT_WEBSITE_CMS.companyName),
+          phoneNumber: String(data.phoneNumber || DEFAULT_WEBSITE_CMS.primaryPhone),
+          whatsappNumber: String(data.whatsappNumber || DEFAULT_WEBSITE_CMS.whatsappNumber),
+          email: String(data.email || DEFAULT_WEBSITE_CMS.primaryEmail),
+          officeAddress: String(data.officeAddress || DEFAULT_WEBSITE_CMS.officeAddress),
           instagram: String(data.instagram || 'https://instagram.com'),
           facebook: String(data.facebook || 'https://facebook.com'),
           youtube: String(data.youtube || 'https://youtube.com'),
-          websiteFooter: String(data.websiteFooter || 'Premium Himalayan journeys, sacred valleys, and tailor-made comfort handled by local curators.'),
-          heroBannerText: String(data.heroBannerText || 'Journey beyond the ordinary with curated Himalayan escapes.'),
-          supportEmail: String(data.supportEmail || 'support@pravaahtravels.com'),
+          websiteFooter: String(data.websiteFooter || DEFAULT_WEBSITE_CMS.footerText || DEFAULT_WEBSITE_CMS.footerContactInfo),
+          heroBannerText: String(data.heroBannerText || DEFAULT_WEBSITE_CMS.heroSubtitle),
+          supportEmail: String(data.supportEmail || DEFAULT_WEBSITE_CMS.supportEmail || DEFAULT_WEBSITE_CMS.primaryEmail),
+          packageCategories: Array.isArray(data.packageCategories)
+            ? data.packageCategories.map((category) => String(category).trim()).filter(Boolean)
+            : [],
+          packageBookingTypes: Array.isArray(data.packageBookingTypes)
+            ? data.packageBookingTypes.map((bookingType) => String(bookingType).trim()).filter(Boolean)
+            : [],
+          masterCountries: migrateMasterDataList(data.masterCountries, nowIsoForMigration),
+          masterDestinations: migrateMasterDataList(data.masterDestinations, nowIsoForMigration),
+          masterCities: migrateMasterDataList(data.masterCities, nowIsoForMigration),
+          masterActivityTypes: migrateMasterDataList(data.masterActivityTypes, nowIsoForMigration),
+          masterPackageTags: migrateMasterDataList(data.masterPackageTags, nowIsoForMigration),
+          masterDifficultyLevels: migrateMasterDataList(data.masterDifficultyLevels, nowIsoForMigration),
+          masterMealPlans: migrateMasterDataList(data.masterMealPlans, nowIsoForMigration),
+          masterTransportTypes: migrateMasterDataList(data.masterTransportTypes, nowIsoForMigration),
+          masterHomepageCategories: migrateMasterDataList(data.masterHomepageCategories, nowIsoForMigration),
           updatedAt: String(data.updatedAt || ''),
         });
       }
@@ -1000,11 +1173,20 @@ function AdminDashboardView({
   const [isPkgFormOpen, setIsPkgFormOpen] = useState(false);
   const [editingPkg, setEditingPkg] = useState<TravelPackage | null>(null);
   const [packageCmsTab, setPackageCmsTab] = useState<'general' | 'pricing' | 'content' | 'seo'>('general');
+  const [isPackageCategoryModalOpen, setIsPackageCategoryModalOpen] = useState(false);
+  const [isPackageCategorySaving, setIsPackageCategorySaving] = useState(false);
+  const [newPackageCategory, setNewPackageCategory] = useState('');
+  const [isPackageBookingTypeModalOpen, setIsPackageBookingTypeModalOpen] = useState(false);
+  const [isPackageBookingTypeSaving, setIsPackageBookingTypeSaving] = useState(false);
+  const [newPackageBookingType, setNewPackageBookingType] = useState('');
+  const [isPackageActivityModalOpen, setIsPackageActivityModalOpen] = useState(false);
+  const [isPackageActivitySaving, setIsPackageActivitySaving] = useState(false);
+  const [newPackageActivityTitle, setNewPackageActivityTitle] = useState('');
   const [pkgFormData, setPkgFormData] = useState({
     title: '',
     destination: '',
     location: 'Uttarakhand',
-    bookingType: 'Family Comfort',
+    bookingType: 'Original',
     maxGuests: 8,
     category: 'Pilgrimage' as DestinationCategory,
     duration: '',
@@ -1018,7 +1200,10 @@ function AdminDashboardView({
     packageBannerUrl: '',
     galleryImages: '',
     highlights: '',
+    packageOptions: '',
+    knowBeforeYouGo: '',
     thingsToCarry: '',
+    difficultyLevel: 0,
     departureDates: '',
     faqs: '',
     policies: '',
@@ -1028,14 +1213,522 @@ function AdminDashboardView({
     featured: false,
     active: true,
     status: 'Draft' as 'Publish' | 'Draft',
+    country: '',
+    city: '',
+    activityTypes: [] as string[],
+    tags: [] as string[],
+    difficultyLabel: '',
+    mealPlans: [] as string[],
+    transportType: '',
+    homepageCategory: '',
+    hotelIds: [] as string[],
   });
+  const [pkgDepartures, setPkgDepartures] = useState<PackageDeparture[]>([]);
   // Dynamic arrays inside package form
-  const [itinerary, setItinerary] = useState<{ day: number; title: string; description: string }[]>([]);
+  const [itinerary, setItinerary] = useState<TravelPackage['itinerary']>([]);
   const [inclusions, setInclusions] = useState<string[]>([]);
   const [exclusions, setExclusions] = useState<string[]>([]);
-  const [newInclusion, setNewInclusion] = useState('');
-  const [newExclusion, setNewExclusion] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
+  const packageGalleryPreviewImages = useMemo(() => parseImageLines(pkgFormData.galleryImages), [pkgFormData.galleryImages]);
+  const packageCategoryOptions = useMemo(() => {
+    const defaults = [...DEFAULT_DESTINATION_CATEGORIES];
+    const customCategories = dedupeTextOptions([
+      ...settingsFormData.packageCategories,
+      ...packages.map((pkg) => pkg.category),
+    ])
+      .filter((category) => !defaults.some((defaultCategory) => defaultCategory.toLowerCase() === category.toLowerCase()))
+      .sort((a, b) => a.localeCompare(b));
+
+    const selectedCategory = pkgFormData.category?.trim();
+    if (
+      selectedCategory &&
+      !defaults.some((category) => category.toLowerCase() === selectedCategory.toLowerCase()) &&
+      !customCategories.some((category) => category.toLowerCase() === selectedCategory.toLowerCase())
+    ) {
+      customCategories.unshift(selectedCategory);
+    }
+
+    return dedupeTextOptions([...defaults, ...customCategories]);
+  }, [packages, pkgFormData.category, settingsFormData.packageCategories]);
+  const packageBookingTypeOptions = useMemo(() => {
+    const customBookingTypes = dedupeTextOptions([
+      ...settingsFormData.packageBookingTypes,
+      ...packages.map((pkg) => pkg.bookingType || ''),
+    ])
+      .filter((bookingType) => !DEFAULT_PACKAGE_BOOKING_TYPES.some((defaultType) => defaultType.toLowerCase() === bookingType.toLowerCase()))
+      .sort((a, b) => a.localeCompare(b));
+
+    const selectedBookingType = pkgFormData.bookingType.trim();
+    if (
+      selectedBookingType &&
+      !DEFAULT_PACKAGE_BOOKING_TYPES.some((bookingType) => bookingType.toLowerCase() === selectedBookingType.toLowerCase()) &&
+      !customBookingTypes.some((bookingType) => bookingType.toLowerCase() === selectedBookingType.toLowerCase())
+    ) {
+      customBookingTypes.unshift(selectedBookingType);
+    }
+
+    return dedupeTextOptions([...DEFAULT_PACKAGE_BOOKING_TYPES, ...customBookingTypes]);
+  }, [packages, pkgFormData.bookingType, settingsFormData.packageBookingTypes]);
+
+  // Dynamic options for the Master Data driven fields: the curated settings list (Display
+  // Order first, inactive items excluded) merged with whatever legacy packages already used,
+  // so old packages never lose their current dropdown selection. Destination is scoped to
+  // the selected Country, City to the selected Destination — legacy items with no parent
+  // assigned yet stay visible regardless of the filter so old packages keep working.
+  const countryOptions = useMemo(() => buildDynamicOptionNames(
+    settingsFormData.masterCountries,
+    packages.map((pkg) => pkg.country),
+    pkgFormData.country,
+  ), [packages, pkgFormData.country, settingsFormData.masterCountries]);
+
+  const destinationOptions = useMemo(() => buildDynamicOptionNames(
+    settingsFormData.masterDestinations,
+    // Only surface a legacy destination value from a package that actually belongs to the
+    // selected country (or from every package when no country is selected yet) — otherwise
+    // every destination ever used anywhere leaks into the list regardless of country, since
+    // the curated Master Data half is parent-filtered but this legacy fallback wasn't.
+    packages
+      .filter((pkg) => !pkgFormData.country || String(pkg.country || '').trim().toLowerCase() === pkgFormData.country.trim().toLowerCase())
+      .map((pkg) => pkg.destination),
+    pkgFormData.destination,
+    pkgFormData.country,
+  ), [packages, pkgFormData.destination, pkgFormData.country, settingsFormData.masterDestinations]);
+
+  const cityOptions = useMemo(() => buildDynamicOptionNames(
+    settingsFormData.masterCities,
+    packages
+      .filter((pkg) => !pkgFormData.destination || String(pkg.destination || '').trim().toLowerCase() === pkgFormData.destination.trim().toLowerCase())
+      .map((pkg) => pkg.city),
+    pkgFormData.city,
+    pkgFormData.destination,
+  ), [packages, pkgFormData.city, pkgFormData.destination, settingsFormData.masterCities]);
+
+  // Unfiltered active Master Data name lists, reused by the Hotel form's Country/Destination/
+  // City dropdowns so hotels draw from the exact same source instead of a duplicate list.
+  const hotelFormMasterData = useMemo(() => ({
+    countries: sortForDisplay(getActiveItems(settingsFormData.masterCountries)).map((item) => item.name),
+    destinations: sortForDisplay(getActiveItems(settingsFormData.masterDestinations)).map((item) => item.name),
+    cities: sortForDisplay(getActiveItems(settingsFormData.masterCities)).map((item) => item.name),
+  }), [settingsFormData.masterCountries, settingsFormData.masterDestinations, settingsFormData.masterCities]);
+
+  const activityTypeOptions = useMemo(() => buildDynamicOptionNames(
+    settingsFormData.masterActivityTypes,
+    packages.flatMap((pkg) => pkg.activityTypes || []),
+  ), [packages, settingsFormData.masterActivityTypes]);
+
+  const difficultyLabelOptions = useMemo(() => buildDynamicOptionNames(
+    settingsFormData.masterDifficultyLevels,
+    packages.map((pkg) => pkg.difficultyLabel),
+    pkgFormData.difficultyLabel,
+  ), [packages, pkgFormData.difficultyLabel, settingsFormData.masterDifficultyLevels]);
+
+  const mealPlanOptions = useMemo(() => buildDynamicOptionNames(
+    settingsFormData.masterMealPlans,
+    packages.flatMap((pkg) => pkg.mealPlans || []),
+  ), [packages, settingsFormData.masterMealPlans]);
+
+  const transportTypeOptions = useMemo(() => buildDynamicOptionNames(
+    settingsFormData.masterTransportTypes,
+    packages.map((pkg) => pkg.transportType),
+    pkgFormData.transportType,
+  ), [packages, pkgFormData.transportType, settingsFormData.masterTransportTypes]);
+
+  const packageTagOptions = useMemo(() => buildDynamicOptionNames(
+    settingsFormData.masterPackageTags,
+    packages.flatMap((pkg) => pkg.tags || []),
+  ), [packages, settingsFormData.masterPackageTags]);
+
+  const homepageCategoryOptions = useMemo(() => buildDynamicOptionNames(
+    settingsFormData.masterHomepageCategories,
+    packages.map((pkg) => pkg.homepageCategory),
+    pkgFormData.homepageCategory,
+  ), [packages, pkgFormData.homepageCategory, settingsFormData.masterHomepageCategories]);
+
+  const handlePackageCategoryChange = (value: string) => {
+    if (value === ADD_PACKAGE_CATEGORY_VALUE) {
+      setNewPackageCategory('');
+      setIsPackageCategoryModalOpen(true);
+      return;
+    }
+
+    setPkgFormData((prev) => ({ ...prev, category: value as DestinationCategory }));
+  };
+
+  const handleAddPackageCategory = async () => {
+    const trimmedCategory = newPackageCategory.trim().replace(/\s+/g, ' ');
+    if (!trimmedCategory) {
+      alert('Please enter a category name.');
+      return;
+    }
+
+    const existingCategory = packageCategoryOptions.find((category) => category.toLowerCase() === trimmedCategory.toLowerCase());
+    const categoryToUse = existingCategory || trimmedCategory;
+
+    try {
+      setIsPackageCategorySaving(true);
+      const updatedCategories = [
+        ...settingsFormData.packageCategories.filter((category) => category.toLowerCase() !== categoryToUse.toLowerCase()),
+        categoryToUse,
+      ].sort((a, b) => a.localeCompare(b));
+
+      await setDoc(doc(db, 'settings', 'general'), {
+        packageCategories: updatedCategories,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+
+      setSettingsFormData((prev) => ({ ...prev, packageCategories: updatedCategories }));
+      setPkgFormData((prev) => ({ ...prev, category: categoryToUse as DestinationCategory }));
+      setNewPackageCategory('');
+      setIsPackageCategoryModalOpen(false);
+    } catch (error) {
+      console.error('Failed to save package category:', error);
+      alert('Unable to save this category. Please try again.');
+    } finally {
+      setIsPackageCategorySaving(false);
+    }
+  };
+
+  const handlePackageBookingTypeChange = (value: string) => {
+    if (value === ADD_PACKAGE_BOOKING_TYPE_VALUE) {
+      setNewPackageBookingType('');
+      setIsPackageBookingTypeModalOpen(true);
+      return;
+    }
+
+    setPkgFormData((prev) => ({ ...prev, bookingType: value }));
+  };
+
+  const handleAddPackageBookingType = async () => {
+    const trimmedBookingType = newPackageBookingType.trim().replace(/\s+/g, ' ');
+    if (!trimmedBookingType) {
+      alert('Please enter a booking type name.');
+      return;
+    }
+
+    const existingBookingType = packageBookingTypeOptions.find((bookingType) => bookingType.toLowerCase() === trimmedBookingType.toLowerCase());
+    const bookingTypeToUse = existingBookingType || trimmedBookingType;
+
+    try {
+      setIsPackageBookingTypeSaving(true);
+      const updatedBookingTypes = [
+        ...settingsFormData.packageBookingTypes.filter((bookingType) => bookingType.toLowerCase() !== bookingTypeToUse.toLowerCase()),
+        bookingTypeToUse,
+      ].sort((a, b) => a.localeCompare(b));
+
+      await setDoc(doc(db, 'settings', 'general'), {
+        packageBookingTypes: updatedBookingTypes,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+
+      setSettingsFormData((prev) => ({ ...prev, packageBookingTypes: updatedBookingTypes }));
+      setPkgFormData((prev) => ({ ...prev, bookingType: bookingTypeToUse }));
+      setNewPackageBookingType('');
+      setIsPackageBookingTypeModalOpen(false);
+    } catch (error) {
+      console.error('Failed to save package booking type:', error);
+      alert('Unable to save this booking type. Please try again.');
+    } finally {
+      setIsPackageBookingTypeSaving(false);
+    }
+  };
+
+  const handlePackageActivityChange = (value: string) => {
+    if (value === ADD_PACKAGE_ACTIVITY_VALUE) {
+      setNewPackageActivityTitle('');
+      setIsPackageActivityModalOpen(true);
+      return;
+    }
+
+    setPkgFormData((prev) => ({ ...prev, activityId: value }));
+  };
+
+  const handleAddPackageActivity = async () => {
+    const trimmedTitle = newPackageActivityTitle.trim().replace(/\s+/g, ' ');
+    if (!trimmedTitle) {
+      alert('Please enter an activity name.');
+      return;
+    }
+
+    const existingActivity = activities.find((activity) => activity.title.trim().toLowerCase() === trimmedTitle.toLowerCase());
+    if (existingActivity) {
+      setPkgFormData((prev) => ({ ...prev, activityId: existingActivity.id }));
+      setNewPackageActivityTitle('');
+      setIsPackageActivityModalOpen(false);
+      return;
+    }
+
+    try {
+      setIsPackageActivitySaving(true);
+      const now = new Date().toISOString();
+      const activityRef = await addDoc(collection(db, 'activities'), {
+        title: trimmedTitle,
+        subtitle: '',
+        description: '',
+        imageUrl: '',
+        category: pkgFormData.category || 'Pilgrimage',
+        location: pkgFormData.location || pkgFormData.destination || 'Uttarakhand',
+        enabled: true,
+        createdAt: now,
+        order: activities.length,
+      });
+
+      setPkgFormData((prev) => ({ ...prev, activityId: activityRef.id }));
+      setNewPackageActivityTitle('');
+      setIsPackageActivityModalOpen(false);
+      await onRefreshData();
+    } catch (error) {
+      console.error('Failed to save package activity:', error);
+      alert('Unable to save this activity. Please try again.');
+    } finally {
+      setIsPackageActivitySaving(false);
+    }
+  };
+
+  // Generic Master Data persistence: every module (Countries, Destinations, Cities,
+  // Activities, Package Tags, Difficulty, Meal Plans, Transport Types) lives as an array
+  // field on the existing settings/general document, so this reuses the existing Firestore
+  // rule. settings/general is isAdmin()-read-only, so Country/Destination Featured + order is
+  // additionally mirrored onto the already-public siteSettings/main document — the only way
+  // the public homepage can honor "Featured first" without a Firestore rules change.
+  const mirrorFeaturedDestinationOrder = useCallback(async (
+    countries: MasterDataItem[],
+    destinations: MasterDataItem[],
+  ) => {
+    try {
+      const activeCountries = sortFeaturedFirst(countries.filter((item) => item.status === 'active'));
+      const activeDestinations = sortFeaturedFirst(destinations.filter((item) => item.status === 'active'));
+      await setDoc(doc(db, 'siteSettings', 'main'), {
+        featuredCountryOrder: activeCountries.map((item) => item.name),
+        featuredDestinationOrder: activeDestinations.map((item) => item.name),
+      }, { merge: true });
+    } catch (error) {
+      console.error('Failed to mirror featured destination order:', error);
+    }
+  }, []);
+
+  // Homepage Category is single-level (no Featured concept, unlike Country/Destination), so
+  // only Display Order + Active/Inactive is mirrored — matches the module's validation
+  // requirements exactly.
+  const mirrorHomepageCategoryOrder = useCallback(async (categories: MasterDataItem[]) => {
+    try {
+      const activeCategories = sortForDisplay(categories.filter((item) => item.status === 'active'));
+      await setDoc(doc(db, 'siteSettings', 'main'), {
+        homepageCategoryOrder: activeCategories.map((item) => item.name),
+      }, { merge: true });
+    } catch (error) {
+      console.error('Failed to mirror homepage category order:', error);
+    }
+  }, []);
+
+  const handleSaveMasterDataList = useCallback(async (fieldKey: MasterDataFieldKey, updatedItems: MasterDataItem[]) => {
+    setMasterDataSaving(true);
+    try {
+      await setDoc(doc(db, 'settings', 'general'), {
+        [fieldKey]: updatedItems,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      setSettingsFormData((prev) => {
+        const next = { ...prev, [fieldKey]: updatedItems };
+        if (fieldKey === 'masterCountries' || fieldKey === 'masterDestinations') {
+          void mirrorFeaturedDestinationOrder(
+            fieldKey === 'masterCountries' ? updatedItems : prev.masterCountries,
+            fieldKey === 'masterDestinations' ? updatedItems : prev.masterDestinations,
+          );
+        }
+        if (fieldKey === 'masterHomepageCategories') {
+          void mirrorHomepageCategoryOrder(updatedItems);
+        }
+        return next;
+      });
+    } catch (error) {
+      console.error('Failed to save master data list:', error);
+      alert('Unable to save this change. Please try again.');
+      throw error;
+    } finally {
+      setMasterDataSaving(false);
+    }
+  }, [mirrorFeaturedDestinationOrder, mirrorHomepageCategoryOrder]);
+
+  // Quick-add used by the dynamic Package Form fields (Country, Destination, City, Activity,
+  // Difficulty, Meal Plan, Transport, Package Tags): persists the new value to Master Data
+  // and returns the canonical name to select, matching an existing entry case-insensitively.
+  const handleQuickAddMasterDataValue = useCallback(async (fieldKey: MasterDataFieldKey, rawName: string, parentName?: string) => {
+    const trimmed = cleanMasterDataName(rawName);
+    const currentList = settingsFormData[fieldKey] || [];
+    const existing = findDuplicateMasterDataItem(currentList, trimmed);
+    if (existing) return existing.name;
+
+    const newItem = createMasterDataItem(trimmed, currentList, new Date().toISOString(), { parentName });
+    await handleSaveMasterDataList(fieldKey, [...currentList, newItem]);
+    return newItem.name;
+  }, [settingsFormData, handleSaveMasterDataList]);
+
+  // ----------------------------------------------------
+  // PHASE 2 — HOTEL CMS
+  // ----------------------------------------------------
+  const [hotelSaving, setHotelSaving] = useState(false);
+
+  const handleSaveHotel = useCallback(async (hotel: Hotel) => {
+    setHotelSaving(true);
+    try {
+      const { id, ...payload } = hotel;
+      if (id) {
+        await updateDoc(doc(db, 'hotels', id), payload);
+      } else {
+        await addDoc(collection(db, 'hotels'), { ...payload, createdAt: new Date().toISOString() });
+      }
+      await onRefreshData();
+    } catch (error) {
+      console.error('Failed to save hotel:', error);
+      alert('Unable to save this hotel. Please try again.');
+    } finally {
+      setHotelSaving(false);
+    }
+  }, [onRefreshData]);
+
+  const handleDeleteHotel = useCallback(async (hotelId: string) => {
+    setHotelSaving(true);
+    try {
+      await deleteDoc(doc(db, 'hotels', hotelId));
+      await onRefreshData();
+    } catch (error) {
+      console.error('Failed to delete hotel:', error);
+      alert('Unable to delete this hotel. Please try again.');
+    } finally {
+      setHotelSaving(false);
+    }
+  }, [onRefreshData]);
+
+  // ----------------------------------------------------
+  // PHASE 2 — DEPARTURE MANAGEMENT (stored as pkg.departures[] via the existing legacy
+  // save path — no new collection, no rules change, matches how displayOrder/featured are
+  // already patched onto a package).
+  // ----------------------------------------------------
+  const handleUpdatePackageDepartures = useCallback(async (packageId: string, departures: PackageDeparture[]) => {
+    const targetPackage = packages.find((pkg) => pkg.id === packageId);
+    if (!targetPackage) return;
+    try {
+      await updatePackage(packageId, travelPackageToCmsInput({ ...targetPackage, departures }), getAdminActorId());
+      await onRefreshData();
+    } catch (error) {
+      console.error('Failed to update departures:', error);
+      alert('Unable to save departure changes. Please try again.');
+    }
+  }, [packages, onRefreshData]);
+
+  // Part 7 — Importer integration. AiPackageImporter, the bulk HTML importer, and the
+  // package parser are off-limits to modify, so instead of hooking into them directly this
+  // watches for package ids that weren't present in the previous `packages` snapshot (i.e.
+  // packages that were just imported, single or bulk) and offers to register any
+  // Country/Destination/City/Activity/Package Tag/Difficulty/Meal Plan/Transport/Category/
+  // Booking Type value they use that Master Data doesn't already know about.
+  const previousPackageIdsRef = useRef<Set<string> | null>(null);
+  const [importMasterDataCandidates, setImportMasterDataCandidates] = useState<Array<{
+    key: MasterDataKey | 'category' | 'bookingType';
+    label: string;
+    values: string[];
+  }>>([]);
+  const [isImportMasterDataDialogOpen, setIsImportMasterDataDialogOpen] = useState(false);
+  const [isCreatingImportMasterData, setIsCreatingImportMasterData] = useState(false);
+
+  const getPackageValuesForModuleKey = useCallback((pkg: TravelPackage, key: MasterDataKey): string[] => {
+    switch (key) {
+      case 'country': return pkg.country ? [pkg.country] : [];
+      case 'destination': return pkg.destination ? [pkg.destination] : [];
+      case 'city': return pkg.city ? [pkg.city] : [];
+      case 'activityType': return pkg.activityTypes || [];
+      case 'packageTag': return pkg.tags || [];
+      case 'difficulty': return pkg.difficultyLabel ? [pkg.difficultyLabel] : [];
+      case 'mealPlan': return pkg.mealPlans || [];
+      case 'transportType': return pkg.transportType ? [pkg.transportType] : [];
+      case 'homepageCategory': return pkg.homepageCategory ? [pkg.homepageCategory] : [];
+      default: return [];
+    }
+  }, []);
+
+  useEffect(() => {
+    const currentIds = new Set(packages.map((pkg) => pkg.id));
+    if (previousPackageIdsRef.current === null) {
+      previousPackageIdsRef.current = currentIds;
+      return;
+    }
+    const newIds = Array.from(currentIds).filter((id) => !previousPackageIdsRef.current!.has(id));
+    previousPackageIdsRef.current = currentIds;
+    if (newIds.length === 0) return;
+
+    const newPackages = packages.filter((pkg) => newIds.includes(pkg.id));
+    const candidates: Array<{ key: MasterDataKey | 'category' | 'bookingType'; label: string; values: string[] }> = [];
+
+    MASTER_DATA_MODULES.forEach((module) => {
+      const existingNames = new Set((settingsFormData[module.fieldKey] || []).map((item) => item.name.toLowerCase()));
+      const seen = new Set<string>();
+      const missing: string[] = [];
+      newPackages.forEach((pkg) => {
+        getPackageValuesForModuleKey(pkg, module.key).forEach((value) => {
+          const cleaned = cleanMasterDataName(value);
+          if (!cleaned) return;
+          const key = cleaned.toLowerCase();
+          if (existingNames.has(key) || seen.has(key)) return;
+          seen.add(key);
+          missing.push(cleaned);
+        });
+      });
+      if (missing.length) candidates.push({ key: module.key, label: module.label, values: missing });
+    });
+
+    const existingCategories = new Set([...DEFAULT_DESTINATION_CATEGORIES, ...settingsFormData.packageCategories].map((value) => value.toLowerCase()));
+    const missingCategories = Array.from(new Set(
+      newPackages.map((pkg) => cleanMasterDataName(pkg.category)).filter((value) => value && !existingCategories.has(value.toLowerCase())),
+    ));
+    if (missingCategories.length) candidates.push({ key: 'category', label: 'Category', values: missingCategories });
+
+    const existingBookingTypes = new Set([...DEFAULT_PACKAGE_BOOKING_TYPES, ...settingsFormData.packageBookingTypes].map((value) => value.toLowerCase()));
+    const missingBookingTypes = Array.from(new Set(
+      newPackages.map((pkg) => cleanMasterDataName(pkg.bookingType || '')).filter((value) => value && !existingBookingTypes.has(value.toLowerCase())),
+    ));
+    if (missingBookingTypes.length) candidates.push({ key: 'bookingType', label: 'Booking Type', values: missingBookingTypes });
+
+    if (candidates.length > 0) {
+      setImportMasterDataCandidates(candidates);
+      setIsImportMasterDataDialogOpen(true);
+    }
+  }, [packages, settingsFormData, getPackageValuesForModuleKey]);
+
+  const handleCreateImportMasterData = async () => {
+    setIsCreatingImportMasterData(true);
+    try {
+      for (const candidate of importMasterDataCandidates) {
+        if (candidate.key === 'category') {
+          const updated = Array.from(new Set([...settingsFormData.packageCategories, ...candidate.values])).sort((a, b) => a.localeCompare(b));
+          await setDoc(doc(db, 'settings', 'general'), { packageCategories: updated, updatedAt: new Date().toISOString() }, { merge: true });
+          setSettingsFormData((prev) => ({ ...prev, packageCategories: updated }));
+          continue;
+        }
+        if (candidate.key === 'bookingType') {
+          const updated = Array.from(new Set([...settingsFormData.packageBookingTypes, ...candidate.values])).sort((a, b) => a.localeCompare(b));
+          await setDoc(doc(db, 'settings', 'general'), { packageBookingTypes: updated, updatedAt: new Date().toISOString() }, { merge: true });
+          setSettingsFormData((prev) => ({ ...prev, packageBookingTypes: updated }));
+          continue;
+        }
+
+        const module = getMasterDataModule(candidate.key);
+        const currentList = settingsFormData[module.fieldKey] || [];
+        const now = new Date().toISOString();
+        const newItems: MasterDataItem[] = [];
+        candidate.values.forEach((value) => {
+          if (findDuplicateMasterDataItem([...currentList, ...newItems], value)) return;
+          newItems.push(createMasterDataItem(value, [...currentList, ...newItems], now));
+        });
+        if (newItems.length) {
+          await handleSaveMasterDataList(module.fieldKey, [...currentList, ...newItems]);
+        }
+      }
+    } finally {
+      setIsCreatingImportMasterData(false);
+      setIsImportMasterDataDialogOpen(false);
+      setImportMasterDataCandidates([]);
+    }
+  };
 
   // Enquiry detail modal state
   const [activeEnquiry, setActiveEnquiry] = useState<Enquiry | null>(null);
@@ -1056,7 +1749,7 @@ function AdminDashboardView({
 
   // Multiple Image Upload States
   const [galleryUploadMode, setGalleryUploadMode] = useState<'single' | 'multiple'>('single');
-  const [selectedGalleryFiles, setSelectedGalleryFiles] = useState<{ file: File; preview: string; compressedBase64: string; title: string }[]>([]);
+  const [selectedGalleryFiles, setSelectedGalleryFiles] = useState<{ file: File; preview: string; compressedBase64: string; title: string; isVideo: boolean }[]>([]);
   const [isUploadingMultiple, setIsUploadingMultiple] = useState(false);
   const [multipleUploadCategory, setMultipleUploadCategory] = useState('Pilgrimage');
   const [multipleUploadAlbum, setMultipleUploadAlbum] = useState('');
@@ -1277,11 +1970,16 @@ function AdminDashboardView({
   const handleReviewImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!isSupportedImageFile(file)) {
+      alert('Only JPEG, PNG and WEBP images are supported.');
+      e.target.value = '';
+      return;
+    }
     setReviewImageUploading(true);
     try {
       const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
       const imageRef = ref(storage, `reviews/${fileName}`);
-      const snapshot = await uploadBytes(imageRef, file);
+      const snapshot = await uploadBytes(imageRef, file, { contentType: file.type || 'image/jpeg' });
       const imageUrl = await getDownloadURL(snapshot.ref);
       setReviewFormData((prev) => ({ ...prev, imageUrl }));
     } catch (err) {
@@ -1492,6 +2190,11 @@ function AdminDashboardView({
   const handleBlogImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!isSupportedImageFile(file)) {
+      alert('Only JPEG, PNG and WEBP images are supported.');
+      e.target.value = '';
+      return;
+    }
 
     try {
       const compressed = await compressImage(file);
@@ -1499,7 +2202,7 @@ function AdminDashboardView({
       const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
       const storagePath = `blogs/${fileName}`;
       const imageRef = ref(storage, storagePath);
-      const snapshot = await uploadBytes(imageRef, blob);
+      const snapshot = await uploadBytes(imageRef, blob, { contentType: blob.type || file.type || 'image/jpeg' });
       const downloadUrl = await getDownloadURL(snapshot.ref);
       setBlogFormData((prev) => ({ ...prev, featuredImageUrl: downloadUrl }));
     } catch (error) {
@@ -1698,15 +2401,25 @@ function AdminDashboardView({
       const advance = getEnquiryAdvanceReceived(enquiry);
       return sum + Math.max(packagePrice - advance, 0);
     }, 0);
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const todayCount = enquiries.filter((enquiry) => String(enquiry.createdAt || '').slice(0, 10) === todayKey).length;
+    const pendingCount = enquiries.filter((enquiry) => {
+      const status = normalizeEnquiryStatus(enquiry.status);
+      return status !== 'Booking Confirmed' && status !== 'Completed' && status !== 'Cancelled' && status !== 'Lost';
+    }).length;
 
     return {
       total: enquiries.length,
+      todayCount,
       newCount: statusCounts.New || 0,
       contactedCount: statusCounts.Contacted || 0,
+      followUpCount: statusCounts['Follow-up'] || 0,
       quoteSentCount: statusCounts['Quote Sent'] || 0,
       confirmedCount: statusCounts['Booking Confirmed'] || 0,
       completedCount: statusCounts.Completed || 0,
       cancelledCount: statusCounts.Cancelled || 0,
+      lostCount: statusCounts.Lost || 0,
+      pendingCount,
       revenueExpected,
       advanceReceived,
       pendingPayments,
@@ -1719,11 +2432,12 @@ function AdminDashboardView({
     if (filteredEnquiries.length === 0) return;
     
     // Headers
-    const headers = ['Name', 'Phone', 'Email', 'Destination', 'Travel Date', 'Adults', 'Children', 'Budget', 'Status', 'Priority', 'Assigned To', 'Follow Up', 'Package Price', 'Advance Received', 'Payment Status', 'Submitted At', 'Message'];
+    const headers = ['Name', 'Phone', 'Email', 'Source', 'Destination', 'Travel Date', 'Adults', 'Children', 'Budget', 'Status', 'Priority', 'Assigned To', 'Follow Up', 'Reminder Date', 'Package Price', 'Advance Received', 'Payment Status', 'Submitted At', 'Message'];
     const rows = filteredEnquiries.map((e) => [
       e.name ?? '',
       e.phone ?? '',
       e.email ?? '',
+      e.source || 'Unknown',
       e.destination ?? '',
       e.travelDate ?? '',
       getEnquiryAdults(e),
@@ -1733,6 +2447,7 @@ function AdminDashboardView({
       e.priority || 'Medium',
       e.assignedTo || 'Unassigned',
       [e.followUpDate, e.followUpTime].filter(Boolean).join(' '),
+      e.reminderDate || '',
       getEnquiryPackagePrice(e),
       getEnquiryAdvanceReceived(e),
       e.paymentStatus || 'Pending',
@@ -1756,41 +2471,49 @@ function AdminDashboardView({
   // ----------------------------------------------------
   // PACKAGE IMAGE UPLOAD HELPERS (Storage & Base64 Fallback)
   // ----------------------------------------------------
-  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>, target: 'package' | 'gallery') => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const uploadPackageImageAsset = async (file: File, folder: string) => {
+    if (!isSupportedMediaFile(file)) {
+      throw new Error('Only JPEG, PNG, WEBP and WEBM files are supported.');
+    }
+
+    try {
+      const safeFileName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+      const fileName = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safeFileName}`;
+      const imageRef = ref(storage, `${folder}/${fileName}`);
+      const fallbackContentType = file.name.toLowerCase().endsWith('.webm') ? 'video/webm' : 'image/jpeg';
+      const snapshot = await uploadBytes(imageRef, file, { contentType: file.type || fallbackContentType });
+      return getDownloadURL(snapshot.ref);
+    } catch (error) {
+      console.warn('Firebase Storage upload blocked or failed. Falling back to local Base64 conversion:', error);
+      return readMediaFileAsDataUrl(file);
+    }
+  };
+
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>, target: PackageImageUploadTarget) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
 
     setUploadingImage(true);
     try {
-      // 1. Attempt upload to Firebase Storage
-      const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-      const storagePath = target === 'package' ? `packages/${fileName}` : `gallery/${fileName}`;
-      const imageRef = ref(storage, storagePath);
-      
-      const snapshot = await uploadBytes(imageRef, file);
-      const downloadUrl = await getDownloadURL(snapshot.ref);
-      
+      const storageFolder = target === 'gallery' ? 'gallery' : 'packages';
+      const uploadedUrls = (await Promise.all(files.map((file) => uploadPackageImageAsset(file, storageFolder)))).filter(Boolean);
+      if (!uploadedUrls.length) return;
+
       if (target === 'package') {
-        setPkgFormData((prev) => ({ ...prev, imageUrl: downloadUrl }));
+        setPkgFormData((prev) => ({ ...prev, imageUrl: uploadedUrls[0] }));
+      } else if (target === 'packageBanner') {
+        setPkgFormData((prev) => ({ ...prev, packageBannerUrl: uploadedUrls[0] }));
+      } else if (target === 'packageGallery') {
+        setPkgFormData((prev) => ({ ...prev, galleryImages: mergeImageLines(prev.galleryImages, uploadedUrls) }));
       } else {
-        setGalleryFormData((prev) => ({ ...prev, imageUrl: downloadUrl }));
+        setGalleryFormData((prev) => ({ ...prev, imageUrl: uploadedUrls[0] }));
       }
     } catch (error) {
-      console.warn('Firebase Storage upload blocked or failed. Falling back to local Base64 conversion:', error);
-      
-      // 2. Fallback to base64 encoding so user isn't blocked!
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64Url = event.target?.result as string;
-        if (target === 'package') {
-          setPkgFormData((prev) => ({ ...prev, imageUrl: base64Url }));
-        } else {
-          setGalleryFormData((prev) => ({ ...prev, imageUrl: base64Url }));
-        }
-      };
-      reader.readAsDataURL(file);
+      console.error('Media upload failed:', error);
+      alert(error instanceof Error ? error.message : 'Failed to upload media.');
     } finally {
       setUploadingImage(false);
+      e.target.value = '';
     }
   };
 
@@ -1804,7 +2527,7 @@ function AdminDashboardView({
       title: '',
       destination: '',
       location: 'Uttarakhand',
-      bookingType: 'Family Comfort',
+      bookingType: 'Standard',
       maxGuests: 8,
       category: 'Pilgrimage',
       duration: '5 Days / 4 Nights',
@@ -1818,7 +2541,10 @@ function AdminDashboardView({
       packageBannerUrl: '',
       galleryImages: '',
       highlights: '',
+      packageOptions: '',
+      knowBeforeYouGo: '',
       thingsToCarry: '',
+      difficultyLevel: 0,
       departureDates: '',
       faqs: '',
       policies: '',
@@ -1828,35 +2554,59 @@ function AdminDashboardView({
       featured: false,
       active: true,
       status: 'Draft',
+      country: '',
+      city: '',
+      activityTypes: [],
+      tags: [],
+      difficultyLabel: '',
+      mealPlans: [],
+      transportType: '',
+      homepageCategory: '',
+      hotelIds: [],
     });
     setItinerary([{ day: 1, title: 'Arrival & Check-in', description: 'Airport pick-up and welcome briefings.' }]);
     setInclusions(['Premium hotel accommodation', 'Daily breakfasts', 'Local sightseeing transfer']);
     setExclusions(['Airfare tickets', 'Personal laundry and tips']);
+    setPkgDepartures([]);
     setIsPkgFormOpen(true);
   };
 
-  const handleOpenPkgEdit = (pkg: TravelPackage) => {
+  const handleOpenPkgEdit = useCallback((pkg: TravelPackage) => {
     setEditingPkg(pkg);
     setPackageCmsTab('general');
+    const currentPackagePrice = Number(pkg.pricing?.price ?? pkg.offerPrice ?? pkg.price ?? 0);
+    const originalPackagePrice = Number(pkg.pricing?.originalPrice ?? (pkg.offerPrice ? pkg.price : 0));
+    const hasPackageOffer = originalPackagePrice > 0 && currentPackagePrice > 0 && currentPackagePrice < originalPackagePrice;
     setPkgFormData({
       title: pkg.title,
       destination: pkg.destination,
       location: pkg.location || 'Uttarakhand',
-      bookingType: pkg.bookingType || 'Family Comfort',
+      bookingType: pkg.bookingType || 'Original',
       maxGuests: pkg.maxGuests || 8,
       category: pkg.category,
       duration: pkg.duration,
-      price: pkg.price || 0,
-      offerPrice: pkg.offerPrice || 0,
+      price: hasPackageOffer ? originalPackagePrice : Number(pkg.price || currentPackagePrice || 0),
+      offerPrice: hasPackageOffer ? currentPackagePrice : Number(pkg.offerPrice || 0),
       packageCode: pkg.packageCode || '',
       pickup: pkg.pickup || '',
       shortDescription: pkg.shortDescription,
       fullDescription: pkg.fullDescription || '',
-      imageUrl: pkg.imageUrl,
+      imageUrl: pkg.imageUrl || '',
       packageBannerUrl: pkg.packageBannerUrl || '',
       galleryImages: (pkg.galleryImages || []).join('\n'),
       highlights: (pkg.highlights || []).join('\n'),
+      packageOptions: (pkg.packageOptions || [])
+        .map((option) => [
+          option.title,
+          option.description || '',
+          option.price ?? '',
+          option.originalPrice ?? '',
+          (option.inclusions || []).join(', '),
+        ].join(' | '))
+        .join('\n'),
+      knowBeforeYouGo: (pkg.knowBeforeYouGo || []).join('\n'),
       thingsToCarry: (pkg.thingsToCarry || []).join('\n'),
+      difficultyLevel: pkg.difficultyLevel || 0,
       departureDates: (pkg.departureDates || []).join('\n'),
       faqs: (pkg.faqs || []).map((faq) => `${faq.question} | ${faq.answer}`).join('\n'),
       policies: (pkg.policies || []).join('\n'),
@@ -1866,23 +2616,56 @@ function AdminDashboardView({
       featured: pkg.featured || false,
       active: pkg.active ?? true,
       status: pkg.status || (pkg.active ? 'Publish' : 'Draft'),
+      country: pkg.country || '',
+      city: pkg.city || '',
+      activityTypes: pkg.activityTypes || [],
+      tags: pkg.tags || [],
+      difficultyLabel: pkg.difficultyLabel || '',
+      mealPlans: pkg.mealPlans || [],
+      transportType: pkg.transportType || '',
+      homepageCategory: pkg.homepageCategory || '',
+      hotelIds: pkg.hotelIds || [],
     });
     setItinerary(pkg.itinerary || []);
     setInclusions(pkg.inclusions || []);
     setExclusions(pkg.exclusions || []);
+    setPkgDepartures(pkg.departures || []);
     setIsPkgFormOpen(true);
-  };
+  }, []);
+
+  useEffect(() => {
+    const packageId = getAdminPackageIdFromPath(window.location.pathname);
+    if (!packageId || activeTab !== 'packages') {
+      openedPackageRouteRef.current = null;
+      return;
+    }
+    if (openedPackageRouteRef.current === packageId) return;
+
+    const selectedPackage = packages.find((pkg) => pkg.id === packageId);
+    if (!selectedPackage) return;
+
+    openedPackageRouteRef.current = packageId;
+    handleOpenPkgEdit(selectedPackage);
+  }, [activeTab, handleOpenPkgEdit, packages]);
 
   const handleSavePackage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pkgFormData.title || !pkgFormData.destination || !pkgFormData.location || !pkgFormData.imageUrl) {
-      alert('Please fill out Title, Destination, Location and provide a cover image.');
+    if (!pkgFormData.title || !pkgFormData.destination || !pkgFormData.location) {
+      alert('Please fill out Title, Destination and Location.');
       return;
     }
 
     try {
       const actorId = getAdminActorId();
-      const cmsInput = formPackageToCmsInput(pkgFormData, itinerary, inclusions, exclusions, editingPkg);
+      const normalizedInclusions = inclusions.map((item) => item.trim()).filter(Boolean);
+      const normalizedExclusions = exclusions.map((item) => item.trim()).filter(Boolean);
+      const cmsInput = formPackageToCmsInput(
+        { ...pkgFormData, departures: pkgDepartures },
+        itinerary,
+        normalizedInclusions,
+        normalizedExclusions,
+        editingPkg,
+      );
       if (editingPkg) {
         await updatePackage(editingPkg.id, cmsInput, actorId);
       } else if (pkgFormData.active) {
@@ -1912,6 +2695,33 @@ function AdminDashboardView({
     }
   };
 
+  const handleRestorePackage = async (id: string) => {
+    if (!confirm('Restore this package to Draft? It will remain hidden from the public website until you publish it.')) return;
+    try {
+      await restorePackage(id, getAdminActorId());
+      await onRefreshData();
+    } catch (err: unknown) {
+      console.error('Error restoring package:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Failed to restore package: ${message}`);
+    }
+  };
+
+  const handlePermanentDeletePackage = async (id: string) => {
+    if (!confirm('Permanently delete this package and its package-owned images? This cannot be undone.')) return;
+    try {
+      const result = await permanentlyDeletePackage(id, getAdminActorId());
+      await onRefreshData();
+      if (result.failedAssets > 0) {
+        alert(`Package permanently deleted. ${result.failedAssets} Storage image${result.failedAssets === 1 ? '' : 's'} could not be removed; check the browser console for details.`);
+      }
+    } catch (err: unknown) {
+      console.error('Error permanently deleting package:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Failed to permanently delete package: ${message}`);
+    }
+  };
+
   const handleArchivePackage = async (id: string) => {
     if (!confirm('Archive this package and hide it from the public website?')) return;
     try {
@@ -1924,9 +2734,9 @@ function AdminDashboardView({
     }
   };
 
-  const handleDuplicatePackage = async (id: string) => {
+  const handleDuplicatePackage = async (pkg: TravelPackage) => {
     try {
-      await duplicatePackage(id, getAdminActorId());
+      await duplicatePackage(pkg, getAdminActorId());
       await onRefreshData();
     } catch (err: unknown) {
       console.error('Error duplicating package:', err);
@@ -1947,10 +2757,71 @@ function AdminDashboardView({
     }
   };
 
+  const handleToggleFeatured = async (pkg: TravelPackage) => {
+    try {
+      await updatePackage(pkg.id, travelPackageToCmsInput({ ...pkg, featured: !pkg.featured }), getAdminActorId());
+      await onRefreshData();
+    } catch (err: unknown) {
+      console.error('Error toggling featured status:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Failed to update featured status: ${message}`);
+    }
+  };
+
+  const handleUpdateDisplayOrder = async (pkg: TravelPackage, nextOrder: number | undefined) => {
+    try {
+      await updatePackage(pkg.id, travelPackageToCmsInput({ ...pkg, displayOrder: nextOrder }), getAdminActorId());
+      await onRefreshData();
+    } catch (err: unknown) {
+      console.error('Error updating display order:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Failed to update display order: ${message}`);
+    }
+  };
+
+  // ----------------------------------------------------
+  // PREVIEW — renders the package through the exact same PackageDetailView the public site
+  // uses, without writing anything to Firestore. Works both for already-saved rows and for
+  // the in-progress Package Form draft ("preview before publishing").
+  // ----------------------------------------------------
+  const [previewPackage, setPreviewPackage] = useState<TravelPackage | null>(null);
+
+  const handlePreviewPackage = (pkg: TravelPackage) => {
+    setPreviewPackage(pkg);
+  };
+
+  const handlePreviewDraft = () => {
+    const cmsInput = formPackageToCmsInput({ ...pkgFormData, departures: pkgDepartures }, itinerary, inclusions, exclusions, editingPkg);
+    const normalized = normalizePackageCmsInput(cmsInput);
+    const mappedLegacyFields = mapCmsToLegacyPackageFields(normalized);
+    const legacy = (cmsInput.legacy || {}) as Record<string, unknown>;
+    const hasLegacyCoverImage = Object.prototype.hasOwnProperty.call(legacy, 'imageUrl');
+    const hasLegacyBannerImage = Object.prototype.hasOwnProperty.call(legacy, 'packageBannerUrl');
+    const mediaPatch = {
+      imageUrl: hasLegacyCoverImage ? String(legacy.imageUrl || '') : (editingPkg?.imageUrl || mappedLegacyFields.imageUrl),
+      packageBannerUrl: hasLegacyBannerImage ? String(legacy.packageBannerUrl || '') : (editingPkg?.packageBannerUrl || mappedLegacyFields.packageBannerUrl),
+    };
+
+    // Mirrors packageRepository.savePackage's exact merge order so the preview matches what
+    // would actually be published, without ever touching Firestore.
+    const draftPreview: TravelPackage = {
+      ...(editingPkg || {}),
+      ...legacy,
+      ...normalized,
+      ...mappedLegacyFields,
+      ...mediaPatch,
+      id: editingPkg?.id || 'preview-draft',
+      slug: editingPkg?.slug || slugifyPackageTitle(cmsInput.title || 'preview'),
+      createdAt: editingPkg?.createdAt || new Date().toISOString(),
+    } as TravelPackage;
+
+    setPreviewPackage(draftPreview);
+  };
+
   // Itinerary Row Operations
   const handleAddItineraryDay = () => {
     const nextDayNum = itinerary.length + 1;
-    setItinerary((prev) => [...prev, { day: nextDayNum, title: '', description: '' }]);
+    setItinerary((prev) => [...prev, { day: nextDayNum, title: '', description: '', location: '', images: [] }]);
   };
 
   const handleRemoveItineraryDay = (dayNum: number) => {
@@ -1960,34 +2831,41 @@ function AdminDashboardView({
     setItinerary(updated);
   };
 
-  const handleItineraryDayChange = (dayNum: number, field: 'title' | 'description', val: string) => {
+  const handleItineraryDayChange = (dayNum: number, field: 'title' | 'description' | 'location', val: string) => {
     setItinerary((prev) =>
       prev.map((day) => (day.day === dayNum ? { ...day, [field]: val } : day))
     );
   };
 
-  // Inclusion List Operations
-  const handleAddInclusion = () => {
-    if (!newInclusion.trim()) return;
-    setInclusions((prev) => [...prev, newInclusion.trim()]);
-    setNewInclusion('');
+  const handleItineraryDayImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, dayNum: number) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    setUploadingImage(true);
+    try {
+      const uploadedUrls = (await Promise.all(files.map((file) => uploadPackageImageAsset(file, 'packages/itinerary')))).filter(Boolean);
+      if (!uploadedUrls.length) return;
+      setItinerary((prev) =>
+        prev.map((day) => (day.day === dayNum
+          ? { ...day, images: Array.from(new Set([...(day.images || []), ...uploadedUrls])) }
+          : day))
+      );
+    } catch (error) {
+      console.error('Itinerary image upload failed:', error);
+      alert(error instanceof Error ? error.message : 'Failed to upload itinerary image.');
+    } finally {
+      setUploadingImage(false);
+      e.target.value = '';
+    }
   };
 
-  const handleRemoveInclusion = (idx: number) => {
-    setInclusions((prev) => prev.filter((_, i) => i !== idx));
+  const handleRemoveItineraryDayImage = (dayNum: number, imageUrl: string) => {
+    setItinerary((prev) =>
+      prev.map((day) => (day.day === dayNum
+        ? { ...day, images: (day.images || []).filter((item) => item !== imageUrl) }
+        : day))
+    );
   };
-
-  // Exclusion List Operations
-  const handleAddExclusion = () => {
-    if (!newExclusion.trim()) return;
-    setExclusions((prev) => [...prev, newExclusion.trim()]);
-    setNewExclusion('');
-  };
-
-  const handleRemoveExclusion = (idx: number) => {
-    setExclusions((prev) => prev.filter((_, i) => i !== idx));
-  };
-
 
   // ----------------------------------------------------
   // ENQUIRY STATUS UPDATES
@@ -2282,6 +3160,7 @@ function AdminDashboardView({
         priority: activeEnquiry.priority || 'Medium',
         followUpDate: String(activeEnquiry.followUpDate || '').trim(),
         followUpTime: String(activeEnquiry.followUpTime || '').trim(),
+        reminderDate: String(activeEnquiry.reminderDate || '').trim(),
         assignedTo: String(activeEnquiry.assignedTo || '').trim(),
         packagePrice: Math.max(Number(activeEnquiry.packagePrice ?? 0), 0),
         advanceReceived: Math.max(Number(activeEnquiry.advanceReceived ?? 0), 0),
@@ -2474,13 +3353,20 @@ function AdminDashboardView({
   const handleMultipleGalleryFilesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
+    const unsupportedFile = Array.from(files).find((file) => !isSupportedMediaFile(file));
+    if (unsupportedFile) {
+      alert(`Only JPEG, PNG, WEBP and WEBM files are supported. "${unsupportedFile.name}" was not added.`);
+      e.target.value = '';
+      return;
+    }
 
     const newFilesList: typeof selectedGalleryFiles = [];
     
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
-        const compressed = await compressImage(file);
+        const isVideo = file.type.toLowerCase() === 'video/webm' || file.name.toLowerCase().endsWith('.webm');
+        const compressed = isVideo ? '' : await compressImage(file);
         // Clean title from filename
         const baseTitle = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
         const formattedTitle = baseTitle
@@ -2492,9 +3378,10 @@ function AdminDashboardView({
           preview: URL.createObjectURL(file),
           compressedBase64: compressed,
           title: formattedTitle,
+          isVideo,
         });
       } catch (err) {
-        console.error('Error compressing file:', file.name, err);
+        console.error('Error preparing file:', file.name, err);
       }
     }
 
@@ -2516,16 +3403,16 @@ function AdminDashboardView({
         let imageUrl = '';
         try {
           // Attempt Storage upload
-          const blob = dataURItoBlob(item.compressedBase64);
+          const uploadSource = item.isVideo ? item.file : dataURItoBlob(item.compressedBase64);
           const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${item.file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
           const storagePath = `gallery/${fileName}`;
           const imageRef = ref(storage, storagePath);
           
-          const snapshot = await uploadBytes(imageRef, blob);
+          const snapshot = await uploadBytes(imageRef, uploadSource, { contentType: item.isVideo ? 'video/webm' : (uploadSource.type || item.file.type || 'image/jpeg') });
           imageUrl = await getDownloadURL(snapshot.ref);
         } catch (error) {
           console.warn('Firebase Storage upload failed for item. Falling back to Base64 data-url.', error);
-          imageUrl = item.compressedBase64;
+          imageUrl = item.isVideo ? await readMediaFileAsDataUrl(item.file) : item.compressedBase64;
         }
 
         // Add doc to Firestore
@@ -2579,11 +3466,16 @@ function AdminDashboardView({
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!isSupportedImageFile(file)) {
+      alert('Only JPEG, PNG and WEBP images are supported.');
+      e.target.value = '';
+      return;
+    }
     setCmsUploadingField(field);
     try {
       const fileName = `${field}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
       const imageRef = ref(storage, `cms/${fileName}`);
-      const snapshot = await uploadBytes(imageRef, file);
+      const snapshot = await uploadBytes(imageRef, file, { contentType: file.type || 'image/jpeg' });
       const imageUrl = await getDownloadURL(snapshot.ref);
       const nextData = {
         ...cmsFormData,
@@ -2605,13 +3497,20 @@ function AdminDashboardView({
   const handleMediaLibraryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
+    const unsupportedFile = files.find((file) => !isSupportedMediaFile(file));
+    if (unsupportedFile) {
+      alert(`Only JPEG, PNG, WEBP and WEBM files are supported. "${unsupportedFile.name}" was not uploaded.`);
+      e.target.value = '';
+      return;
+    }
     setMediaUploading(true);
     try {
       for (let idx = 0; idx < files.length; idx++) {
         const file = files[idx];
         const fileName = `${Date.now()}_${idx}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
         const imageRef = ref(storage, `gallery/${fileName}`);
-        const snapshot = await uploadBytes(imageRef, file);
+        const fallbackContentType = file.name.toLowerCase().endsWith('.webm') ? 'video/webm' : 'image/jpeg';
+        const snapshot = await uploadBytes(imageRef, file, { contentType: file.type || fallbackContentType });
         const imageUrl = await getDownloadURL(snapshot.ref);
         const baseTitle = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
         await addDoc(collection(db, 'gallery'), {
@@ -2662,8 +3561,9 @@ function AdminDashboardView({
         { id: 'overview' as AdminTab, label: 'Dashboard', icon: LayoutDashboard, count: null },
         { id: 'website' as AdminTab, label: 'Website CMS', icon: Globe, count: null },
         { id: 'media-library' as AdminTab, label: 'Media Library', icon: Images, count: gallery.length },
-        { id: 'ai-importer' as AdminTab, label: 'AI Importer', icon: Sparkles, count: null },
+        { id: 'ai-importer' as AdminTab, label: 'Import Package', icon: Sparkles, count: null },
         { id: 'analytics' as AdminTab, label: 'Analytics', icon: LineChartIcon, count: null },
+        { id: 'master-data' as AdminTab, label: 'Master Data', icon: Database, count: null },
         { id: 'settings' as AdminTab, label: 'Settings', icon: Settings, count: null },
       ],
     },
@@ -2672,9 +3572,11 @@ function AdminDashboardView({
       items: [
         { id: 'activities' as AdminTab, label: 'Activities', icon: Compass, count: activities.length },
         { id: 'packages' as AdminTab, label: 'Packages', icon: Package, count: packages.length },
+        { id: 'hotels' as AdminTab, label: 'Hotels', icon: Building2, count: hotels.length },
+        { id: 'departures' as AdminTab, label: 'Departures', icon: PlaneTakeoff, count: packages.reduce((sum, pkg) => sum + (pkg.departures?.length || 0), 0) },
         { id: 'bookings' as AdminTab, label: 'Bookings', icon: Calendar, count: bookings.length },
         { id: 'customers' as AdminTab, label: 'Customers', icon: Users, count: customers.length },
-        { id: 'enquiries' as AdminTab, label: 'Enquiries', icon: FileText, count: enquiries.length },
+        { id: 'enquiries' as AdminTab, label: 'CRM', icon: FileText, count: enquiries.length },
         { id: 'reviews' as AdminTab, label: 'Reviews', icon: Star, count: adminReviews.length },
         { id: 'gallery' as AdminTab, label: 'Gallery CRUD', icon: ImageIcon, count: gallery.length },
         { id: 'blogs' as AdminTab, label: 'Blog CMS', icon: FileText, count: blogPosts.length },
@@ -2699,10 +3601,10 @@ function AdminDashboardView({
 
   const quickActions = [
     { label: 'Add Package', icon: Plus, action: handleOpenPkgAdd, tone: 'bg-[#4DA528] text-white hover:bg-[#FF970D]' },
-    { label: 'View Bookings', icon: Calendar, action: () => setActiveTab('bookings'), tone: 'bg-stone-950 text-white hover:bg-stone-800' },
-    { label: 'Customers', icon: Users, action: () => setActiveTab('customers'), tone: 'bg-white text-stone-700 hover:text-[#4DA528] border border-stone-200' },
-    { label: 'Reports', icon: LineChartIcon, action: () => setActiveTab('analytics'), tone: 'bg-[#f7f8f3] text-stone-700 hover:text-[#4DA528] border border-stone-200' },
-    { label: 'Settings', icon: Settings, action: () => setActiveTab('settings'), tone: 'bg-white text-stone-700 hover:text-[#4DA528] border border-stone-200' },
+    { label: 'View Bookings', icon: Calendar, action: () => handleAdminTabChange('bookings'), tone: 'bg-stone-950 text-white hover:bg-stone-800' },
+    { label: 'Customers', icon: Users, action: () => handleAdminTabChange('customers'), tone: 'bg-white text-stone-700 hover:text-[#4DA528] border border-stone-200' },
+    { label: 'Reports', icon: LineChartIcon, action: () => handleAdminTabChange('analytics'), tone: 'bg-[#f7f8f3] text-stone-700 hover:text-[#4DA528] border border-stone-200' },
+    { label: 'Settings', icon: Settings, action: () => handleAdminTabChange('settings'), tone: 'bg-white text-stone-700 hover:text-[#4DA528] border border-stone-200' },
   ];
 
   const mediaLibraryCategories = useMemo(() => ['All', ...uniqueCategories], [uniqueCategories]);
@@ -2996,7 +3898,7 @@ function AdminDashboardView({
                 formatPriceValue={(value) => formatPrice(value)}
                 quickActions={quickActions}
                 dashboardStats={dashboardStats}
-                setActiveTab={setActiveTab}
+                setActiveTab={handleAdminTabChange}
                 setActiveBooking={setActiveBooking}
                 setAssignee={setAssignee}
                 setFollowUpDate={setFollowUpDate}
@@ -3030,6 +3932,7 @@ function AdminDashboardView({
               <ActivitiesTab
                 packages={packages}
                 onRefreshData={onRefreshData}
+                masterHomepageCategories={settingsFormData.masterHomepageCategories}
               />
             </Suspense>
           )}
@@ -3056,7 +3959,67 @@ function AdminDashboardView({
 
           {activeTab === 'ai-importer' && (
             <Suspense fallback={<div className="rounded-[20px] border border-stone-200 bg-white p-8 text-sm text-stone-500">Loading AI package importer…</div>}>
-              <AiPackageImporter />
+              <AiPackageImporter
+                onPackagePersisted={onRefreshData}
+                onNavigateToPackages={() => handleAdminTabChange('packages')}
+                onNavigateToPackage={handleNavigateToImportedPackage}
+              />
+            </Suspense>
+          )}
+
+          {/* ==================================================== */}
+          {/* TAB: MASTER DATA */}
+          {/* ==================================================== */}
+          {activeTab === 'master-data' && (
+            <Suspense fallback={<div className="rounded-[20px] border border-stone-200 bg-white p-8 text-sm text-stone-500">Loading master data…</div>}>
+              <MasterDataTab
+                packages={packages}
+                gallery={gallery}
+                masterDataLists={{
+                  masterCountries: settingsFormData.masterCountries,
+                  masterDestinations: settingsFormData.masterDestinations,
+                  masterCities: settingsFormData.masterCities,
+                  masterActivityTypes: settingsFormData.masterActivityTypes,
+                  masterPackageTags: settingsFormData.masterPackageTags,
+                  masterDifficultyLevels: settingsFormData.masterDifficultyLevels,
+                  masterMealPlans: settingsFormData.masterMealPlans,
+                  masterTransportTypes: settingsFormData.masterTransportTypes,
+                  masterHomepageCategories: settingsFormData.masterHomepageCategories,
+                }}
+                isSaving={masterDataSaving}
+                onSaveList={handleSaveMasterDataList}
+              />
+            </Suspense>
+          )}
+
+          {/* ==================================================== */}
+          {/* TAB: HOTELS */}
+          {/* ==================================================== */}
+          {activeTab === 'hotels' && (
+            <Suspense fallback={<div className="rounded-[20px] border border-stone-200 bg-white p-8 text-sm text-stone-500">Loading hotel manager…</div>}>
+              <HotelsTab
+                hotels={hotels}
+                packages={packages}
+                gallery={gallery}
+                masterData={hotelFormMasterData}
+                isSaving={hotelSaving}
+                onSaveHotel={handleSaveHotel}
+                onDeleteHotel={handleDeleteHotel}
+                onQuickAddMasterData={handleQuickAddMasterDataValue}
+              />
+            </Suspense>
+          )}
+
+          {/* ==================================================== */}
+          {/* TAB: DEPARTURES */}
+          {/* ==================================================== */}
+          {activeTab === 'departures' && (
+            <Suspense fallback={<div className="rounded-[20px] border border-stone-200 bg-white p-8 text-sm text-stone-500">Loading departure manager…</div>}>
+              <DeparturesTab
+                packages={packages}
+                isSaving={false}
+                onUpdatePackageDepartures={handleUpdatePackageDepartures}
+              />
             </Suspense>
           )}
 
@@ -3072,9 +4035,14 @@ function AdminDashboardView({
                 handleOpenPkgAdd={handleOpenPkgAdd}
                 handleOpenPkgEdit={handleOpenPkgEdit}
                 handleDeletePackage={handleDeletePackage}
+                handleRestorePackage={handleRestorePackage}
+                handlePermanentDeletePackage={handlePermanentDeletePackage}
                 handleArchivePackage={handleArchivePackage}
                 handleDuplicatePackage={handleDuplicatePackage}
                 togglePackageActive={togglePackageActive}
+                handlePreviewPackage={handlePreviewPackage}
+                handleToggleFeatured={handleToggleFeatured}
+                handleUpdateDisplayOrder={handleUpdateDisplayOrder}
                 formatPriceValue={(value) => formatPrice(value)}
               />
             </Suspense>
@@ -3206,11 +4174,10 @@ function AdminDashboardView({
                     className="bg-white border border-stone-200 rounded overflow-hidden shadow-xs hover:shadow-md transition-all duration-300 flex flex-col justify-between group"
                   >
                     <div className="relative h-44 bg-[#f8f7f4] overflow-hidden">
-                      <img 
-                        src={img.imageUrl} 
+                      <TravelMedia
+                        src={img.imageUrl}
                         alt={img.title} 
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                        referrerPolicy="no-referrer"
                         loading="lazy" // Lazy Loading requirement
                       />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
@@ -3420,7 +4387,7 @@ function AdminDashboardView({
                 adminReviews={adminReviews}
                 packages={packages}
                 wishlistItems={wishlistItems}
-                setActiveTab={setActiveTab}
+                setActiveTab={handleAdminTabChange}
               />
             </Suspense>
           )}
@@ -3500,15 +4467,37 @@ function AdminDashboardView({
 
               {packageCmsTab === 'general' && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Package Title *</label>
-                      <input type="text" required placeholder="E.g. Himalayan Serenade - Leh Ladakh" value={pkgFormData.title} onChange={(e) => setPkgFormData((prev) => ({ ...prev, title: e.target.value }))} className="w-full px-3 py-2 border border-stone-200 rounded-sm text-sm text-stone-850 focus:outline-none focus:border-[#008080] font-medium" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Destination *</label>
-                      <input type="text" required placeholder="E.g. South Goa, India" value={pkgFormData.destination} onChange={(e) => setPkgFormData((prev) => ({ ...prev, destination: e.target.value }))} className="w-full px-3 py-2 border border-stone-200 rounded-sm text-sm text-stone-850 focus:outline-none focus:border-[#008080] font-medium" />
-                    </div>
+                  <div className="space-y-1">
+                    <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Package Title *</label>
+                    <input type="text" required placeholder="E.g. Himalayan Serenade - Leh Ladakh" value={pkgFormData.title} onChange={(e) => setPkgFormData((prev) => ({ ...prev, title: e.target.value }))} className="w-full px-3 py-2 border border-stone-200 rounded-sm text-sm text-stone-850 focus:outline-none focus:border-[#008080] font-medium" />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <MasterDataSelectField
+                      label="Country"
+                      value={pkgFormData.country}
+                      options={countryOptions}
+                      placeholder="E.g. Thailand"
+                      onChange={(value) => setPkgFormData((prev) => ({ ...prev, country: value }))}
+                      onAddNew={(name) => handleQuickAddMasterDataValue('masterCountries', name)}
+                    />
+                    <MasterDataSelectField
+                      label="Destination"
+                      value={pkgFormData.destination}
+                      options={destinationOptions}
+                      required
+                      placeholder="E.g. Phuket"
+                      onChange={(value) => setPkgFormData((prev) => ({ ...prev, destination: value }))}
+                      onAddNew={(name) => handleQuickAddMasterDataValue('masterDestinations', name, pkgFormData.country || undefined)}
+                    />
+                    <MasterDataSelectField
+                      label="City"
+                      value={pkgFormData.city}
+                      options={cityOptions}
+                      placeholder="E.g. Patong"
+                      onChange={(value) => setPkgFormData((prev) => ({ ...prev, city: value }))}
+                      onAddNew={(name) => handleQuickAddMasterDataValue('masterCities', name, pkgFormData.destination || undefined)}
+                    />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -3520,13 +4509,11 @@ function AdminDashboardView({
                     </div>
                     <div className="space-y-1">
                       <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Category *</label>
-                      <select value={pkgFormData.category} onChange={(e) => setPkgFormData((prev) => ({ ...prev, category: e.target.value as DestinationCategory }))} className="w-full px-3 py-2 bg-white border border-stone-200 rounded-sm text-sm text-stone-700 focus:outline-none focus:border-[#008080] font-medium cursor-pointer">
-                        <option value="Pilgrimage">Pilgrimage</option>
-                        <option value="Treks">Treks</option>
-                        <option value="Adventure">Adventure</option>
-                        <option value="Himachal">Himachal</option>
-                        <option value="Ladakh">Ladakh</option>
-                        <option value="Uttarakhand">Uttarakhand</option>
+                      <select value={pkgFormData.category} onChange={(e) => handlePackageCategoryChange(e.target.value)} className="w-full px-3 py-2 bg-white border border-stone-200 rounded-sm text-sm text-stone-700 focus:outline-none focus:border-[#008080] font-medium cursor-pointer">
+                        {packageCategoryOptions.map((category) => (
+                          <option key={category} value={category}>{category}</option>
+                        ))}
+                        <option value={ADD_PACKAGE_CATEGORY_VALUE}>+ Add new category</option>
                       </select>
                     </div>
                   </div>
@@ -3534,11 +4521,11 @@ function AdminDashboardView({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Booking Type</label>
-                      <select value={pkgFormData.bookingType} onChange={(e) => setPkgFormData((prev) => ({ ...prev, bookingType: e.target.value }))} className="w-full px-3 py-2 bg-white border border-stone-200 rounded-sm text-sm text-stone-700 focus:outline-none focus:border-[#008080] font-medium cursor-pointer">
-                        <option value="Bespoke Luxury">Bespoke Luxury</option>
-                        <option value="Family Comfort">Family Comfort</option>
-                        <option value="Sacred Slow Travel">Sacred Slow Travel</option>
-                        <option value="Adventure Led">Adventure Led</option>
+                      <select value={pkgFormData.bookingType} onChange={(e) => handlePackageBookingTypeChange(e.target.value)} className="w-full px-3 py-2 bg-white border border-stone-200 rounded-sm text-sm text-stone-700 focus:outline-none focus:border-[#008080] font-medium cursor-pointer">
+                        {packageBookingTypeOptions.map((bookingType) => (
+                          <option key={bookingType} value={bookingType}>{bookingType}</option>
+                        ))}
+                        <option value={ADD_PACKAGE_BOOKING_TYPE_VALUE}>+ Add new booking type</option>
                       </select>
                     </div>
                     <div className="space-y-1">
@@ -3570,16 +4557,159 @@ function AdminDashboardView({
                   </div>
 
                   <div className="space-y-1">
+                    <MasterDataSelectField
+                      label="Homepage Category"
+                      value={pkgFormData.homepageCategory}
+                      options={homepageCategoryOptions}
+                      placeholder="E.g. International, Weekend Trips"
+                      onChange={(value) => setPkgFormData((prev) => ({ ...prev, homepageCategory: value }))}
+                      onAddNew={(name) => handleQuickAddMasterDataValue('masterHomepageCategories', name)}
+                    />
+                    <p className="text-[10px] leading-4 text-stone-400">Controls which homepage Featured Categories tab this package appears under.</p>
+                  </div>
+
+                  <div className="space-y-1">
                     <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Related Homepage Activity</label>
-                    <select value={pkgFormData.activityId} onChange={(e) => setPkgFormData((prev) => ({ ...prev, activityId: e.target.value }))} className="w-full px-3 py-2 bg-white border border-stone-200 rounded-sm text-sm text-stone-700 focus:outline-none focus:border-[#008080] font-medium cursor-pointer">
+                    <select value={pkgFormData.activityId} onChange={(e) => handlePackageActivityChange(e.target.value)} className="w-full px-3 py-2 bg-white border border-stone-200 rounded-sm text-sm text-stone-700 focus:outline-none focus:border-[#008080] font-medium cursor-pointer">
                       <option value="">None</option>
                       {activities.map((activity) => (<option key={activity.id} value={activity.id}>{activity.title}</option>))}
+                      <option value={ADD_PACKAGE_ACTIVITY_VALUE}>+ Add new activity</option>
                     </select>
+                  </div>
+
+                  <div className="rounded-sm border border-stone-200 bg-[#f8f7f4] p-4 space-y-4">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#008080]">Master Data Classification</p>
+                    <MasterDataTagPicker
+                      label="Activities"
+                      selected={pkgFormData.activityTypes}
+                      options={activityTypeOptions}
+                      onChange={(activityTypes) => setPkgFormData((prev) => ({ ...prev, activityTypes }))}
+                      onAddNew={(name) => handleQuickAddMasterDataValue('masterActivityTypes', name)}
+                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <MasterDataSelectField
+                        label="Difficulty"
+                        value={pkgFormData.difficultyLabel}
+                        options={difficultyLabelOptions}
+                        placeholder="E.g. Moderate"
+                        onChange={(value) => setPkgFormData((prev) => ({ ...prev, difficultyLabel: value }))}
+                        onAddNew={(name) => handleQuickAddMasterDataValue('masterDifficultyLevels', name)}
+                      />
+                      <MasterDataSelectField
+                        label="Transport Type"
+                        value={pkgFormData.transportType}
+                        options={transportTypeOptions}
+                        placeholder="E.g. Flight"
+                        onChange={(value) => setPkgFormData((prev) => ({ ...prev, transportType: value }))}
+                        onAddNew={(name) => handleQuickAddMasterDataValue('masterTransportTypes', name)}
+                      />
+                    </div>
+                    <MasterDataTagPicker
+                      label="Meal Plans"
+                      selected={pkgFormData.mealPlans}
+                      options={mealPlanOptions}
+                      onChange={(mealPlans) => setPkgFormData((prev) => ({ ...prev, mealPlans }))}
+                      onAddNew={(name) => handleQuickAddMasterDataValue('masterMealPlans', name)}
+                    />
+                    <MasterDataTagPicker
+                      label="Package Tags"
+                      selected={pkgFormData.tags}
+                      options={packageTagOptions}
+                      onChange={(tags) => setPkgFormData((prev) => ({ ...prev, tags }))}
+                      onAddNew={(name) => handleQuickAddMasterDataValue('masterPackageTags', name)}
+                    />
+                  </div>
+
+                  <div className="rounded-sm border border-stone-200 bg-[#f8f7f4] p-4 space-y-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#008080]">Recommended Hotels</p>
+                    {hotels.filter((hotel) => hotel.status === 'Active').length === 0 ? (
+                      <p className="text-xs text-stone-500">No active hotels yet. Add one from the Hotels tab, then link it here.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {hotels
+                          .filter((hotel) => hotel.status === 'Active')
+                          .sort((a, b) => a.name.localeCompare(b.name))
+                          .map((hotel) => {
+                            const isSelected = pkgFormData.hotelIds.includes(hotel.id);
+                            return (
+                              <button
+                                key={hotel.id}
+                                type="button"
+                                onClick={() => setPkgFormData((prev) => ({
+                                  ...prev,
+                                  hotelIds: isSelected ? prev.hotelIds.filter((id) => id !== hotel.id) : [...prev.hotelIds, hotel.id],
+                                }))}
+                                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                                  isSelected
+                                    ? 'border-[#008080] bg-[#008080] text-white shadow-sm'
+                                    : 'border-stone-200 bg-white text-stone-600 hover:border-[#008080] hover:text-[#008080]'
+                                }`}
+                              >
+                                {hotel.name} <span className="opacity-70">({hotel.category})</span>
+                              </button>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-sm border border-stone-200 bg-[#f8f7f4] p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#008080]">Departures ({pkgDepartures.length})</p>
+                      <button
+                        type="button"
+                        onClick={() => setPkgDepartures((prev) => [...prev, {
+                          id: `dep-${Date.now().toString(36)}-${Math.round(Math.random() * 1e6).toString(36)}`,
+                          departureDate: '',
+                          totalSeats: 20,
+                          bookedSeats: 0,
+                          guaranteedDeparture: false,
+                          status: 'Scheduled',
+                          createdAt: new Date().toISOString(),
+                        }])}
+                        className="inline-flex items-center gap-1 rounded-sm bg-[#008080] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-[#006666]"
+                      >
+                        <Plus className="h-3 w-3" /> Add Departure
+                      </button>
+                    </div>
+                    {pkgDepartures.length === 0 ? (
+                      <p className="text-xs text-stone-500">No departures scheduled yet.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {pkgDepartures.map((departure, index) => {
+                          const availableSeats = Math.max(0, (Number(departure.totalSeats) || 0) - (Number(departure.bookedSeats) || 0));
+                          return (
+                            <div key={departure.id} className="rounded-sm border border-stone-200 bg-white p-3 space-y-2">
+                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                <input type="date" value={departure.departureDate} onChange={(e) => setPkgDepartures((prev) => prev.map((d, i) => (i === index ? { ...d, departureDate: e.target.value } : d)))} className="rounded-sm border border-stone-200 px-2 py-1.5 text-xs focus:outline-none focus:border-[#008080]" title="Departure Date" />
+                                <input type="date" value={departure.returnDate || ''} onChange={(e) => setPkgDepartures((prev) => prev.map((d, i) => (i === index ? { ...d, returnDate: e.target.value } : d)))} className="rounded-sm border border-stone-200 px-2 py-1.5 text-xs focus:outline-none focus:border-[#008080]" title="Return Date" />
+                                <input type="number" min={0} value={departure.totalSeats} onChange={(e) => setPkgDepartures((prev) => prev.map((d, i) => (i === index ? { ...d, totalSeats: Number(e.target.value) || 0 } : d)))} className="rounded-sm border border-stone-200 px-2 py-1.5 text-xs focus:outline-none focus:border-[#008080]" title="Total Seats" placeholder="Total seats" />
+                                <input type="number" min={0} value={departure.bookedSeats} onChange={(e) => setPkgDepartures((prev) => prev.map((d, i) => (i === index ? { ...d, bookedSeats: Number(e.target.value) || 0 } : d)))} className="rounded-sm border border-stone-200 px-2 py-1.5 text-xs focus:outline-none focus:border-[#008080]" title="Booked Seats" placeholder="Booked seats" />
+                              </div>
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-[11px] text-stone-500">
+                                  Available: <strong className="text-stone-800">{availableSeats}</strong>
+                                  {availableSeats <= 0 && <span className="ml-1.5 font-bold text-rose-600">Sold Out</span>}
+                                </span>
+                                <label className="flex items-center gap-1.5 text-[11px] font-medium text-stone-600">
+                                  <input type="checkbox" checked={departure.guaranteedDeparture} onChange={(e) => setPkgDepartures((prev) => prev.map((d, i) => (i === index ? { ...d, guaranteedDeparture: e.target.checked } : d)))} className="h-3 w-3 accent-[#008080]" />
+                                  Guaranteed
+                                </label>
+                                <button type="button" onClick={() => setPkgDepartures((prev) => prev.filter((_, i) => i !== index))} className="rounded-sm p-1 text-stone-400 transition hover:bg-rose-50 hover:text-rose-600" aria-label="Remove departure">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <p className="text-[10px] text-stone-400">Manage duplication, calendar view, and filters for every package's departures from the Departures tab.</p>
                   </div>
 
                   <div className="space-y-1">
                     <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Short Summary Description *</label>
-                    <input type="text" required placeholder="One sentence hook summarizing this package..." value={pkgFormData.shortDescription} maxLength={180} onChange={(e) => setPkgFormData((prev) => ({ ...prev, shortDescription: e.target.value }))} className="w-full px-3 py-2 border border-stone-200 rounded-sm text-sm text-stone-850 focus:outline-none focus:border-[#008080] font-medium" />
+                    <textarea rows={3} required placeholder="A concise summary of this package..." value={pkgFormData.shortDescription} onChange={(e) => setPkgFormData((prev) => ({ ...prev, shortDescription: e.target.value }))} className="w-full resize-y px-3 py-2 border border-stone-200 rounded-sm text-sm leading-6 text-stone-850 focus:outline-none focus:border-[#008080] font-medium" />
                   </div>
 
                   <div className="space-y-1">
@@ -3592,13 +4722,13 @@ function AdminDashboardView({
               {packageCmsTab === 'pricing' && (
                 <div className="space-y-4">
                   <div className="space-y-3 bg-[#f8f7f4] p-4 rounded-sm border border-stone-200">
-                    <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider">Package Cover Image *</span>
+                    <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider">Package Cover Image</span>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="border-2 border-dashed border-stone-200 rounded-sm p-4 text-center hover:border-[#008080] transition relative bg-white">
-                        <input type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, 'package')} className="absolute inset-0 opacity-0 cursor-pointer" />
+                        <input type="file" accept={SUPPORTED_MEDIA_ACCEPT} onChange={(e) => handleImageFileChange(e, 'package')} className="absolute inset-0 opacity-0 cursor-pointer" />
                         <Upload className="w-6 h-6 text-stone-400 mx-auto mb-2" />
-                        <span className="text-xs text-stone-600 block font-semibold">{uploadingImage ? 'Uploading image...' : 'Drag / click to upload cover'}</span>
-                        <span className="text-[10px] text-stone-400">Supports PNG, JPG, WEBP</span>
+                        <span className="text-xs text-stone-600 block font-semibold">{uploadingImage ? 'Uploading media...' : 'Upload Hero Banner'}</span>
+                        <span className="text-[10px] text-stone-400">Supports PNG, JPG, WEBP, WEBM</span>
                       </div>
                       <div className="space-y-1 flex flex-col justify-center">
                         <label className="block text-[9px] font-bold text-stone-400 uppercase tracking-wider">Or Enter Public Image URL</label>
@@ -3607,7 +4737,7 @@ function AdminDashboardView({
                     </div>
                     {pkgFormData.imageUrl && (
                       <div className="relative w-full h-32 rounded-sm overflow-hidden border border-stone-200 mt-2 bg-stone-100">
-                        <img src={pkgFormData.imageUrl} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        <TravelMedia src={pkgFormData.imageUrl} alt="Preview" className="w-full h-full object-cover" disableFallback />
                       </div>
                     )}
                   </div>
@@ -3617,15 +4747,62 @@ function AdminDashboardView({
                       <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Offer Price (Optional)</label>
                       <input type="number" min="0" value={pkgFormData.offerPrice} onChange={(e) => setPkgFormData((prev) => ({ ...prev, offerPrice: parseInt(e.target.value) || 0 }))} className="w-full px-3 py-2 border border-stone-200 rounded-sm text-sm text-stone-850 focus:outline-none focus:border-[#008080] font-medium" />
                     </div>
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Banner Image URL</label>
-                      <input type="text" placeholder="Optional high-res hero image" value={pkgFormData.packageBannerUrl} onChange={(e) => setPkgFormData((prev) => ({ ...prev, packageBannerUrl: e.target.value }))} className="w-full px-3 py-2 border border-stone-200 rounded-sm text-sm text-stone-850 focus:outline-none focus:border-[#008080] font-medium" />
+                    <div className="space-y-2">
+                      <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Hero / Banner Image</label>
+                      <div className="relative flex min-h-[42px] items-center justify-center rounded-sm border border-dashed border-stone-300 bg-white px-3 py-2 text-center transition hover:border-[#008080]">
+                        <input type="file" accept={SUPPORTED_MEDIA_ACCEPT} onChange={(e) => handleImageFileChange(e, 'packageBanner')} className="absolute inset-0 cursor-pointer opacity-0" />
+                        <span className="inline-flex items-center gap-2 text-xs font-bold text-stone-500">
+                          <Upload className="h-4 w-4" />
+                          {uploadingImage ? 'Uploading banner...' : 'Upload Banner Image'}
+                        </span>
+                      </div>
+                      {pkgFormData.packageBannerUrl ? (
+                        <div className="relative h-28 overflow-hidden rounded-sm border border-stone-200 bg-stone-100">
+                          <TravelMedia src={pkgFormData.packageBannerUrl} alt="Hero banner preview" className="h-full w-full object-cover" disableFallback />
+                          <button type="button" onClick={() => setPkgFormData((prev) => ({ ...prev, packageBannerUrl: '' }))} className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-red-500 shadow-sm hover:bg-red-500 hover:text-white" aria-label="Remove banner image">
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-[10px] font-medium text-stone-400">No banner media uploaded yet.</p>
+                      )}
                     </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Gallery Images (one per line)</label>
-                    <textarea rows={3} placeholder="Paste image URLs, one per line" value={pkgFormData.galleryImages} onChange={(e) => setPkgFormData((prev) => ({ ...prev, galleryImages: e.target.value }))} className="w-full px-3 py-2 border border-stone-200 rounded-sm text-sm text-stone-850 focus:outline-none focus:border-[#008080] font-medium" />
+                  <div className="space-y-3 rounded-sm border border-stone-200 bg-white p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Gallery Images</label>
+                        <p className="mt-1 text-[10px] font-medium text-stone-400">Upload one or more package gallery images or WebM videos.</p>
+                      </div>
+                      <label className="relative inline-flex cursor-pointer items-center justify-center gap-2 rounded-sm bg-stone-900 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.16em] text-white transition hover:bg-[#008080]">
+                        <Upload className="h-3.5 w-3.5" />
+                        {uploadingImage ? 'Uploading...' : 'Add Gallery Images'}
+                        <input type="file" accept={SUPPORTED_MEDIA_ACCEPT} multiple onChange={(e) => handleImageFileChange(e, 'packageGallery')} className="absolute inset-0 cursor-pointer opacity-0" />
+                      </label>
+                    </div>
+
+                    {packageGalleryPreviewImages.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        {packageGalleryPreviewImages.map((imageUrl) => (
+                          <div key={imageUrl} className="group relative aspect-[4/3] overflow-hidden rounded-sm border border-stone-200 bg-stone-100">
+                            <TravelMedia src={imageUrl} alt="Package gallery preview" className="h-full w-full object-cover" disableFallback />
+                            <button
+                              type="button"
+                              onClick={() => setPkgFormData((prev) => ({ ...prev, galleryImages: removeImageLine(prev.galleryImages, imageUrl) }))}
+                              className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-red-500 opacity-0 shadow-sm transition group-hover:opacity-100 hover:bg-red-500 hover:text-white"
+                              aria-label="Remove gallery image"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-sm border border-dashed border-stone-200 bg-[#f8f7f4] px-4 py-6 text-center text-xs font-semibold text-stone-400">
+                        No gallery images uploaded yet.
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -3635,6 +4812,12 @@ function AdminDashboardView({
                   <div className="space-y-1">
                     <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Highlights (one per line)</label>
                     <textarea rows={3} placeholder="Add highlight points, one per line" value={pkgFormData.highlights} onChange={(e) => setPkgFormData((prev) => ({ ...prev, highlights: e.target.value }))} className="w-full px-3 py-2 border border-stone-200 rounded-sm text-sm text-stone-850 focus:outline-none focus:border-[#008080] font-medium" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Package Options (Title | Description | Price | Original Price | Inclusions)</label>
+                    <textarea rows={3} placeholder="Standard Leh Tour | Group departure with hotels and transfers | 19900 | 30745 | Transfers, Meals, Stay" value={pkgFormData.packageOptions} onChange={(e) => setPkgFormData((prev) => ({ ...prev, packageOptions: e.target.value }))} className="w-full px-3 py-2 border border-stone-200 rounded-sm text-sm text-stone-850 focus:outline-none focus:border-[#008080] font-medium" />
+                    <p className="text-[10px] text-stone-400">Add one option per line. Leave blank to use the main package price as the default option.</p>
                   </div>
 
                   <div className="space-y-4 border-t border-stone-100 pt-4">
@@ -3656,43 +4839,87 @@ function AdminDashboardView({
                             <span className="w-8 h-8 bg-stone-900 text-white font-bold text-xs rounded-none flex items-center justify-center shrink-0 font-serif italic">D{itIn.day}</span>
                             <input type="text" required placeholder="Day Title (e.g. Welcome to Leh Ladakh)" value={itIn.title} onChange={(e) => handleItineraryDayChange(itIn.day, 'title', e.target.value)} className="w-full px-3 py-1.5 border border-stone-200 rounded-sm text-xs text-stone-850 focus:outline-none focus:border-[#008080] font-bold bg-white" />
                           </div>
+                          <input type="text" placeholder="Day location (e.g. Leh / Nubra Valley)" value={itIn.location || ''} onChange={(e) => handleItineraryDayChange(itIn.day, 'location', e.target.value)} className="w-full px-3 py-1.5 border border-stone-200 rounded-sm text-xs text-stone-700 focus:outline-none focus:border-[#008080] font-medium bg-white" />
                           <textarea rows={2} required placeholder="Day schedule details, drives, activities, food, hotel names..." value={itIn.description} onChange={(e) => handleItineraryDayChange(itIn.day, 'description', e.target.value)} className="w-full px-3 py-1.5 border border-stone-200 rounded-sm text-xs text-stone-600 focus:outline-none focus:border-[#008080] font-medium bg-white" />
+                          <div className="space-y-2 rounded-sm border border-stone-200 bg-white p-3">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <span className="block text-[10px] font-bold uppercase tracking-wider text-stone-400">Day Images</span>
+                                <p className="text-[10px] text-stone-400">Upload photos or WebM videos for this itinerary day.</p>
+                              </div>
+                              <label className="relative inline-flex cursor-pointer items-center justify-center gap-2 rounded-sm border border-stone-200 bg-[#f8f7f4] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-stone-700 transition hover:border-[#008080] hover:text-[#008080]">
+                                <Upload className="h-3.5 w-3.5" />
+                                {uploadingImage ? 'Uploading...' : 'Upload Images'}
+                                <input type="file" accept={SUPPORTED_MEDIA_ACCEPT} multiple onChange={(e) => handleItineraryDayImageUpload(e, itIn.day)} className="absolute inset-0 cursor-pointer opacity-0" />
+                              </label>
+                            </div>
+                            {(itIn.images || []).length > 0 ? (
+                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                {(itIn.images || []).map((imageUrl) => (
+                                  <div key={`${itIn.day}-${imageUrl}`} className="group relative aspect-[4/3] overflow-hidden rounded-sm border border-stone-200 bg-stone-100">
+                                    <TravelMedia src={imageUrl} alt={`Day ${itIn.day} itinerary preview`} className="h-full w-full object-cover" disableFallback />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveItineraryDayImage(itIn.day, imageUrl)}
+                                      className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-red-500 opacity-0 shadow-sm transition group-hover:opacity-100 hover:bg-red-500 hover:text-white"
+                                      aria-label={`Remove day ${itIn.day} image`}
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="rounded-sm border border-dashed border-stone-200 bg-[#f8f7f4] px-3 py-4 text-center text-[10px] font-semibold text-stone-400">
+                                No day media uploaded yet.
+                              </div>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-1 gap-4 border-t border-stone-100 pt-4 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Know Before You Go (one per line)</label>
+                      <textarea rows={4} placeholder="Mobile network availability, permits, weather notes..." value={pkgFormData.knowBeforeYouGo} onChange={(e) => setPkgFormData((prev) => ({ ...prev, knowBeforeYouGo: e.target.value }))} className="w-full px-3 py-2 border border-stone-200 rounded-sm text-sm text-stone-850 focus:outline-none focus:border-[#008080] font-medium" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Things To Carry (one per line)</label>
+                      <textarea rows={4} placeholder="Warm clothes, hiking shoes, water bottle..." value={pkgFormData.thingsToCarry} onChange={(e) => setPkgFormData((prev) => ({ ...prev, thingsToCarry: e.target.value }))} className="w-full px-3 py-2 border border-stone-200 rounded-sm text-sm text-stone-850 focus:outline-none focus:border-[#008080] font-medium" />
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Tour Difficulty (1-10)</label>
+                      <input type="number" min="0" max="10" value={pkgFormData.difficultyLevel} onChange={(e) => setPkgFormData((prev) => ({ ...prev, difficultyLevel: Number(e.target.value) || 0 }))} className="w-full px-3 py-2 border border-stone-200 rounded-sm text-sm text-stone-850 focus:outline-none focus:border-[#008080] font-medium" />
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 border-t border-stone-100 pt-4">
-                    <div className="space-y-3">
-                      <span className="block text-xs font-bold text-stone-800 uppercase tracking-wider">Holiday Inclusions</span>
-                      <div className="flex gap-2">
-                        <input type="text" placeholder="Add an inclusion..." value={newInclusion} onChange={(e) => setNewInclusion(e.target.value)} className="w-full px-3 py-1.5 border border-stone-200 rounded-sm text-xs text-stone-800 focus:outline-none focus:border-[#008080]" />
-                        <button type="button" onClick={handleAddInclusion} className="px-3 bg-[#008080] text-white rounded-sm text-xs font-bold uppercase tracking-wider hover:bg-[#006666] cursor-pointer">Add</button>
-                      </div>
-                      <ul className="space-y-1.5 max-h-40 overflow-y-auto">
-                        {inclusions.map((inc, i) => (
-                          <li key={i} className="flex justify-between items-center text-xs text-stone-600 bg-[#f8f7f4] px-3 py-1.5 rounded-sm border border-stone-200">
-                            <span className="line-clamp-1">{inc}</span>
-                            <button type="button" onClick={() => handleRemoveInclusion(i)} className="text-stone-400 hover:text-red-500 cursor-pointer"><X className="w-3.5 h-3.5" /></button>
-                          </li>
-                        ))}
-                      </ul>
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-stone-800 uppercase tracking-wider" htmlFor="package-inclusions">Holiday Inclusions</label>
+                      <textarea
+                        id="package-inclusions"
+                        rows={8}
+                        value={inclusions.join('\n')}
+                        onChange={(e) => setInclusions(e.target.value.split('\n'))}
+                        placeholder={'Transfers\nHotel accommodation\nBreakfast and dinner'}
+                        className="w-full rounded-sm border border-stone-200 px-3 py-2 text-sm font-medium leading-6 text-stone-800 focus:border-[#008080] focus:outline-none"
+                      />
+                      <p className="text-[10px] font-medium text-stone-400">Paste the complete list at once. Keep one inclusion per line.</p>
                     </div>
 
-                    <div className="space-y-3">
-                      <span className="block text-xs font-bold text-stone-800 uppercase tracking-wider">Holiday Exclusions</span>
-                      <div className="flex gap-2">
-                        <input type="text" placeholder="Add an exclusion..." value={newExclusion} onChange={(e) => setNewExclusion(e.target.value)} className="w-full px-3 py-1.5 border border-stone-200 rounded-sm text-xs text-stone-800 focus:outline-none focus:border-[#008080]" />
-                        <button type="button" onClick={handleAddExclusion} className="px-3 bg-stone-900 text-white rounded-sm text-xs font-bold uppercase tracking-wider hover:bg-stone-800 cursor-pointer">Add</button>
-                      </div>
-                      <ul className="space-y-1.5 max-h-40 overflow-y-auto">
-                        {exclusions.map((exc, i) => (
-                          <li key={i} className="flex justify-between items-center text-xs text-stone-600 bg-[#f8f7f4] px-3 py-1.5 rounded-sm border border-stone-200">
-                            <span className="line-clamp-1">{exc}</span>
-                            <button type="button" onClick={() => handleRemoveExclusion(i)} className="text-stone-400 hover:text-red-500 cursor-pointer"><X className="w-3.5 h-3.5" /></button>
-                          </li>
-                        ))}
-                      </ul>
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-stone-800 uppercase tracking-wider" htmlFor="package-exclusions">Holiday Exclusions</label>
+                      <textarea
+                        id="package-exclusions"
+                        rows={8}
+                        value={exclusions.join('\n')}
+                        onChange={(e) => setExclusions(e.target.value.split('\n'))}
+                        placeholder={'Airfare\nPersonal expenses\nOptional activities'}
+                        className="w-full rounded-sm border border-stone-200 px-3 py-2 text-sm font-medium leading-6 text-stone-800 focus:border-[#008080] focus:outline-none"
+                      />
+                      <p className="text-[10px] font-medium text-stone-400">Paste the complete list at once. Keep one exclusion per line.</p>
                     </div>
                   </div>
                 </div>
@@ -3763,19 +4990,285 @@ function AdminDashboardView({
               <button
                 type="button"
                 onClick={() => setIsPkgFormOpen(false)}
-                className="w-1/2 py-2.5 border border-stone-200 text-stone-600 text-[10px] font-bold uppercase tracking-wider rounded-sm hover:bg-stone-50 transition cursor-pointer"
+                className="w-1/3 py-2.5 border border-stone-200 text-stone-600 text-[10px] font-bold uppercase tracking-wider rounded-sm hover:bg-stone-50 transition cursor-pointer"
               >
                 Discard Changes
               </button>
               <button
+                type="button"
+                onClick={handlePreviewDraft}
+                className="w-1/3 py-2.5 border border-[#008080] text-[#008080] text-[10px] font-bold uppercase tracking-wider rounded-sm hover:bg-teal-50 transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                Preview
+              </button>
+              <button
                 type="submit"
                 form="pkg-form"
-                className="w-1/2 py-2.5 bg-[#008080] hover:bg-[#006666] text-white text-[10px] font-bold uppercase tracking-wider rounded-sm shadow-sm transition cursor-pointer text-center"
+                className="w-1/3 py-2.5 bg-[#008080] hover:bg-[#006666] text-white text-[10px] font-bold uppercase tracking-wider rounded-sm shadow-sm transition cursor-pointer text-center"
               >
                 {editingPkg ? 'Update Package document' : 'Save & Publish Package'}
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* PACKAGE PREVIEW — renders the exact public-site component, no publish */}
+      {/* ==================================================== */}
+      {previewPackage && (
+        <div className="fixed inset-0 z-[80] flex flex-col bg-white">
+          <div className="flex shrink-0 items-center justify-between gap-4 border-b border-stone-200 bg-stone-950 px-4 py-3 text-white">
+            <div className="flex items-center gap-2">
+              <Eye className="h-4 w-4 text-[#4DA528]" />
+              <span className="text-[11px] font-bold uppercase tracking-[0.18em]">Preview — not published</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPreviewPackage(null)}
+              className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white transition hover:bg-white/20"
+            >
+              <X className="h-3.5 w-3.5" />
+              Close Preview
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <Suspense fallback={<div className="p-8 text-sm text-stone-500">Loading preview…</div>}>
+              <PackageDetailView
+                pkg={previewPackage}
+                onBack={() => setPreviewPackage(null)}
+                onEnquirySuccess={() => {}}
+                isAdminLoggedIn={false}
+                wishlistPackageIds={[]}
+                packages={packages}
+                websiteCMS={websiteCMS}
+                hotels={hotels}
+                previewMode
+              />
+            </Suspense>
+          </div>
+        </div>
+      )}
+
+      {isPackageCategoryModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/45 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-[18px] border border-stone-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#008080]">Package Category</p>
+                <h4 className="mt-1 text-xl font-serif text-stone-950">Add new category</h4>
+                <p className="mt-1 text-xs text-stone-500">This category will be selected for the current package and reused from saved packages.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPackageCategoryModalOpen(false)}
+                className="rounded-full p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-stone-900"
+                aria-label="Close category modal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-2">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400">Category Name</label>
+              <input
+                type="text"
+                value={newPackageCategory}
+                onChange={(e) => setNewPackageCategory(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddPackageCategory();
+                  }
+                }}
+                placeholder="E.g. International"
+                autoFocus
+                className="w-full rounded-sm border border-stone-200 px-3 py-2 text-sm font-medium text-stone-850 outline-none transition focus:border-[#008080]"
+              />
+            </div>
+
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setIsPackageCategoryModalOpen(false)}
+                className="flex-1 rounded-sm border border-stone-200 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-stone-600 transition hover:bg-stone-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAddPackageCategory}
+                className="flex-1 rounded-sm bg-[#008080] px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-[#006666]"
+              >
+                Add Category
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isPackageBookingTypeModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/45 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-[18px] border border-stone-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#008080]">Package Booking Type</p>
+                <h4 className="mt-1 text-xl font-serif text-stone-950">Add new booking type</h4>
+                <p className="mt-1 text-xs text-stone-500">The new type will be selected now and remain available for future packages.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPackageBookingTypeModalOpen(false)}
+                className="rounded-full p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-stone-900"
+                aria-label="Close booking type modal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-2">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400">Booking Type Name</label>
+              <input
+                type="text"
+                value={newPackageBookingType}
+                onChange={(e) => setNewPackageBookingType(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddPackageBookingType();
+                  }
+                }}
+                placeholder="E.g. Group Departure"
+                autoFocus
+                className="w-full rounded-sm border border-stone-200 px-3 py-2 text-sm font-medium text-stone-850 outline-none transition focus:border-[#008080]"
+              />
+            </div>
+
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setIsPackageBookingTypeModalOpen(false)}
+                disabled={isPackageBookingTypeSaving}
+                className="flex-1 rounded-sm border border-stone-200 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-stone-600 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAddPackageBookingType}
+                disabled={isPackageBookingTypeSaving}
+                className="flex-1 rounded-sm bg-[#008080] px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-[#006666] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isPackageBookingTypeSaving ? 'Saving...' : 'Add Booking Type'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isPackageActivityModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/45 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-[18px] border border-stone-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#008080]">Homepage Activity</p>
+                <h4 className="mt-1 text-xl font-serif text-stone-950">Add new activity</h4>
+                <p className="mt-1 text-xs text-stone-500">The activity will be selected for this package and shown through the existing homepage activity section.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPackageActivityModalOpen(false)}
+                disabled={isPackageActivitySaving}
+                className="rounded-full p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-stone-900 disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label="Close activity modal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-2">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-400">Activity Name</label>
+              <input
+                type="text"
+                value={newPackageActivityTitle}
+                onChange={(e) => setNewPackageActivityTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddPackageActivity();
+                  }
+                }}
+                placeholder="E.g. Mountain Biking"
+                autoFocus
+                className="w-full rounded-sm border border-stone-200 px-3 py-2 text-sm font-medium text-stone-850 outline-none transition focus:border-[#008080]"
+              />
+            </div>
+
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setIsPackageActivityModalOpen(false)}
+                disabled={isPackageActivitySaving}
+                className="flex-1 rounded-sm border border-stone-200 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-stone-600 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAddPackageActivity}
+                disabled={isPackageActivitySaving}
+                className="flex-1 rounded-sm bg-[#008080] px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-[#006666] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isPackageActivitySaving ? 'Saving...' : 'Add Activity'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================== */}
+      {/* DIALOG: NEW MASTER DATA VALUES FOUND FROM IMPORT */}
+      {/* ==================================================== */}
+      {isImportMasterDataDialogOpen && importMasterDataCandidates.length > 0 && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/45 px-4 backdrop-blur-sm">
+          <div className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-[18px] border border-stone-200 bg-white p-5 shadow-2xl">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#008080]">Import complete</p>
+            <h4 className="mt-1 text-xl font-serif text-stone-950">Create these Master Data values?</h4>
+            <p className="mt-1 text-xs text-stone-500">The package{importMasterDataCandidates.length === 1 ? '' : 's'} you just imported used values that aren't in Master Data yet.</p>
+
+            <div className="mt-4 space-y-3">
+              {importMasterDataCandidates.map((candidate) => (
+                <div key={candidate.key} className="rounded-sm border border-stone-200 bg-[#f8f7f4] p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500">{candidate.label}</p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {candidate.values.map((value) => (
+                      <span key={value} className="rounded-full bg-white border border-stone-200 px-2.5 py-1 text-xs font-semibold text-stone-700">{value}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => { setIsImportMasterDataDialogOpen(false); setImportMasterDataCandidates([]); }}
+                disabled={isCreatingImportMasterData}
+                className="flex-1 rounded-sm border border-stone-200 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-stone-600 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Skip
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateImportMasterData}
+                disabled={isCreatingImportMasterData}
+                className="flex-1 rounded-sm bg-[#008080] px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition hover:bg-[#006666] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isCreatingImportMasterData ? 'Creating...' : 'Create & Continue'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -3827,10 +5320,24 @@ function AdminDashboardView({
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="rounded-[14px] bg-[#f8f7f4] p-4">
                       <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Phone</span>
-                      <a href={`tel:${activeEnquiry.phone}`} className="mt-1 inline-flex items-center gap-2 font-semibold text-stone-900 hover:text-[#008080]">
-                        <Phone className="h-4 w-4" />
-                        {activeEnquiry.phone || 'Not provided'}
-                      </a>
+                      <div className="mt-1 flex items-center gap-3">
+                        <a href={`tel:${activeEnquiry.phone}`} className="inline-flex items-center gap-2 font-semibold text-stone-900 hover:text-[#008080]">
+                          <Phone className="h-4 w-4" />
+                          {activeEnquiry.phone || 'Not provided'}
+                        </a>
+                        {activeEnquiry.phone && (
+                          <a
+                            href={`https://wa.me/${sanitizeWhatsAppPhone(activeEnquiry.phone)}?text=${encodeURIComponent(`Hi ${activeEnquiry.name || ''}, this is Pravaah Travels regarding your enquiry${activeEnquiry.destination ? ` for ${activeEnquiry.destination}` : ''}.`)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700 transition hover:bg-emerald-100"
+                            title="Message on WhatsApp"
+                          >
+                            <MessageCircle className="h-3.5 w-3.5" />
+                            WhatsApp
+                          </a>
+                        )}
+                      </div>
                     </div>
                     <div className="rounded-[14px] bg-[#f8f7f4] p-4">
                       <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Email</span>
@@ -3842,6 +5349,10 @@ function AdminDashboardView({
                     <div className="rounded-[14px] bg-[#f8f7f4] p-4">
                       <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Destination</span>
                       <strong className="mt-1 block text-stone-900">{activeEnquiry.destination || 'Flexible destination'}</strong>
+                    </div>
+                    <div className="rounded-[14px] bg-[#f8f7f4] p-4">
+                      <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Lead Source</span>
+                      <strong className="mt-1 block text-stone-900">{activeEnquiry.source || 'Unknown'}</strong>
                     </div>
                     <div className="rounded-[14px] bg-[#f8f7f4] p-4">
                       <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Travel Date</span>
@@ -3973,6 +5484,11 @@ function AdminDashboardView({
                         <input type="time" value={activeEnquiry.followUpTime || ''} onChange={(e) => updateActiveEnquiryField('followUpTime', e.target.value)} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
                       </label>
                     </div>
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Internal Reminder Date</span>
+                      <input type="date" value={activeEnquiry.reminderDate || ''} onChange={(e) => updateActiveEnquiryField('reminderDate', e.target.value)} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20" />
+                      <span className="mt-1 block text-[10px] text-stone-400">A private nudge for your own team, separate from the customer-facing follow-up date above.</span>
+                    </label>
                     <label className="block">
                       <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Priority</span>
                       <select value={activeEnquiry.priority || 'Medium'} onChange={(e) => updateActiveEnquiryField('priority', e.target.value as EnquiryPriority)} className="w-full rounded-[12px] border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 focus:border-[#008080] focus:outline-none focus:ring-2 focus:ring-[#008080]/20">
@@ -4214,18 +5730,18 @@ function AdminDashboardView({
 
                 {/* Upload Area */}
                 <div className="bg-[#f8f7f4] p-4 rounded-sm border border-stone-200 space-y-2">
-                  <span className="block text-[10px] font-bold text-stone-450 uppercase tracking-wider">Image File *</span>
+                  <span className="block text-[10px] font-bold text-stone-450 uppercase tracking-wider">Image / WebM File *</span>
                   <div className="grid grid-cols-1 gap-2">
                     <div className="border-2 border-dashed border-stone-200 rounded-sm p-3 text-center hover:border-[#008080] transition bg-white relative cursor-pointer">
                       <input
                         type="file"
-                        accept="image/*"
+                        accept={SUPPORTED_MEDIA_ACCEPT}
                         onChange={(e) => handleImageFileChange(e, 'gallery')}
                         className="absolute inset-0 opacity-0 cursor-pointer"
                       />
                       <Upload className="w-5 h-5 text-stone-400 mx-auto mb-1" />
                       <span className="text-[11px] text-stone-600 block font-semibold">
-                        {uploadingImage ? 'Uploading image...' : 'Upload Image File'}
+                        {uploadingImage ? 'Uploading media...' : 'Upload Image or WebM File'}
                       </span>
                     </div>
 
@@ -4233,7 +5749,7 @@ function AdminDashboardView({
 
                     <input
                       type="text"
-                      placeholder="Enter direct image URL"
+                      placeholder="Enter direct image or WebM URL"
                       value={galleryFormData.imageUrl}
                       onChange={(e) => setGalleryFormData((prev) => ({ ...prev, imageUrl: e.target.value }))}
                       className="w-full px-3 py-1.5 border border-stone-200 rounded-sm text-xs text-stone-850 focus:outline-none focus:border-[#008080] bg-white"
@@ -4242,12 +5758,7 @@ function AdminDashboardView({
 
                   {galleryFormData.imageUrl && (
                     <div className="w-full h-24 rounded-sm overflow-hidden border border-stone-200 mt-2 bg-stone-100 relative group">
-                      <img 
-                        src={galleryFormData.imageUrl} 
-                        alt="Preview" 
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
+                      <TravelMedia src={galleryFormData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
                     </div>
                   )}
                 </div>
@@ -4308,14 +5819,14 @@ function AdminDashboardView({
                 <div className="border-2 border-dashed border-stone-200 rounded-sm p-5 text-center hover:border-[#008080] transition bg-stone-50 relative cursor-pointer">
                   <input
                     type="file"
-                    accept="image/*"
+                    accept={SUPPORTED_MEDIA_ACCEPT}
                     multiple
                     onChange={handleMultipleGalleryFilesChange}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
                   <Upload className="w-6 h-6 text-stone-400 mx-auto mb-1.5" />
-                  <span className="text-xs text-stone-700 block font-bold">Select Multiple Photographs</span>
-                  <p className="text-[10px] text-stone-400 mt-0.5">Select one or more travel photos. Client-side compression auto-applied.</p>
+                  <span className="text-xs text-stone-700 block font-bold">Select Multiple Media Files</span>
+                  <p className="text-[10px] text-stone-400 mt-0.5">Select travel photos or WebM videos. Images are compressed automatically.</p>
                 </div>
 
                 {/* Preview Selected Files List */}
@@ -4335,11 +5846,11 @@ function AdminDashboardView({
                     <div className="max-h-44 overflow-y-auto space-y-2 pr-1 border border-stone-100 rounded p-2">
                       {selectedGalleryFiles.map((fileItem, idx) => (
                         <div key={idx} className="flex items-center gap-3 bg-stone-50 p-2 rounded-xs border border-stone-200/40 relative group">
-                          <img
-                            src={fileItem.preview}
-                            alt="preview"
-                            className="w-10 h-10 object-cover rounded-xs"
-                          />
+                          {fileItem.isVideo ? (
+                            <video src={fileItem.preview} className="w-10 h-10 object-cover rounded-xs" muted loop playsInline />
+                          ) : (
+                            <TravelMedia src={fileItem.preview} alt="preview" className="w-10 h-10 object-cover rounded-xs" />
+                          )}
                           <div className="flex-1 min-w-0">
                             <input
                               type="text"
@@ -4492,7 +6003,7 @@ function AdminDashboardView({
                     <input
                       id="review-photo-upload"
                       type="file"
-                      accept="image/*"
+                      accept={SUPPORTED_IMAGE_ACCEPT}
                       onChange={handleReviewImageUpload}
                       disabled={reviewImageUploading}
                       className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed"
@@ -4629,11 +6140,10 @@ function AdminDashboardView({
 
               {editingGalleryImage.imageUrl && (
                 <div className="w-full h-32 rounded border border-stone-200 overflow-hidden bg-stone-50">
-                  <img
+                  <TravelMedia
                     src={editingGalleryImage.imageUrl}
                     alt="Current representation"
                     className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
                   />
                 </div>
               )}
@@ -4813,7 +6323,7 @@ function AdminDashboardView({
                   <div className="border-2 border-dashed border-stone-200 rounded-sm p-4 text-center hover:border-[#008080] transition bg-white relative cursor-pointer">
                     <input
                       type="file"
-                      accept="image/*"
+                      accept={SUPPORTED_IMAGE_ACCEPT}
                       onChange={handleBlogImageUpload}
                       className="absolute inset-0 opacity-0 cursor-pointer"
                     />

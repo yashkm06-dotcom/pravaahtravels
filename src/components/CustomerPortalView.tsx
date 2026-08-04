@@ -1044,8 +1044,9 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
   const handleRemoveSavedPackage = async (savedPkgId: string) => {
     if (!user || !confirm('Are you sure you want to remove this saved package?')) return;
     try {
+      // The live onSnapshot listener set up below already reflects this delete in real time —
+      // calling fetchSavedPackages again here would attach a second, never-cleaned-up listener.
       await deleteDoc(doc(db, 'users', user.uid, 'private', savedPkgId));
-      fetchSavedPackages(user.uid);
     } catch (err: any) {
       console.error('Error deleting saved package:', err);
       alert('We could not remove that saved package. Please try again in a moment.');
@@ -1060,7 +1061,8 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
         fetchCustomerBookings(currentUser.uid);
         fetchPrivateVault(currentUser.uid);
         fetchSavedAiItineraries(currentUser.uid);
-        fetchSavedPackages(currentUser.uid);
+        // Saved packages are subscribed reactively below (keyed on user?.uid) — calling
+        // fetchSavedPackages here too would attach a second, never-cleaned-up listener.
         fetchUserProfile(currentUser.uid);
         fetchRecentCustomerEnquiries(currentUser.email || '');
       } else {

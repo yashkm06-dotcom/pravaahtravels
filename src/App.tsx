@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db, collection, getDocs, query, orderBy, deleteDoc, doc, getDoc, onSnapshot, where, addDoc } from './lib/firebase';
 import { MessageCircle, Sparkles, Compass } from 'lucide-react';
-import { TravelPackage, Enquiry, GalleryImage, WebsiteCMSSettings, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem, DEFAULT_WEBSITE_CMS } from './types';
+import { TravelPackage, Enquiry, GalleryImage, WebsiteCMSSettings, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem, BlogPost, Hotel, DEFAULT_WEBSITE_CMS, CurrencyCode, isCurrencyCode, setDisplayCurrency } from './types';
 
 // Component imports
 import Header from './components/Header';
@@ -10,11 +10,15 @@ import Footer from './components/Footer';
 import LoginModal from './components/LoginModal';
 import SEO from './components/SEO';
 import PremiumEnquiryModal from './components/PremiumEnquiryModal';
+import CookieConsent from './components/CookieConsent';
+import SkeletonLoader from './components/SkeletonLoader';
+import { getNameFromNearbyPlaceSlug } from './utils/nearbyPlaceDetails';
 
 const HomeView = lazy(() => import('./components/HomeView'));
 const AboutView = lazy(() => import('./components/AboutView'));
 const PackagesView = lazy(() => import('./components/PackagesView'));
 const PackageDetailView = lazy(() => import('./components/PackageDetailView'));
+const AttractionDetailView = lazy(() => import('./components/AttractionDetailView'));
 const DestinationsView = lazy(() => import('./components/DestinationsView'));
 const GalleryView = lazy(() => import('./components/GalleryView'));
 const ContactView = lazy(() => import('./components/ContactView'));
@@ -22,6 +26,19 @@ const AdminDashboardView = lazy(() => import('./components/AdminDashboardView'))
 const CustomerPortalView = lazy(() => import('./components/CustomerPortalView'));
 const AiCuratorView = lazy(() => import('./components/AiCuratorView'));
 const VerifiedReviews = lazy(() => import('./components/VerifiedReviews'));
+const BlogsView = lazy(() => import('./components/BlogsView'));
+const BlogDetailView = lazy(() => import('./components/BlogDetailView'));
+
+declare global {
+  interface Window {
+    googleTranslateElementInit?: () => void;
+    google?: {
+      translate?: {
+        TranslateElement?: new (options: Record<string, unknown>, elementId: string) => void;
+      };
+    };
+  }
+}
 
 const RouteViewFallback = () => (
   <div className="flex min-h-[60vh] items-center justify-center bg-[#fffaf1] px-4 py-16">
@@ -76,12 +93,50 @@ const sanitizeWhatsAppPhone = (value?: string) => {
 };
 
 const getCmsWhatsAppPhone = (websiteCMS: Partial<WebsiteCMSSettings>) => {
-  return sanitizeWhatsAppPhone(websiteCMS.footerPhone) || sanitizeWhatsAppPhone(DEFAULT_WEBSITE_CMS.footerPhone);
+  return (
+    sanitizeWhatsAppPhone(websiteCMS.whatsappNumber) ||
+    sanitizeWhatsAppPhone(websiteCMS.primaryPhone) ||
+    sanitizeWhatsAppPhone(websiteCMS.footerPhone) ||
+    sanitizeWhatsAppPhone(DEFAULT_WEBSITE_CMS.whatsappNumber) ||
+    sanitizeWhatsAppPhone(DEFAULT_WEBSITE_CMS.footerPhone)
+  );
 };
 
 const getPackageCanonicalUrl = (pkg: Pick<TravelPackage, 'id' | 'title'>) => {
   if (typeof window === 'undefined') return `/packages/${getPackageRouteSegment(pkg)}`;
   return `${window.location.origin}/packages/${getPackageRouteSegment(pkg)}`;
+};
+
+const SITE_LANGUAGE_OPTIONS = [
+  { code: 'en', label: 'English' },
+  { code: 'hi', label: 'Hindi' },
+  { code: 'fr', label: 'French' },
+  { code: 'de', label: 'German' },
+  { code: 'es', label: 'Spanish' },
+  { code: 'ar', label: 'Arabic' },
+] as const;
+
+const getStoredCurrency = (): CurrencyCode => {
+  if (typeof window === 'undefined') return 'INR';
+  const storedCurrency = window.localStorage.getItem('pravaah.currency');
+  return isCurrencyCode(storedCurrency) ? storedCurrency : 'INR';
+};
+
+const getStoredLanguage = () => {
+  if (typeof window === 'undefined') return 'en';
+  const storedLanguage = window.localStorage.getItem('pravaah.language');
+  return SITE_LANGUAGE_OPTIONS.some((item) => item.code === storedLanguage) ? storedLanguage || 'en' : 'en';
+};
+
+const writeGoogleTranslateCookie = (language: string) => {
+  if (typeof window === 'undefined') return;
+  const value = language === 'en' ? '/en/en' : `/en/${language}`;
+  document.cookie = `googtrans=${value}; path=/; SameSite=Lax`;
+  const host = window.location.hostname;
+  if (host.includes('.')) {
+    const rootDomain = host.split('.').slice(-2).join('.');
+    document.cookie = `googtrans=${value}; path=/; domain=.${rootDomain}; SameSite=Lax`;
+  }
 };
 
 const getRouteStateFromUrl = (): RouteState => {
@@ -91,6 +146,14 @@ const getRouteStateFromUrl = (): RouteState => {
   }
   if (path === '/admin' || path.startsWith('/admin/')) {
     return { view: 'admin-dashboard', packageId: null };
+  }
+  if (path === '/admin-dashboard' || path.startsWith('/admin-dashboard/')) {
+    return { view: 'admin-dashboard', packageId: null };
+  }
+  if (path.startsWith('/attraction/')) {
+    const parts = path.split('/');
+    const placeSlug = parts[2] ? decodeURIComponent(parts[2]) : null;
+    return { view: 'attraction-detail', packageId: placeSlug };
   }
   if (path.startsWith('/package/')) {
     const parts = path.split('/');
@@ -102,6 +165,11 @@ const getRouteStateFromUrl = (): RouteState => {
     const packageSlug = parts[2] ? decodeURIComponent(parts[2]) : null;
     return { view: 'package-detail', packageId: packageSlug };
   }
+  if (path.startsWith('/blogs/')) {
+    const parts = path.split('/');
+    const blogSlug = parts[2] ? decodeURIComponent(parts[2]) : null;
+    return { view: 'blog-detail', packageId: blogSlug };
+  }
   const cleanPath = path.replace(/^\//, ''); // remove leading slash
   if (cleanPath === 'review' || cleanPath === 'reviews') {
     return { view: 'reviews', packageId: null };
@@ -110,6 +178,7 @@ const getRouteStateFromUrl = (): RouteState => {
     'destinations',
     'packages',
     'gallery',
+    'blogs',
     'about',
     'ai-curator',
     'contact',
@@ -120,17 +189,45 @@ const getRouteStateFromUrl = (): RouteState => {
   if (allowedViews.includes(cleanPath)) {
     return { view: cleanPath, packageId: null };
   }
-  return { view: 'home', packageId: null };
+  return { view: 'not-found', packageId: null };
 };
 
 const getUrlFromRouteState = (view: string, packageId: string | null): string => {
+  const path = window.location.pathname;
   if (view === 'home') return '/';
   if (view === 'package-detail' && packageId) return `/packages/${packageId}`;
+  if (view === 'attraction-detail' && packageId) return `/attraction/${packageId}`;
+  if (view === 'blog-detail' && packageId) return `/blogs/${packageId}`;
   if (view === 'reviews') return '/review'; // as explicitly requested
-  if (view === 'admin-dashboard' && (window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/'))) {
-    return window.location.pathname;
+  if (
+    view === 'admin-dashboard' &&
+    (path === '/admin' || path.startsWith('/admin/') || path === '/admin-dashboard' || path.startsWith('/admin-dashboard/'))
+  ) {
+    return path;
   }
   return `/${view}`;
+};
+
+const SCROLL_RESTORE_STORAGE_PREFIX = 'pravaah.scroll.';
+
+const getScrollRestoreKey = () => (
+  `${SCROLL_RESTORE_STORAGE_PREFIX}${window.location.pathname}${window.location.search}${window.location.hash}`
+);
+
+const getInitialScrollRestorePosition = () => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const [navigationEntry] = window.performance?.getEntriesByType?.('navigation') || [];
+    const navigationType = (navigationEntry as PerformanceNavigationTiming | undefined)?.type;
+    const shouldRestore = navigationType === 'reload' || navigationType === 'back_forward';
+    if (!shouldRestore) return null;
+
+    const savedScroll = Number(window.sessionStorage.getItem(getScrollRestoreKey()));
+    return Number.isFinite(savedScroll) && savedScroll > 0 ? savedScroll : null;
+  } catch {
+    return null;
+  }
 };
 
 export default function App() {
@@ -138,6 +235,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<string>(() => {
     return getRouteStateFromUrl().view;
   });
+  const [initialScrollRestorePosition] = useState<number | null>(() => getInitialScrollRestorePosition());
   const [savedPackagesRefreshKey, setSavedPackagesRefreshKey] = useState(0);
   const [wishlistPackages, setWishlistPackages] = useState<any[]>([]);
   const [wishlistToast, setWishlistToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -150,6 +248,12 @@ export default function App() {
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
   const [pendingPostLoginView, setPendingPostLoginView] = useState<string | null>(null);
+  const [selectedCurrency, setSelectedCurrencyState] = useState<CurrencyCode>(() => {
+    const currency = getStoredCurrency();
+    setDisplayCurrency(currency);
+    return currency;
+  });
+  const [selectedLanguage, setSelectedLanguage] = useState(() => getStoredLanguage());
 
   // Firebase auth state
   const [currentUser, setCurrentUser] = useState<any>(auth.currentUser);
@@ -188,10 +292,27 @@ export default function App() {
   const [activityItems, setActivityItems] = useState<ActivityChildItem[]>([]);
   const [activityRecommendations, setActivityRecommendations] = useState<ActivityRecommendation[]>([]);
   const [featuredCategories, setFeaturedCategories] = useState<FeaturedCategoryItem[]>([]);
+  const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
+  const [hotels, setHotels] = useState<Hotel[]>([]);
   const [websiteCMS, setWebsiteCMS] = useState<WebsiteCMSSettings>({} as WebsiteCMSSettings);
 
   // Loading states
   const [loadingData, setLoadingData] = useState(true);
+
+  const handleCurrencyChange = (currency: CurrencyCode) => {
+    setDisplayCurrency(currency);
+    setSelectedCurrencyState(currency);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('pravaah.currency', currency);
+    }
+  };
+
+  const handleLanguageChange = (language: string) => {
+    setSelectedLanguage(language);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('pravaah.language', language);
+    }
+  };
 
   // ----------------------------------------------------
   // FETCH FIRESTORE DATA & ERROR HANDLING TYPES
@@ -247,7 +368,13 @@ export default function App() {
     setLoadingData(true);
 
     const fetchAllCollections = async () => {
-      const [packagesSnapshot, gallerySnapshot, cmsSnap, activitiesSnapshot, activityItemsSnapshot, activityRecommendationsSnapshot, featuredCategoriesSnapshot] = await Promise.all([
+      // Promise.allSettled (not Promise.all): each collection is read independently so that
+      // one failing/rules-blocked query (e.g. a newer collection like hotels/blogs) can never
+      // discard an already-successful siteSettings/main (Website CMS) read. Previously a single
+      // Promise.all meant any one rejection silently dropped every other result, including CMS
+      // data that Firestore had already returned successfully — this is what "restores the read
+      // path" without touching Firestore or writing any defaults.
+      const [packagesResult, galleryResult, cmsResult, activitiesResult, activityItemsResult, activityRecommendationsResult, featuredCategoriesResult, blogsResult, hotelsResult] = await Promise.allSettled([
         getDocs(query(collection(db, 'packages'), orderBy('createdAt', 'desc'))),
         getDocs(query(collection(db, 'gallery'), orderBy('createdAt', 'desc'))),
         getDoc(doc(db, 'siteSettings', 'main')),
@@ -255,44 +382,101 @@ export default function App() {
         getDocs(query(collection(db, 'activityItems'), orderBy('order', 'asc'))),
         getDocs(query(collection(db, 'activityRecommendations'), orderBy('order', 'asc'))),
         getDocs(query(collection(db, 'featuredCategories'), orderBy('order', 'asc'))),
+        getDocs(query(collection(db, 'blogs'), orderBy('createdAt', 'desc'))),
+        getDocs(collection(db, 'hotels')),
       ]);
 
-      const fetchedPackages = packagesSnapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-        location: docSnap.data().location || 'Uttarakhand',
-      })) as TravelPackage[];
-      setPackages(fetchedPackages);
+      if (packagesResult.status === 'fulfilled') {
+        const fetchedPackages = packagesResult.value.docs.map((docSnap) => {
+          const data = docSnap.data() as Partial<TravelPackage>;
+          const cmsCurrentPrice = Number(data.pricing?.price || 0);
+          const cmsOriginalPrice = Number(data.pricing?.originalPrice || 0);
+          const hasCmsOfferPrice = cmsOriginalPrice > 0 && cmsCurrentPrice > 0 && cmsCurrentPrice < cmsOriginalPrice;
+          const legacyPrice = Number(data.price || 0);
+          const legacyOfferPrice = Number(data.offerPrice || 0);
+          const hasLegacyOfferPrice = legacyOfferPrice > 0 && legacyPrice > 0 && legacyOfferPrice < legacyPrice;
 
-      const fetchedGallery: GalleryImage[] = gallerySnapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-      })) as GalleryImage[];
-      fetchedGallery.sort((a, b) => {
-        const aOrder = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER;
-        const bOrder = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER;
-        if (aOrder !== bOrder) return aOrder - bOrder;
-        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-      });
-      setGallery(fetchedGallery);
-
-      if (cmsSnap.exists()) {
-        setWebsiteCMS(cmsSnap.data() as WebsiteCMSSettings);
+          return {
+            id: docSnap.id,
+            ...data,
+            location: data.location || 'Uttarakhand',
+            price: hasCmsOfferPrice ? cmsOriginalPrice : legacyPrice || cmsCurrentPrice,
+            offerPrice: hasCmsOfferPrice ? cmsCurrentPrice : hasLegacyOfferPrice ? legacyOfferPrice : undefined,
+          };
+        }) as TravelPackage[];
+        setPackages(fetchedPackages);
       } else {
-        setWebsiteCMS({} as WebsiteCMSSettings);
+        console.warn('Error fetching packages from Firestore:', packagesResult.reason);
       }
 
-      const fetchedActivities = activitiesSnapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as ActivityItem[];
-      setActivities(fetchedActivities.filter((item) => item.enabled !== false));
+      if (galleryResult.status === 'fulfilled') {
+        const fetchedGallery: GalleryImage[] = galleryResult.value.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        })) as GalleryImage[];
+        fetchedGallery.sort((a, b) => {
+          const aOrder = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER;
+          const bOrder = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER;
+          if (aOrder !== bOrder) return aOrder - bOrder;
+          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+        });
+        setGallery(fetchedGallery);
+      } else {
+        console.warn('Error fetching gallery from Firestore:', galleryResult.reason);
+      }
 
-      const fetchedActivityItems = activityItemsSnapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as ActivityChildItem[];
-      setActivityItems(fetchedActivityItems.filter((item) => item.enabled !== false));
+      if (cmsResult.status === 'fulfilled') {
+        const cmsSnap = cmsResult.value;
+        if (cmsSnap.exists()) {
+          setWebsiteCMS({ ...DEFAULT_WEBSITE_CMS, ...(cmsSnap.data() as Partial<WebsiteCMSSettings>) });
+        } else {
+          setWebsiteCMS(DEFAULT_WEBSITE_CMS);
+        }
+      } else {
+        console.warn('Error fetching Website CMS settings from Firestore:', cmsResult.reason);
+      }
 
-      const fetchedActivityRecommendations = activityRecommendationsSnapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as ActivityRecommendation[];
-      setActivityRecommendations(fetchedActivityRecommendations.filter((item) => item.enabled !== false));
+      if (activitiesResult.status === 'fulfilled') {
+        const fetchedActivities = activitiesResult.value.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as ActivityItem[];
+        setActivities(fetchedActivities.filter((item) => item.enabled !== false));
+      } else {
+        console.warn('Error fetching activities from Firestore:', activitiesResult.reason);
+      }
 
-      const fetchedFeaturedCategories = featuredCategoriesSnapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as FeaturedCategoryItem[];
-      setFeaturedCategories(fetchedFeaturedCategories.filter((item) => item.enabled !== false));
+      if (activityItemsResult.status === 'fulfilled') {
+        const fetchedActivityItems = activityItemsResult.value.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as ActivityChildItem[];
+        setActivityItems(fetchedActivityItems.filter((item) => item.enabled !== false));
+      } else {
+        console.warn('Error fetching activity items from Firestore:', activityItemsResult.reason);
+      }
+
+      if (activityRecommendationsResult.status === 'fulfilled') {
+        const fetchedActivityRecommendations = activityRecommendationsResult.value.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as ActivityRecommendation[];
+        setActivityRecommendations(fetchedActivityRecommendations.filter((item) => item.enabled !== false));
+      } else {
+        console.warn('Error fetching activity recommendations from Firestore:', activityRecommendationsResult.reason);
+      }
+
+      if (featuredCategoriesResult.status === 'fulfilled') {
+        const fetchedFeaturedCategories = featuredCategoriesResult.value.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as FeaturedCategoryItem[];
+        setFeaturedCategories(fetchedFeaturedCategories.filter((item) => item.enabled !== false));
+      } else {
+        console.warn('Error fetching featured categories from Firestore:', featuredCategoriesResult.reason);
+      }
+
+      if (blogsResult.status === 'fulfilled') {
+        const fetchedBlogPosts = blogsResult.value.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as BlogPost[];
+        setBlogPosts(fetchedBlogPosts);
+      } else {
+        console.warn('Error fetching blogs from Firestore:', blogsResult.reason);
+      }
+
+      if (hotelsResult.status === 'fulfilled') {
+        const fetchedHotels = hotelsResult.value.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })) as Hotel[];
+        setHotels(fetchedHotels);
+      } else {
+        console.warn('Error fetching hotels from Firestore:', hotelsResult.reason);
+      }
     };
 
     try {
@@ -368,6 +552,52 @@ export default function App() {
   }, [fetchAllData]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    window.googleTranslateElementInit = () => {
+      const translateElement = window.google?.translate?.TranslateElement;
+      if (translateElement && document.getElementById('google_translate_element')) {
+        new translateElement({
+          pageLanguage: 'en',
+          includedLanguages: SITE_LANGUAGE_OPTIONS.map((item) => item.code).join(','),
+          autoDisplay: false,
+        }, 'google_translate_element');
+      }
+    };
+
+    const existingScript = document.querySelector('script[data-pravaah-google-translate]');
+    if (!existingScript) {
+      const script = document.createElement('script');
+      script.src = '//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
+      script.async = true;
+      script.setAttribute('data-pravaah-google-translate', 'true');
+      document.body.appendChild(script);
+    } else {
+      window.googleTranslateElementInit();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    document.documentElement.lang = selectedLanguage;
+    writeGoogleTranslateCookie(selectedLanguage);
+
+    const applyLanguage = () => {
+      const translateCombo = document.querySelector<HTMLSelectElement>('.goog-te-combo');
+      if (!translateCombo) return false;
+      translateCombo.value = selectedLanguage;
+      translateCombo.dispatchEvent(new Event('change'));
+      return true;
+    };
+
+    if (!applyLanguage()) {
+      const timer = window.setTimeout(applyLanguage, 900);
+      return () => window.clearTimeout(timer);
+    }
+  }, [selectedLanguage]);
+
+  useEffect(() => {
     if (!currentUser?.uid) {
       setWishlistPackages([]);
       return;
@@ -422,6 +652,56 @@ export default function App() {
       window.removeEventListener('popstate', handlePopState);
     };
   }, []);
+
+  useEffect(() => {
+    let animationFrame = 0;
+
+    const saveScrollPosition = () => {
+      try {
+        window.sessionStorage.setItem(getScrollRestoreKey(), String(Math.max(0, Math.round(window.scrollY))));
+      } catch {
+        // Session storage can be unavailable in private contexts; scrolling should still work normally.
+      }
+    };
+
+    const handleScroll = () => {
+      if (animationFrame) return;
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = 0;
+        saveScrollPosition();
+      });
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('pagehide', saveScrollPosition);
+    window.addEventListener('beforeunload', saveScrollPosition);
+
+    return () => {
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('pagehide', saveScrollPosition);
+      window.removeEventListener('beforeunload', saveScrollPosition);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (initialScrollRestorePosition === null) return;
+
+    let attempts = 0;
+    let timeoutId = 0;
+
+    const restoreScrollPosition = () => {
+      window.scrollTo({ top: initialScrollRestorePosition, behavior: 'auto' });
+      attempts += 1;
+
+      if (attempts < 8 && Math.abs(window.scrollY - initialScrollRestorePosition) > 24) {
+        timeoutId = window.setTimeout(restoreScrollPosition, 180);
+      }
+    };
+
+    timeoutId = window.setTimeout(restoreScrollPosition, 120);
+    return () => window.clearTimeout(timeoutId);
+  }, [currentView, initialScrollRestorePosition, loadingData, packages.length]);
 
   useEffect(() => {
     if (!loginModalOpen) return;
@@ -612,14 +892,29 @@ export default function App() {
     )) || null;
   }, [packages, selectedPackageId]);
 
+  const publishedBlogPosts = useMemo(
+    () => blogPosts.filter((post) => post.status === 'Publish'),
+    [blogPosts],
+  );
+
+  const activeSelectedBlogPost = useMemo(() => {
+    if (currentView !== 'blog-detail' || !selectedPackageId) return null;
+    const normalizedSlug = decodeURIComponent(String(selectedPackageId));
+    return publishedBlogPosts.find((post) => (
+      post.slug === normalizedSlug || String(post.id) === normalizedSlug
+    )) || null;
+  }, [currentView, publishedBlogPosts, selectedPackageId]);
+
   const pageSeo = useMemo(() => {
     const baseUrl = typeof window === 'undefined' ? 'https://pravaahtravels.com' : window.location.origin;
+    const companyName = websiteCMS.companyName || DEFAULT_WEBSITE_CMS.companyName || 'Pravaah Travels';
     const fallbackTitle = websiteCMS.seoTitle || DEFAULT_WEBSITE_CMS.seoTitle;
     const fallbackDescription = websiteCMS.seoDescription || DEFAULT_WEBSITE_CMS.seoDescription;
     const fallbackKeywords = websiteCMS.seoKeywords || DEFAULT_WEBSITE_CMS.seoKeywords;
-    const fallbackImage = websiteCMS.heroBackgroundImageUrl || DEFAULT_WEBSITE_CMS.heroBackgroundImageUrl;
-    const phone = websiteCMS.footerPhone || DEFAULT_WEBSITE_CMS.footerPhone;
-    const address = websiteCMS.footerAddress || DEFAULT_WEBSITE_CMS.footerAddress;
+    const fallbackImage = websiteCMS.ogImageUrl || websiteCMS.heroBackgroundImageUrl || DEFAULT_WEBSITE_CMS.ogImageUrl || DEFAULT_WEBSITE_CMS.heroBackgroundImageUrl;
+    const phone = websiteCMS.primaryPhone || websiteCMS.footerPhone || DEFAULT_WEBSITE_CMS.primaryPhone || DEFAULT_WEBSITE_CMS.footerPhone;
+    const email = websiteCMS.primaryEmail || websiteCMS.footerEmail || DEFAULT_WEBSITE_CMS.primaryEmail || DEFAULT_WEBSITE_CMS.footerEmail;
+    const address = websiteCMS.officeAddress || websiteCMS.footerAddress || DEFAULT_WEBSITE_CMS.officeAddress || DEFAULT_WEBSITE_CMS.footerAddress;
 
     const viewMeta: Record<string, { title: string; description: string; canonicalPath: string }> = {
       home: {
@@ -628,39 +923,59 @@ export default function App() {
         canonicalPath: '/',
       },
       packages: {
-        title: 'Premium Travel Packages',
-        description: 'Browse Pravaah Travels packages with curated itineraries, destinations, pricing, and enquiry support.',
+        title: `Premium Travel Packages | ${companyName}`,
+        description: `Browse ${companyName} packages with curated itineraries, destinations, pricing, and enquiry support.`,
         canonicalPath: '/packages',
       },
       destinations: {
-        title: 'Destinations',
-        description: 'Explore pilgrimage, adventure, family, luxury, wildlife, and Himalayan destinations with Pravaah Travels.',
+        title: `Destinations | ${companyName}`,
+        description: `Explore pilgrimage, adventure, family, luxury, wildlife, and Himalayan destinations with ${companyName}.`,
         canonicalPath: '/destinations',
       },
       gallery: {
-        title: 'Travel Gallery',
-        description: 'View Pravaah Travels destination photography, tour galleries, and real Himalayan journey moments.',
+        title: `Travel Gallery | ${companyName}`,
+        description: `View ${companyName} destination photography, tour galleries, and real Himalayan journey moments.`,
         canonicalPath: '/gallery',
       },
+      blogs: {
+        title: `Travel Blog | ${companyName}`,
+        description: `Read ${companyName} travel guides, destination tips, and Himalayan journey stories.`,
+        canonicalPath: '/blogs',
+      },
+      'blog-detail': {
+        title: activeSelectedBlogPost ? `${activeSelectedBlogPost.title} | ${companyName}` : `Travel Blog | ${companyName}`,
+        description: activeSelectedBlogPost?.seoDescription || `Read ${companyName} travel guides and destination stories.`,
+        canonicalPath: activeSelectedBlogPost ? `/blogs/${activeSelectedBlogPost.slug || activeSelectedBlogPost.id}` : '/blogs',
+      },
       about: {
-        title: 'About Pravaah Travels',
-        description: 'Learn about Pravaah Travels, our local travel expertise, and premium Himalayan journey planning.',
+        title: `About ${companyName}`,
+        description: `Learn about ${companyName}, our local travel expertise, and premium Himalayan journey planning.`,
         canonicalPath: '/about',
       },
       contact: {
-        title: 'Contact Pravaah Travels',
-        description: 'Contact Pravaah Travels for custom packages, enquiries, bookings, and support.',
+        title: `Contact ${companyName}`,
+        description: `Contact ${companyName} for custom packages, enquiries, bookings, and support.`,
         canonicalPath: '/contact',
       },
       reviews: {
-        title: 'Verified Travel Reviews',
-        description: 'Read verified Pravaah Travels customer reviews, ratings, and destination experiences.',
+        title: `Verified Travel Reviews | ${companyName}`,
+        description: `Read verified ${companyName} customer reviews, ratings, and destination experiences.`,
         canonicalPath: '/review',
       },
       portal: {
-        title: 'Customer Portal',
-        description: 'Access your Pravaah Travels bookings, saved packages, reviews, and travel dashboard.',
+        title: `Customer Portal | ${companyName}`,
+        description: `Access your ${companyName} bookings, saved packages, reviews, and travel dashboard.`,
         canonicalPath: '/portal',
+      },
+      'attraction-detail': {
+        title: `${getNameFromNearbyPlaceSlug(selectedPackageId || '') || 'Destination Place'} Travel Guide`,
+        description: `Explore location details, directions, and visitor information for ${getNameFromNearbyPlaceSlug(selectedPackageId || '') || 'this destination place'}.`,
+        canonicalPath: `/attraction/${selectedPackageId || ''}`,
+      },
+      'not-found': {
+        title: `Page Not Found | ${companyName}`,
+        description: `The page you're looking for doesn't exist or may have moved. Browse ${companyName} packages and destinations instead.`,
+        canonicalPath: '/not-found',
       },
     };
 
@@ -670,20 +985,54 @@ export default function App() {
     const canonicalUrl = activeSelectedPackage
       ? getPackageCanonicalUrl(activeSelectedPackage)
       : `${baseUrl}${activeMeta.canonicalPath}`;
-    const ogImage = activeSelectedPackage?.packageBannerUrl || activeSelectedPackage?.imageUrl || fallbackImage;
+    const ogImage = activeSelectedPackage?.packageBannerUrl || activeSelectedPackage?.imageUrl || activeSelectedBlogPost?.featuredImageUrl || fallbackImage;
+    const socialUrls = [
+      websiteCMS.socialFacebook,
+      websiteCMS.socialInstagram,
+      websiteCMS.socialLinkedIn,
+      websiteCMS.socialX,
+    ].filter((url): url is string => {
+      if (!url) return false;
+      try {
+        const parsed = new URL(url);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    });
+    const structuredAddress = {
+      '@type': 'PostalAddress',
+      streetAddress: address,
+      addressLocality: websiteCMS.city || DEFAULT_WEBSITE_CMS.city,
+      addressRegion: websiteCMS.state || DEFAULT_WEBSITE_CMS.state,
+      postalCode: websiteCMS.postalCode || DEFAULT_WEBSITE_CMS.postalCode,
+      addressCountry: websiteCMS.country || DEFAULT_WEBSITE_CMS.country,
+    };
+    const travelAgencySchema = {
+      '@type': 'TravelAgency',
+      name: companyName,
+      url: baseUrl,
+      image: ogImage,
+      logo: websiteCMS.logoUrl || DEFAULT_WEBSITE_CMS.logoUrl,
+      description,
+      telephone: phone,
+      email,
+      address: structuredAddress,
+      contactPoint: {
+        '@type': 'ContactPoint',
+        telephone: phone,
+        email,
+        contactType: 'customer service',
+        availableLanguage: ['English', 'Hindi'],
+      },
+      openingHours: websiteCMS.officeWorkingHours || DEFAULT_WEBSITE_CMS.officeWorkingHours,
+      sameAs: socialUrls,
+    };
 
     const schemaMarkup = activeSelectedPackage ? {
       '@context': 'https://schema.org',
       '@graph': [
-        {
-          '@type': 'TravelAgency',
-          name: 'Pravaah Travels',
-          url: baseUrl,
-          image: ogImage,
-          telephone: phone,
-          email: websiteCMS.footerEmail || DEFAULT_WEBSITE_CMS.footerEmail,
-          address,
-        },
+        travelAgencySchema,
         {
           '@type': 'TouristTrip',
           additionalType: 'TourPackage',
@@ -705,16 +1054,40 @@ export default function App() {
           },
         },
       ],
+    } : currentView === 'contact' ? {
+      '@context': 'https://schema.org',
+      '@graph': [
+        travelAgencySchema,
+        {
+          '@type': 'ContactPage',
+          name: activeMeta.title,
+          description: activeMeta.description,
+          url: canonicalUrl,
+          about: companyName,
+          mainEntity: travelAgencySchema,
+        },
+      ],
+    } : currentView === 'blog-detail' && activeSelectedBlogPost ? {
+      '@context': 'https://schema.org',
+      '@graph': [
+        travelAgencySchema,
+        {
+          '@type': 'BlogPosting',
+          headline: activeSelectedBlogPost.title,
+          description,
+          image: ogImage,
+          url: canonicalUrl,
+          datePublished: activeSelectedBlogPost.createdAt,
+          dateModified: activeSelectedBlogPost.updatedAt || activeSelectedBlogPost.createdAt,
+          author: { '@type': 'Person', name: activeSelectedBlogPost.author || companyName },
+          publisher: { '@type': 'Organization', name: companyName, logo: { '@type': 'ImageObject', url: websiteCMS.logoUrl || DEFAULT_WEBSITE_CMS.logoUrl } },
+          articleSection: activeSelectedBlogPost.category,
+          keywords: (activeSelectedBlogPost.tags || []).join(', '),
+        },
+      ],
     } : {
       '@context': 'https://schema.org',
-      '@type': 'TravelAgency',
-      name: 'Pravaah Travels',
-      url: baseUrl,
-      image: ogImage,
-      description,
-      telephone: phone,
-      email: websiteCMS.footerEmail || DEFAULT_WEBSITE_CMS.footerEmail,
-      address,
+      ...travelAgencySchema,
     };
 
     return {
@@ -722,19 +1095,22 @@ export default function App() {
       description,
       keywords: activeSelectedPackage
         ? `${activeSelectedPackage.title}, ${activeSelectedPackage.destination}, ${activeSelectedPackage.category}, ${fallbackKeywords}`
-        : fallbackKeywords,
+        : activeSelectedBlogPost
+          ? `${activeSelectedBlogPost.title}, ${activeSelectedBlogPost.category}, ${(activeSelectedBlogPost.tags || []).join(', ')}, ${activeSelectedBlogPost.seoKeywords || fallbackKeywords}`
+          : fallbackKeywords,
       canonicalUrl,
       ogImage,
       schemaMarkup,
     };
-  }, [activeSelectedPackage, currentView, websiteCMS]);
+  }, [activeSelectedBlogPost, activeSelectedPackage, currentView, selectedPackageId, websiteCMS]);
 
   const showLoginModal = loginModalOpen || currentView === 'admin-login';
 
   // Generate dynamic WhatsApp contact url containing page context
   const getWhatsAppUrl = () => {
     const phone = getCmsWhatsAppPhone(websiteCMS);
-    let text = "Hi Pravaah Travels support team! ";
+    const companyName = websiteCMS.companyName || DEFAULT_WEBSITE_CMS.companyName || 'Pravaah Travels';
+    let text = `Hi ${companyName} support team! `;
 
     switch (currentView) {
       case 'home':
@@ -752,6 +1128,9 @@ export default function App() {
         } else {
           text += "I am viewing tour package details and would like custom guidance on your high-altitude routes.";
         }
+        break;
+      case 'attraction-detail':
+        text += `I am viewing the destination guide for "${getNameFromNearbyPlaceSlug(selectedPackageId || '')}". I would like help including this place in my trip.`;
         break;
       case 'ai-curator':
         text += "I am currently using your 'Pravaah AI Curator Engine' and would like to speak to a Senior Himalayan Sherpa/Logistics Coordinator directly!";
@@ -772,7 +1151,7 @@ export default function App() {
         text += "I am currently logged into my Customer Portal dashboard and would like to enquire about my current bookings or ask for logistics support.";
         break;
       default:
-        text += "I am currently browsing the Pravaah Travels website and would love to consult with a veteran coordinator about customized travel packages.";
+        text += `I am currently browsing the ${companyName} website and would love to consult with a veteran coordinator about customized travel packages.`;
     }
 
     return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
@@ -781,15 +1160,23 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-gray-800 font-sans" id="app-root">
+      <div id="google_translate_element" className="hidden" aria-hidden="true" />
       <SEO
         title={pageSeo.title}
         description={pageSeo.description}
         keywords={pageSeo.keywords}
         canonicalUrl={pageSeo.canonicalUrl}
         ogImage={pageSeo.ogImage}
-        ogType={activeSelectedPackage ? 'travel' : 'website'}
+        ogType={activeSelectedPackage ? 'travel' : currentView === 'attraction-detail' ? 'article' : 'website'}
         schemaMarkup={pageSeo.schemaMarkup}
+        siteName={websiteCMS.companyName || DEFAULT_WEBSITE_CMS.companyName}
+        faviconUrl={websiteCMS.faviconUrl || DEFAULT_WEBSITE_CMS.faviconUrl}
+        twitterImageUrl={websiteCMS.twitterImageUrl || DEFAULT_WEBSITE_CMS.twitterImageUrl}
+        googleAnalyticsId={websiteCMS.googleAnalyticsId || DEFAULT_WEBSITE_CMS.googleAnalyticsId}
+        googleTagManagerId={websiteCMS.googleTagManagerId || DEFAULT_WEBSITE_CMS.googleTagManagerId}
+        facebookPixelId={websiteCMS.facebookPixelId || DEFAULT_WEBSITE_CMS.facebookPixelId}
       />
+      {currentView !== 'admin-dashboard' && <CookieConsent />}
       
       {/* Hide header on full-screen admin dashboard */}
       {currentView !== 'admin-dashboard' && (
@@ -800,6 +1187,11 @@ export default function App() {
           currentUser={currentUser}
           onAdminLogout={handleAdminLogout}
           websiteCMS={websiteCMS}
+          selectedCurrency={selectedCurrency}
+          onCurrencyChange={handleCurrencyChange}
+          selectedLanguage={selectedLanguage}
+          onLanguageChange={handleLanguageChange}
+          packages={packages}
         />
       )}
 
@@ -823,6 +1215,7 @@ export default function App() {
               packages={packages}
               wishlistPackageIds={wishlistPackageIds}
               onToggleWishlist={handleToggleWishlist}
+              blogPosts={publishedBlogPosts}
             />
           )}
 
@@ -866,7 +1259,12 @@ export default function App() {
               onNavigate={handleNavigate}
               packages={packages}
               websiteCMS={websiteCMS}
+              hotels={hotels}
             />
+          )}
+
+          {currentView === 'package-detail' && loadingData && !activeSelectedPackage && (
+            <SkeletonLoader />
           )}
 
           {currentView === 'package-detail' && !loadingData && !activeSelectedPackage && (
@@ -886,8 +1284,41 @@ export default function App() {
             </div>
           )}
 
+          {currentView === 'attraction-detail' && (
+            <AttractionDetailView placeSlug={selectedPackageId} />
+          )}
+
           {currentView === 'gallery' && (
             <GalleryView gallery={gallery} loading={loadingData} />
+          )}
+
+          {currentView === 'blogs' && (
+            <BlogsView blogPosts={blogPosts} onNavigate={handleNavigate} loading={loadingData} />
+          )}
+
+          {currentView === 'blog-detail' && activeSelectedBlogPost && (
+            <BlogDetailView post={activeSelectedBlogPost} allPosts={publishedBlogPosts} onNavigate={handleNavigate} />
+          )}
+
+          {currentView === 'blog-detail' && loadingData && !activeSelectedBlogPost && (
+            <SkeletonLoader />
+          )}
+
+          {currentView === 'blog-detail' && !loadingData && !activeSelectedBlogPost && (
+            <div className="flex min-h-[520px] items-center justify-center bg-white px-4 py-20 text-center">
+              <div className="max-w-md">
+                <Compass className="mx-auto h-12 w-12 text-[#4DA528]" />
+                <h1 className="mt-5 text-3xl font-extrabold text-stone-950">Article not found</h1>
+                <p className="mt-3 text-sm leading-7 text-stone-500">This article may have been removed or unpublished.</p>
+                <button
+                  type="button"
+                  onClick={() => handleNavigate('blogs')}
+                  className="mt-6 rounded-[5px] bg-[#4DA528] px-6 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
+                >
+                  Browse Articles
+                </button>
+              </div>
+            </div>
           )}
 
           {currentView === 'reviews' && (
@@ -904,11 +1335,37 @@ export default function App() {
           )}
 
           {currentView === 'contact' && (
-            <ContactView onEnquirySuccess={fetchAllData} />
+            <ContactView onEnquirySuccess={fetchAllData} websiteCMS={websiteCMS} />
+          )}
+
+          {currentView === 'not-found' && (
+            <div className="flex min-h-[520px] items-center justify-center bg-white px-4 py-20 text-center">
+              <div className="max-w-md">
+                <Compass className="mx-auto h-12 w-12 text-[#4DA528]" />
+                <h1 className="mt-5 text-3xl font-extrabold text-stone-950">404 — Page not found</h1>
+                <p className="mt-3 text-sm leading-7 text-stone-500">The page you're looking for doesn't exist or may have moved.</p>
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleNavigate('home')}
+                    className="rounded-[5px] bg-[#4DA528] px-6 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
+                  >
+                    Back to Home
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleNavigate('packages')}
+                    className="rounded-[5px] border border-stone-200 px-6 py-3 text-xs font-extrabold uppercase tracking-wider text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
+                  >
+                    Browse Packages
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
           {currentView === 'portal' && (
-            <CustomerPortalView 
+            <CustomerPortalView
               onLogout={handleAdminLogout} 
               onNavigateToHome={() => handleNavigate('home')} 
               onNavigate={handleNavigate}
@@ -923,6 +1380,7 @@ export default function App() {
               enquiries={enquiries}
               gallery={gallery}
               activities={activities}
+              hotels={hotels}
               adminEmail={adminEmail}
               onLogout={handleAdminLogout}
               onNavigatePublic={() => handleNavigate('home')}
@@ -990,8 +1448,8 @@ export default function App() {
       )}
 
       {/* Floating Action Buttons Vertical Stack */}
-      {currentView !== 'admin-dashboard' && (
-        <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3" id="floating-actions-stack">
+      {currentView !== 'admin-dashboard' && currentView !== 'package-detail' && (
+        <div className="fixed bottom-3 right-3 z-50 flex max-w-[calc(100vw-1.5rem)] flex-col items-end gap-2 sm:bottom-6 sm:right-6 sm:gap-3" id="floating-actions-stack">
           
           {/* Premium Enquiry Floating Button */}
           <button

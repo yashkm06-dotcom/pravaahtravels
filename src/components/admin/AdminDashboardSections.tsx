@@ -5,6 +5,7 @@ import {
   Calendar, DollarSign, Users, Globe, Eye, ChevronDown, ChevronUp,
   Upload, CheckCircle, Clock, Phone, Mail, MessageSquare, Clipboard, ExternalLink, Star, LineChart as LineChartIcon, RefreshCw,
   Settings, Palette, Home, Megaphone, Images, Heart, Sparkles, ChevronRight, ChevronLeft, AlertCircle,
+  Archive, Copy, Info,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -12,11 +13,13 @@ import {
 } from 'recharts';
 import { db, storage, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, orderBy, writeBatch } from '../../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { TravelPackage, Enquiry, EnquiryPriority, EnquiryStatus, GalleryImage, WebsiteCMSSettings, formatPrice, CustomerProfile, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem, DestinationCategory, type BookingDocumentStatus, type TripChecklistKey, type TripCustomerStatus, type TripDocument, type TripOperationDocument, type TripOperationDocumentType, type TripOperations } from '../../types';
+import { TravelPackage, Enquiry, EnquiryPriority, EnquiryStatus, GalleryImage, WebsiteCMSSettings, DEFAULT_WEBSITE_CMS, formatPrice, CustomerProfile, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem, DestinationCategory, type BookingDocumentStatus, type TripChecklistKey, type TripCustomerStatus, type TripDocument, type TripOperationDocument, type TripOperationDocumentType, type TripOperations } from '../../types';
 import type { PackageActivityLog, PackageImportRecord } from '../../types/packageCms';
 import { TableSkeletonLoader, CardGridSkeletonLoader } from '../SkeletonLoader';
 import { getTravelImage, handleTravelImageError } from '../../utils/imageFallback';
 import { getPackageActivityLogs, getPackageImportHistory } from '../../services/packageCmsService';
+import TravelMedia from '../TravelMedia';
+import { MasterDataItem, sortForDisplay } from '../../utils/masterData';
 
 const toSafeCsvCell = (value: unknown) => {
   const rawValue = String(value ?? '').replace(/\r?\n/g, ' ');
@@ -34,6 +37,17 @@ const escapeReportHtml = (value: unknown) => String(value ?? '').replace(/[&<>"'
   };
   return entities[character] || character;
 });
+
+const SUPPORTED_IMAGE_ACCEPT = '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp';
+const SUPPORTED_MEDIA_ACCEPT = '.jpg,.jpeg,.png,.webp,.webm,image/jpeg,image/png,image/webp,video/webm';
+const SUPPORTED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const SUPPORTED_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
+
+const isSupportedImageFile = (file: File) => {
+  const mimeType = file.type.toLowerCase();
+  const extension = file.name.split('.').pop()?.toLowerCase() || '';
+  return SUPPORTED_IMAGE_MIME_TYPES.includes(mimeType) || SUPPORTED_IMAGE_EXTENSIONS.includes(extension);
+};
 
 interface OverviewTabProps {
   recentBookings: any[];
@@ -227,13 +241,15 @@ export const OverviewTab = React.memo(function OverviewTab(props: OverviewTabPro
 interface ActivitiesTabProps {
   packages: TravelPackage[];
   onRefreshData: () => Promise<void>;
+  masterHomepageCategories: MasterDataItem[];
 }
 
-type ActivityManagerPage = 'dashboard' | 'activities' | 'activity-items' | 'recommendations';
+type ActivityManagerPage = 'dashboard' | 'activities' | 'activity-items' | 'featured-regions' | 'recommendations';
 
 const activityManagerPaths: Record<Exclude<ActivityManagerPage, 'dashboard'>, string> = {
   activities: '/admin/activities',
   'activity-items': '/admin/activity-items',
+  'featured-regions': '/admin/featured-regions',
   recommendations: '/admin/recommendations',
 };
 
@@ -241,9 +257,16 @@ const getInitialActivityManager = (): ActivityManagerPage => {
   if (typeof window === 'undefined') return 'dashboard';
   if (window.location.pathname === '/admin/activities') return 'activities';
   if (window.location.pathname === '/admin/activity-items') return 'activity-items';
+  if (window.location.pathname === '/admin/featured-regions') return 'featured-regions';
   if (window.location.pathname === '/admin/recommendations') return 'recommendations';
   return 'dashboard';
 };
+
+// Homepage Category tabs are Master Data driven (see masterHomepageCategories prop) — this
+// only synthesizes a default description for a category that has no CMS override saved yet.
+const describeHomepageCategory = (item?: MasterDataItem) => (
+  item ? `Feature ${item.name} packages on the homepage.` : ''
+);
 
 function AdminPageHeader({
   eyebrow,
@@ -370,7 +393,16 @@ function AdminImagePreview({ src, label }: { src?: string; label: string }) {
   );
 }
 
-export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
+export function ActivitiesTab({ packages, onRefreshData, masterHomepageCategories }: ActivitiesTabProps) {
+  // Master Data is now the source of truth for which Homepage Category tabs exist — this
+  // section only manages the per-category image/description/linked-packages CMS overrides.
+  const activeHomepageCategories = useMemo(
+    () => sortForDisplay(masterHomepageCategories.filter((item) => item.status === 'active')),
+    [masterHomepageCategories],
+  );
+  const findHomepageCategory = (slug?: string) => (
+    activeHomepageCategories.find((item) => item.slug === slug) || activeHomepageCategories[0]
+  );
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [featuredCategories, setFeaturedCategories] = useState<FeaturedCategoryItem[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
@@ -389,12 +421,12 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
     enabled: true,
   });
   const [activeFeaturedForm, setActiveFeaturedForm] = useState<Partial<FeaturedCategoryItem>>({
-    title: '',
-    slug: '',
-    description: '',
+    title: activeHomepageCategories[0]?.name || '',
+    slug: activeHomepageCategories[0]?.slug || '',
+    description: describeHomepageCategory(activeHomepageCategories[0]),
     imageUrl: '',
-    category: 'Pilgrimage',
-    location: 'Uttarakhand',
+    category: undefined,
+    location: activeHomepageCategories[0]?.name || '',
     packageIds: [],
     enabled: true,
   });
@@ -513,7 +545,7 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
 
   const openManagerDashboard = () => {
     setActiveManager('dashboard');
-    window.history.pushState(null, '', '/admin-dashboard');
+    window.history.pushState(null, '', '/admin-dashboard/activities');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -531,14 +563,15 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
   };
 
   const resetFeaturedForm = () => {
+    const defaultCategory = activeHomepageCategories[0];
     setFeaturedEditingId(null);
     setActiveFeaturedForm({
-      title: '',
-      slug: '',
-      description: '',
+      title: defaultCategory?.name || '',
+      slug: defaultCategory?.slug || '',
+      description: describeHomepageCategory(defaultCategory),
       imageUrl: '',
-      category: 'Pilgrimage',
-      location: 'Uttarakhand',
+      category: undefined,
+      location: defaultCategory?.name || '',
       packageIds: [],
       enabled: true,
     });
@@ -649,23 +682,29 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
 
   const handleFeaturedSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    const slug = activeFeaturedForm.slug?.trim() || serializeSlug(activeFeaturedForm.title || 'featured');
+    const selectedCategory = findHomepageCategory(activeFeaturedForm.slug);
+    if (!selectedCategory) {
+      alert('Add at least one Homepage Category in Master Data before configuring featured slots.');
+      return;
+    }
+    const existingRegionCategory = featuredCategories.find((item) => item.slug === selectedCategory.slug);
     const payload = {
-      title: activeFeaturedForm.title?.trim() || 'Untitled Featured Category',
-      slug,
-      description: activeFeaturedForm.description?.trim() || '',
+      title: selectedCategory.name,
+      slug: selectedCategory.slug,
+      description: activeFeaturedForm.description?.trim() || describeHomepageCategory(selectedCategory),
       imageUrl: activeFeaturedForm.imageUrl?.trim() || '',
-      category: activeFeaturedForm.category || 'Pilgrimage',
-      location: activeFeaturedForm.location || 'Uttarakhand',
+      category: undefined,
+      location: selectedCategory.name,
       packageIds: activeFeaturedForm.packageIds || [],
       enabled: activeFeaturedForm.enabled !== false,
       createdAt: activeFeaturedForm.createdAt || new Date().toISOString(),
-      order: activeFeaturedForm.order ?? featuredCategories.length,
+      order: activeHomepageCategories.findIndex((item) => item.slug === selectedCategory.slug),
     };
 
     try {
-      if (featuredEditingId) {
-        await updateDoc(doc(db, 'featuredCategories', featuredEditingId), payload);
+      const targetId = featuredEditingId || existingRegionCategory?.id;
+      if (targetId) {
+        await updateDoc(doc(db, 'featuredCategories', targetId), payload);
         alert('Featured category updated successfully.');
       } else {
         await addDoc(collection(db, 'featuredCategories'), payload);
@@ -731,6 +770,27 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
   const handleEditFeaturedCategory = (category: FeaturedCategoryItem) => {
     setFeaturedEditingId(category.id);
     setActiveFeaturedForm({ ...category });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleEditFeaturedRegion = (regionSlug: string) => {
+    const category = findHomepageCategory(regionSlug);
+    if (!category) return;
+    const existingCategory = featuredCategories.find((item) => item.slug === category.slug);
+
+    setFeaturedEditingId(existingCategory?.id || null);
+    setActiveFeaturedForm({
+      title: category.name,
+      slug: category.slug,
+      description: existingCategory?.description || describeHomepageCategory(category),
+      imageUrl: existingCategory?.imageUrl || '',
+      category: undefined,
+      location: category.name,
+      packageIds: existingCategory?.packageIds || [],
+      enabled: existingCategory?.enabled !== false,
+      createdAt: existingCategory?.createdAt,
+      order: activeHomepageCategories.findIndex((item) => item.slug === category.slug),
+    });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -829,11 +889,14 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
   };
 
   const uploadActivityItemImage = async (file: File) => {
+    if (!isSupportedImageFile(file)) {
+      throw new Error('Only JPEG, PNG and WEBP images are supported.');
+    }
     setActivityItemImageUploading(true);
     try {
       const fileName = `activityItem_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
       const imageRef = ref(storage, `homepage-cms/${fileName}`);
-      const snapshot = await uploadBytes(imageRef, file);
+      const snapshot = await uploadBytes(imageRef, file, { contentType: file.type || 'image/jpeg' });
       return await getDownloadURL(snapshot.ref);
     } finally {
       setActivityItemImageUploading(false);
@@ -841,11 +904,14 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
   };
 
   const uploadActivityRecommendationImage = async (file: File) => {
+    if (!isSupportedImageFile(file)) {
+      throw new Error('Only JPEG, PNG and WEBP images are supported.');
+    }
     setActivityRecommendationImageUploading(true);
     try {
       const fileName = `activityRecommendation_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
       const imageRef = ref(storage, `homepage-cms/${fileName}`);
-      const snapshot = await uploadBytes(imageRef, file);
+      const snapshot = await uploadBytes(imageRef, file, { contentType: file.type || 'image/jpeg' });
       return await getDownloadURL(snapshot.ref);
     } finally {
       setActivityRecommendationImageUploading(false);
@@ -899,11 +965,14 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
   };
 
   const uploadActivityImage = async (file: File) => {
+    if (!isSupportedImageFile(file)) {
+      throw new Error('Only JPEG, PNG and WEBP images are supported.');
+    }
     setActivityImageUploading(true);
     try {
       const fileName = `activity_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
       const imageRef = ref(storage, `homepage-cms/${fileName}`);
-      const snapshot = await uploadBytes(imageRef, file);
+      const snapshot = await uploadBytes(imageRef, file, { contentType: file.type || 'image/jpeg' });
       return await getDownloadURL(snapshot.ref);
     } finally {
       setActivityImageUploading(false);
@@ -911,11 +980,14 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
   };
 
   const uploadFeaturedImage = async (file: File) => {
+    if (!isSupportedImageFile(file)) {
+      throw new Error('Only JPEG, PNG and WEBP images are supported.');
+    }
     setFeaturedImageUploading(true);
     try {
       const fileName = `featured_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
       const imageRef = ref(storage, `homepage-cms/${fileName}`);
-      const snapshot = await uploadBytes(imageRef, file);
+      const snapshot = await uploadBytes(imageRef, file, { contentType: file.type || 'image/jpeg' });
       return await getDownloadURL(snapshot.ref);
     } finally {
       setFeaturedImageUploading(false);
@@ -950,6 +1022,36 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
       return haystack.includes(normalized);
     });
   }, [featuredCategories, featuredSearch]);
+
+  const featuredRegionCards = useMemo(() => {
+    const normalized = featuredSearch.trim().toLowerCase();
+    return activeHomepageCategories.map((category) => {
+      const existingCategory = featuredCategories.find((item) => item.slug === category.slug);
+      return {
+        region: { title: category.name, slug: category.slug, location: category.name, description: describeHomepageCategory(category) },
+        existingCategory,
+        linkedCount: existingCategory?.packageIds?.length || 0,
+        enabled: existingCategory?.enabled !== false,
+      };
+    }).filter(({ region, existingCategory }) => {
+      if (!normalized) return true;
+      const haystack = [
+        region.title,
+        region.location,
+        region.slug,
+        existingCategory?.description,
+        ...(existingCategory?.packageIds || []),
+      ].join(' ').toLowerCase();
+      return haystack.includes(normalized);
+    });
+  }, [activeHomepageCategories, featuredCategories, featuredSearch]);
+
+  const selectedHomepageCategory = findHomepageCategory(activeFeaturedForm.slug);
+  const selectedFeaturedRegion = {
+    slug: selectedHomepageCategory?.slug || '',
+    title: selectedHomepageCategory?.name || '',
+  };
+  const selectedFeaturedPackageIds = activeFeaturedForm.packageIds || [];
 
   const filteredActivityItems = useMemo(() => {
     const normalized = activityItemSearch.trim().toLowerCase();
@@ -987,6 +1089,13 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
       onOpen: () => openManager('activity-items'),
     },
     {
+      icon: Globe,
+      title: 'Featured Regions',
+      description: 'Link homepage featured packages to each active Homepage Category tab (managed in Master Data).',
+      count: activeHomepageCategories.length,
+      onOpen: () => openManager('featured-regions'),
+    },
+    {
       icon: Sparkles,
       title: 'Recommendations',
       description: 'Curate recommendation cards with prices, ratings, badges, locations, and package links.',
@@ -999,9 +1108,9 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
     <div className="space-y-8 animate-fade-in">
       <AdminPageHeader
         eyebrow="Activities Module"
-        title={activeManager === 'dashboard' ? 'Choose a focused CMS workspace.' : activeManager === 'activities' ? 'Manage homepage activity cards.' : activeManager === 'activity-items' ? 'Manage activity experience cards.' : 'Manage curated recommendations.'}
+        title={activeManager === 'dashboard' ? 'Choose a focused CMS workspace.' : activeManager === 'activities' ? 'Manage homepage activity cards.' : activeManager === 'activity-items' ? 'Manage activity experience cards.' : activeManager === 'featured-regions' ? 'Manage featured tour regions.' : 'Manage curated recommendations.'}
         description={activeManager === 'dashboard'
-          ? 'Activities, activity items, and recommendations now live in focused management pages while reusing the same Firebase CRUD.'
+          ? 'Activities, activity items, featured regions, and recommendations now live in focused management pages while reusing the same Firebase CRUD.'
           : 'Search, edit, upload imagery, reorder, publish, and delete records without changing the existing Firestore collections.'}
         action={activeManager !== 'dashboard' ? (
           <button
@@ -1035,8 +1144,8 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
             </div>
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <form onSubmit={handleActivitySave} className="space-y-5 rounded-[20px] border border-stone-200 bg-[#f7f8f3] p-6">
+          <div className="space-y-6">
+            <form onSubmit={handleActivitySave} className="space-y-5 rounded-[20px] border border-stone-200 bg-linear-to-br from-[#f7f8f3] to-white p-5 sm:p-6">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Title</label>
@@ -1075,18 +1184,25 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
                   <input value={activeActivityForm.imageUrl || ''} onChange={(e) => setActiveActivityForm((prev) => ({ ...prev, imageUrl: e.target.value }))} className="mt-2 w-full rounded-[12px] border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:ring-1 focus:ring-[#4DA528]/30" />
                 </label>
               </div>
-              <label className="rounded-[16px] border border-dashed border-stone-300 bg-white p-4">
-                <span className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Upload activity image</span>
-                <input type="file" accept="image/*" onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const url = await uploadActivityImage(file);
-                  setActiveActivityForm((prev) => ({ ...prev, imageUrl: url }));
-                  e.target.value = '';
-                }} className="mt-3 block w-full text-xs" />
-                <span className="mt-2 block text-xs text-stone-500">{activityImageUploading ? 'Uploading...' : 'Upload or paste direct image URL'}</span>
-              </label>
-              <AdminImagePreview src={activeActivityForm.imageUrl} label="Activity image preview" />
+              <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                <label className="flex min-h-44 flex-col justify-center rounded-[16px] border border-dashed border-stone-300 bg-white p-5 transition hover:border-[#4DA528]/60">
+                  <span className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Upload activity image</span>
+                  <input type="file" accept={SUPPORTED_IMAGE_ACCEPT} onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const url = await uploadActivityImage(file);
+                      setActiveActivityForm((prev) => ({ ...prev, imageUrl: url }));
+                    } catch (error) {
+                      alert(error instanceof Error ? error.message : 'Unable to upload image.');
+                    } finally {
+                      e.target.value = '';
+                    }
+                  }} className="mt-4 block w-full text-xs" />
+                  <span className="mt-3 block text-xs leading-5 text-stone-500">{activityImageUploading ? 'Uploading...' : 'Upload a landscape image or paste a direct image URL above.'}</span>
+                </label>
+                <AdminImagePreview src={activeActivityForm.imageUrl} label="Activity image preview" />
+              </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-stone-500">{activityEditingId ? 'Editing existing activity' : 'Create a new activity entry.'}</div>
                 <div className="flex flex-col gap-3 sm:flex-row">
@@ -1098,37 +1214,48 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
               </div>
             </form>
 
-            <div className="rounded-[20px] border border-stone-200 bg-white p-6">
+            <div className="rounded-[20px] border border-stone-200 bg-[#fbfcf8] p-5 sm:p-6">
               <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h4 className="text-lg font-bold text-stone-950">Activity list</h4>
-                  <p className="text-sm text-stone-500">Search, reorder, and toggle which cards show on the homepage.</p>
+                  <div className="flex items-center gap-3">
+                    <h4 className="text-lg font-bold text-stone-950">Saved activities</h4>
+                    <span className="rounded-full bg-[#4DA528]/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-[#4DA528]">{filteredActivities.length} cards</span>
+                  </div>
+                  <p className="mt-1 text-sm text-stone-500">Saved cards appear below the editor in their homepage order.</p>
                 </div>
                 <AdminSearchBar value={activitySearch} onChange={setActivitySearch} placeholder="Search activities" />
               </div>
-              <div className="space-y-4">
+              <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
                 {loadingActivities ? (
-                  <AdminLoadingState label="Loading activities..." />
+                  <div className="md:col-span-2 2xl:col-span-3"><AdminLoadingState label="Loading activities..." /></div>
                 ) : filteredActivities.length === 0 ? (
-                  <AdminEmptyState icon={Compass} title="No activities match your search." description="Try a broader title, subtitle, category, or location keyword." />
+                  <div className="md:col-span-2 2xl:col-span-3"><AdminEmptyState icon={Compass} title="No activities match your search." description="Try a broader title, subtitle, category, or location keyword." /></div>
                 ) : (
                   filteredActivities.map((activity, index) => (
-                    <div key={activity.id} className="rounded-[18px] border border-stone-200 p-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <h5 className="text-sm font-bold text-stone-950">{activity.title}</h5>
-                          <p className="text-xs text-stone-500">{activity.subtitle || activity.category} • {activity.location || 'Uttarakhand'}</p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button type="button" onClick={() => reorderDocuments(filteredActivities, activity.id, 'up', 'activities')} disabled={index === 0} className="rounded-[10px] border border-stone-200 bg-white px-3 py-2 text-xs font-bold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528] disabled:cursor-not-allowed disabled:opacity-50">Up</button>
-                          <button type="button" onClick={() => reorderDocuments(filteredActivities, activity.id, 'down', 'activities')} disabled={index === filteredActivities.length - 1} className="rounded-[10px] border border-stone-200 bg-white px-3 py-2 text-xs font-bold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528] disabled:cursor-not-allowed disabled:opacity-50">Down</button>
-                          <button type="button" onClick={() => handleEditActivity(activity)} className="rounded-[10px] border border-stone-200 bg-[#f7f8f3] px-3 py-2 text-xs font-bold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]">Edit</button>
-                          <button type="button" onClick={() => handleDeleteActivity(activity.id)} disabled={getActivityPackageCount(activity.id) > 0 || activityItems.some((item) => item.activityId === activity.id) || activityRecommendations.some((item) => item.activityId === activity.id)} title={activityItems.some((item) => item.activityId === activity.id) || activityRecommendations.some((item) => item.activityId === activity.id) || getActivityPackageCount(activity.id) > 0 ? 'Remove linked packages, activity items, and recommendations before deleting.' : 'Delete activity'} className="rounded-[10px] border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50">Delete</button>
-                          <button type="button" onClick={() => handleToggleActivityStatus(activity)} className={`rounded-[10px] px-3 py-2 text-xs font-bold ${activity.enabled ? 'border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border border-stone-200 bg-white text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'}`}>{activity.enabled ? 'Enabled' : 'Disabled'}</button>
+                    <article key={activity.id} className="group flex min-h-full flex-col overflow-hidden rounded-[18px] border border-stone-200 bg-white shadow-[0_10px_28px_rgba(18,38,32,0.06)] transition duration-300 hover:-translate-y-1 hover:border-[#4DA528]/40 hover:shadow-[0_18px_38px_rgba(18,38,32,0.12)]">
+                      <div className="relative aspect-[16/9] overflow-hidden bg-stone-100">
+                        <img src={getTravelImage(activity.imageUrl)} alt={activity.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" loading="lazy" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+                        <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-3">
+                          <span className="rounded-full bg-black/70 px-3 py-1 text-[9px] font-extrabold uppercase tracking-wider text-white backdrop-blur-sm">#{index + 1} · {activity.category}</span>
+                          <button type="button" onClick={() => handleToggleActivityStatus(activity)} className={`rounded-full px-3 py-1 text-[9px] font-extrabold uppercase tracking-wider shadow-sm backdrop-blur-sm ${activity.enabled ? 'bg-emerald-500 text-white' : 'bg-white/90 text-stone-600'}`}>{activity.enabled ? 'Live' : 'Hidden'}</button>
+                      </div>
+                      </div>
+                      <div className="flex flex-1 flex-col p-5">
+                        <h5 className="text-base font-extrabold text-stone-950">{activity.title}</h5>
+                        <p className="mt-1 text-xs font-semibold text-[#4DA528]">{activity.subtitle || activity.category} · {activity.location || 'Uttarakhand'}</p>
+                        <p className="mt-3 line-clamp-3 text-sm leading-6 text-stone-500">{activity.description}</p>
+                        <div className="mt-auto flex items-center justify-between gap-3 border-t border-stone-100 pt-4">
+                          <div className="flex items-center gap-2">
+                            <button type="button" title="Move activity up" aria-label="Move activity up" onClick={() => reorderDocuments(filteredActivities, activity.id, 'up', 'activities')} disabled={index === 0} className="flex h-9 w-9 items-center justify-center rounded-[9px] border border-stone-200 bg-white text-stone-600 transition hover:border-[#4DA528] hover:text-[#4DA528] disabled:cursor-not-allowed disabled:opacity-35"><ChevronUp className="h-4 w-4" /></button>
+                            <button type="button" title="Move activity down" aria-label="Move activity down" onClick={() => reorderDocuments(filteredActivities, activity.id, 'down', 'activities')} disabled={index === filteredActivities.length - 1} className="flex h-9 w-9 items-center justify-center rounded-[9px] border border-stone-200 bg-white text-stone-600 transition hover:border-[#4DA528] hover:text-[#4DA528] disabled:cursor-not-allowed disabled:opacity-35"><ChevronDown className="h-4 w-4" /></button>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button type="button" title="Edit activity" aria-label={`Edit ${activity.title}`} onClick={() => handleEditActivity(activity)} className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-[#f2f6ec] text-[#4DA528] transition hover:bg-[#4DA528] hover:text-white"><Edit2 className="h-4 w-4" /></button>
+                            <button type="button" title={activityItems.some((item) => item.activityId === activity.id) || activityRecommendations.some((item) => item.activityId === activity.id) || getActivityPackageCount(activity.id) > 0 ? 'Remove linked packages, activity items, and recommendations before deleting.' : 'Delete activity'} aria-label={`Delete ${activity.title}`} onClick={() => handleDeleteActivity(activity.id)} disabled={getActivityPackageCount(activity.id) > 0 || activityItems.some((item) => item.activityId === activity.id) || activityRecommendations.some((item) => item.activityId === activity.id)} className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-rose-50 text-rose-600 transition hover:bg-rose-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"><Trash2 className="h-4 w-4" /></button>
+                          </div>
                         </div>
                       </div>
-                      <p className="mt-3 text-sm leading-6 text-stone-500 line-clamp-3">{activity.description}</p>
-                    </div>
+                    </article>
                   ))
                 )}
               </div>
@@ -1149,8 +1276,8 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
             </div>
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <form onSubmit={handleActivityItemSave} className="space-y-5 rounded-[20px] border border-stone-200 bg-[#f7f8f3] p-6">
+          <div className="space-y-6">
+            <form onSubmit={handleActivityItemSave} className="space-y-5 rounded-[20px] border border-stone-200 bg-linear-to-br from-[#f7f8f3] to-white p-5 sm:p-6">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Activity</label>
@@ -1194,18 +1321,25 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
                   <input value={activeActivityItemForm.thumbnailUrl || ''} onChange={(e) => setActiveActivityItemForm((prev) => ({ ...prev, thumbnailUrl: e.target.value }))} className="mt-2 w-full rounded-[12px] border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:ring-1 focus:ring-[#4DA528]/30" />
                 </div>
               </div>
-              <label className="rounded-[16px] border border-dashed border-stone-300 bg-white p-4">
-                <span className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Upload thumbnail image</span>
-                <input type="file" accept="image/*" onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const url = await uploadActivityItemImage(file);
-                  setActiveActivityItemForm((prev) => ({ ...prev, thumbnailUrl: url }));
-                  e.target.value = '';
-                }} className="mt-3 block w-full text-xs" />
-                <span className="mt-2 block text-xs text-stone-500">{activityItemImageUploading ? 'Uploading...' : 'Upload or paste direct image URL'}</span>
-              </label>
-              <AdminImagePreview src={activeActivityItemForm.thumbnailUrl} label="Activity item thumbnail preview" />
+              <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                <label className="flex min-h-44 flex-col justify-center rounded-[16px] border border-dashed border-stone-300 bg-white p-5 transition hover:border-[#4DA528]/60">
+                  <span className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Upload thumbnail image</span>
+                  <input type="file" accept={SUPPORTED_IMAGE_ACCEPT} onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const url = await uploadActivityItemImage(file);
+                      setActiveActivityItemForm((prev) => ({ ...prev, thumbnailUrl: url }));
+                    } catch (error) {
+                      alert(error instanceof Error ? error.message : 'Unable to upload image.');
+                    } finally {
+                      e.target.value = '';
+                    }
+                  }} className="mt-4 block w-full text-xs" />
+                  <span className="mt-3 block text-xs leading-5 text-stone-500">{activityItemImageUploading ? 'Uploading...' : 'Upload a landscape thumbnail or paste a direct image URL above.'}</span>
+                </label>
+                <AdminImagePreview src={activeActivityItemForm.thumbnailUrl} label="Activity item thumbnail preview" />
+              </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-stone-500">{activityItemEditingId ? 'Editing existing activity item' : 'Create a new activity experience card.'}</div>
                 <div className="flex flex-col gap-3 sm:flex-row">
@@ -1217,46 +1351,243 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
               </div>
             </form>
 
-            <div className="rounded-[20px] border border-stone-200 bg-white p-6">
+            <div className="rounded-[20px] border border-stone-200 bg-[#fbfcf8] p-5 sm:p-6">
               <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h4 className="text-lg font-bold text-stone-950">Activity items</h4>
-                  <p className="text-sm text-stone-500">Search, reorder, and publish child experience cards.</p>
+                  <div className="flex items-center gap-3">
+                    <h4 className="text-lg font-bold text-stone-950">Saved activity items</h4>
+                    <span className="rounded-full bg-[#4DA528]/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-[#4DA528]">{filteredActivityItems.length} cards</span>
+                  </div>
+                  <p className="mt-1 text-sm text-stone-500">Experience cards are arranged below the editor for quick management.</p>
                 </div>
                 <AdminSearchBar value={activityItemSearch} onChange={setActivityItemSearch} placeholder="Search activity items" />
               </div>
-              <div className="space-y-4">
+              <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
                 {loadingActivityItems ? (
-                  <AdminLoadingState label="Loading activity items..." />
+                  <div className="md:col-span-2 2xl:col-span-3"><AdminLoadingState label="Loading activity items..." /></div>
                 ) : filteredActivityItems.length === 0 ? (
-                  <AdminEmptyState icon={Package} title="No activity items match your search." description="Search by title, subtitle, description, or linked package ID." />
+                  <div className="md:col-span-2 2xl:col-span-3"><AdminEmptyState icon={Package} title="No activity items match your search." description="Search by title, subtitle, description, or linked package ID." /></div>
                 ) : (
                   filteredActivityItems.map((item, index) => {
                     const itemActivity = activities.find((activity) => activity.id === item.activityId);
                     const linkedPackage = packages.find((pkg) => pkg.id === item.linkedPackageId);
                     return (
-                      <div key={item.id} className="rounded-[18px] border border-stone-200 p-4">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <h5 className="text-sm font-bold text-stone-950">{item.title}</h5>
-                            <p className="text-xs text-stone-500">{itemActivity?.title || 'Activity'} • {item.subtitle || 'Experience card'} • {linkedPackage?.title ? `Package: ${linkedPackage.title}` : 'No package linked'}</p>
+                      <article key={item.id} className="group flex min-h-full flex-col overflow-hidden rounded-[18px] border border-stone-200 bg-white shadow-[0_10px_28px_rgba(18,38,32,0.06)] transition duration-300 hover:-translate-y-1 hover:border-[#4DA528]/40 hover:shadow-[0_18px_38px_rgba(18,38,32,0.12)]">
+                        <div className="relative aspect-[16/9] overflow-hidden bg-stone-100">
+                          <img src={getTravelImage(item.thumbnailUrl)} alt={item.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" loading="lazy" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+                          <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-3">
+                            <span className="max-w-[70%] truncate rounded-full bg-black/70 px-3 py-1 text-[9px] font-extrabold uppercase tracking-wider text-white backdrop-blur-sm">{itemActivity?.title || 'Activity'}</span>
+                            <button type="button" onClick={() => handleToggleActivityItemStatus(item)} className={`rounded-full px-3 py-1 text-[9px] font-extrabold uppercase tracking-wider shadow-sm backdrop-blur-sm ${item.enabled ? 'bg-emerald-500 text-white' : 'bg-white/90 text-stone-600'}`}>{item.enabled ? 'Live' : 'Hidden'}</button>
+                        </div>
+                        </div>
+                        <div className="flex flex-1 flex-col p-5">
+                          <h5 className="text-base font-extrabold text-stone-950">{item.title}</h5>
+                          <p className="mt-1 truncate text-xs font-semibold text-[#4DA528]">{item.subtitle || 'Experience card'} · {linkedPackage?.title ? linkedPackage.title : 'No package linked'}</p>
+                          <p className="mt-3 line-clamp-3 text-sm leading-6 text-stone-500">{item.description}</p>
+                          <div className="mt-4 flex items-center justify-between gap-3">
+                            <span className="rounded-full bg-[#4DA528]/10 px-3 py-1.5 text-xs font-extrabold text-[#4DA528]">{formatPrice(item.startingPrice || 0)}</span>
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-stone-400">Order {index + 1}</span>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <button type="button" onClick={() => reorderDocuments(filteredActivityItems, item.id, 'up', 'activityItems')} disabled={index === 0} className="rounded-[10px] border border-stone-200 bg-white px-3 py-2 text-xs font-bold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528] disabled:cursor-not-allowed disabled:opacity-50">Up</button>
-                            <button type="button" onClick={() => reorderDocuments(filteredActivityItems, item.id, 'down', 'activityItems')} disabled={index === filteredActivityItems.length - 1} className="rounded-[10px] border border-stone-200 bg-white px-3 py-2 text-xs font-bold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528] disabled:cursor-not-allowed disabled:opacity-50">Down</button>
-                            <button type="button" onClick={() => handleEditActivityItem(item)} className="rounded-[10px] border border-stone-200 bg-[#f7f8f3] px-3 py-2 text-xs font-bold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]">Edit</button>
-                            <button type="button" onClick={() => handleDeleteActivityItem(item.id)} className="rounded-[10px] border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100">Delete</button>
-                            <button type="button" onClick={() => handleToggleActivityItemStatus(item)} className={`rounded-[10px] px-3 py-2 text-xs font-bold ${item.enabled ? 'border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border border-stone-200 bg-white text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'}`}>{item.enabled ? 'Enabled' : 'Disabled'}</button>
+                          <div className="mt-auto flex items-center justify-between gap-3 border-t border-stone-100 pt-4">
+                            <div className="flex items-center gap-2">
+                              <button type="button" title="Move activity item up" aria-label="Move activity item up" onClick={() => reorderDocuments(filteredActivityItems, item.id, 'up', 'activityItems')} disabled={index === 0} className="flex h-9 w-9 items-center justify-center rounded-[9px] border border-stone-200 bg-white text-stone-600 transition hover:border-[#4DA528] hover:text-[#4DA528] disabled:cursor-not-allowed disabled:opacity-35"><ChevronUp className="h-4 w-4" /></button>
+                              <button type="button" title="Move activity item down" aria-label="Move activity item down" onClick={() => reorderDocuments(filteredActivityItems, item.id, 'down', 'activityItems')} disabled={index === filteredActivityItems.length - 1} className="flex h-9 w-9 items-center justify-center rounded-[9px] border border-stone-200 bg-white text-stone-600 transition hover:border-[#4DA528] hover:text-[#4DA528] disabled:cursor-not-allowed disabled:opacity-35"><ChevronDown className="h-4 w-4" /></button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button type="button" title="Edit activity item" aria-label={`Edit ${item.title}`} onClick={() => handleEditActivityItem(item)} className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-[#f2f6ec] text-[#4DA528] transition hover:bg-[#4DA528] hover:text-white"><Edit2 className="h-4 w-4" /></button>
+                              <button type="button" title="Delete activity item" aria-label={`Delete ${item.title}`} onClick={() => handleDeleteActivityItem(item.id)} className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-rose-50 text-rose-600 transition hover:bg-rose-600 hover:text-white"><Trash2 className="h-4 w-4" /></button>
+                            </div>
                           </div>
                         </div>
-                        <p className="mt-3 text-sm leading-6 text-stone-500 line-clamp-3">{item.description}</p>
-                      </div>
+                      </article>
                     );
                   })
                 )}
               </div>
             </div>
           </div>
+        </div>
+      </section>
+      )}
+
+      {activeManager === 'featured-regions' && (
+      <section className="space-y-8">
+        <div className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Featured Regions</span>
+              <h3 className="mt-2 text-2xl font-extrabold text-stone-950">Homepage tour tabs</h3>
+              <p className="mt-2 text-sm leading-6 text-stone-500">Tabs are managed in Master Data → Homepage Categories (Add, Edit, Delete, Order, Active/Inactive). Link packages here to control what shows under each active tab.</p>
+            </div>
+          </div>
+
+          {activeHomepageCategories.length === 0 ? (
+            <AdminEmptyState icon={Globe} title="No active Homepage Categories yet." description="Go to Master Data → Homepage Categories and add at least one active category before configuring featured slots." />
+          ) : (
+          <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+            <form onSubmit={handleFeaturedSave} className="space-y-5 rounded-[20px] border border-stone-200 bg-linear-to-br from-[#f7f8f3] to-white p-5 sm:p-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Featured region</label>
+                  <select
+                    value={selectedFeaturedRegion.slug}
+                    onChange={(event) => handleEditFeaturedRegion(event.target.value)}
+                    className="mt-2 w-full rounded-[12px] border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:ring-1 focus:ring-[#4DA528]/30"
+                  >
+                    {activeHomepageCategories.map((category) => (
+                      <option key={category.slug} value={category.slug}>{category.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Homepage label</label>
+                  <input value={selectedFeaturedRegion.title} readOnly className="mt-2 w-full rounded-[12px] border border-stone-200 bg-stone-50 px-4 py-3 text-sm font-semibold text-stone-600 outline-none" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Description</label>
+                <textarea value={activeFeaturedForm.description || ''} onChange={(e) => setActiveFeaturedForm((prev) => ({ ...prev, description: e.target.value }))} rows={3} className="mt-2 w-full rounded-[12px] border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:ring-1 focus:ring-[#4DA528]/30" />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="flex items-center gap-3 rounded-[12px] border border-stone-200 bg-white px-4 py-3 text-sm">
+                  <input type="checkbox" checked={activeFeaturedForm.enabled ?? true} onChange={(e) => setActiveFeaturedForm((prev) => ({ ...prev, enabled: e.target.checked }))} className="h-4 w-4 rounded border-stone-300 text-[#4DA528] focus:ring-[#4DA528]" />
+                  <span className="text-stone-700">Show this region on homepage</span>
+                </label>
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">
+                  Image URL
+                  <input value={activeFeaturedForm.imageUrl || ''} onChange={(e) => setActiveFeaturedForm((prev) => ({ ...prev, imageUrl: e.target.value }))} className="mt-2 w-full rounded-[12px] border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:ring-1 focus:ring-[#4DA528]/30" />
+                </label>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                <label className="flex min-h-40 flex-col justify-center rounded-[16px] border border-dashed border-stone-300 bg-white p-5 transition hover:border-[#4DA528]/60">
+                  <span className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Upload region image</span>
+                  <input type="file" accept={SUPPORTED_IMAGE_ACCEPT} onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const url = await uploadFeaturedImage(file);
+                      setActiveFeaturedForm((prev) => ({ ...prev, imageUrl: url }));
+                    } catch (error) {
+                      alert(error instanceof Error ? error.message : 'Unable to upload image.');
+                    } finally {
+                      e.target.value = '';
+                    }
+                  }} className="mt-4 block w-full text-xs" />
+                  <span className="mt-3 block text-xs leading-5 text-stone-500">{featuredImageUploading ? 'Uploading...' : 'Optional image for admin preview.'}</span>
+                </label>
+                <AdminImagePreview src={activeFeaturedForm.imageUrl} label={`${selectedFeaturedRegion.title} preview`} />
+              </div>
+
+              <div>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Linked packages</label>
+                    <p className="mt-1 text-xs text-stone-500">Selected packages will show under this homepage tab.</p>
+                  </div>
+                  <span className="rounded-full bg-[#4DA528]/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-[#4DA528]">{selectedFeaturedPackageIds.length} linked</span>
+                </div>
+                <div className="max-h-[360px] space-y-2 overflow-y-auto rounded-[16px] border border-stone-200 bg-white p-3">
+                  {packages.length === 0 ? (
+                    <p className="p-4 text-sm text-stone-500">No packages available to link yet.</p>
+                  ) : (
+                    packages.map((pkg) => {
+                      const checked = selectedFeaturedPackageIds.includes(pkg.id);
+                      return (
+                        <label key={pkg.id} className={`flex cursor-pointer items-center gap-3 rounded-[12px] border px-3 py-3 transition ${checked ? 'border-[#4DA528]/40 bg-[#4DA528]/8' : 'border-stone-100 bg-white hover:border-[#4DA528]/30'}`}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) => {
+                              setActiveFeaturedForm((prev) => {
+                                const currentIds = prev.packageIds || [];
+                                return {
+                                  ...prev,
+                                  packageIds: event.target.checked
+                                    ? Array.from(new Set([...currentIds, pkg.id]))
+                                    : currentIds.filter((id) => id !== pkg.id),
+                                };
+                              });
+                            }}
+                            className="h-4 w-4 rounded border-stone-300 text-[#4DA528] focus:ring-[#4DA528]"
+                          />
+                          <img src={getTravelImage(pkg.imageUrl)} alt={pkg.title} className="h-12 w-14 rounded-[8px] object-cover" loading="lazy" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-bold text-stone-900">{pkg.title}</span>
+                            <span className="mt-0.5 block truncate text-xs text-stone-500">{pkg.location || pkg.destination} · {formatPrice(pkg.offerPrice || pkg.price)}</span>
+                          </span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-stone-500">{featuredEditingId ? 'Updating existing region slot.' : 'Creating this region slot in the existing featuredCategories collection.'}</div>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button type="button" onClick={resetFeaturedForm} className="rounded-[12px] border border-stone-200 bg-white px-4 py-3 text-sm font-bold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]">Reset</button>
+                  <button type="submit" className="rounded-[12px] bg-[#4DA528] px-5 py-3 text-sm font-bold uppercase tracking-[0.1em] text-white transition hover:bg-[#FF970D]">Save region</button>
+                </div>
+              </div>
+            </form>
+
+            <div className="rounded-[20px] border border-stone-200 bg-[#fbfcf8] p-5 sm:p-6">
+              <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <h4 className="text-lg font-bold text-stone-950">Region slots</h4>
+                    <span className="rounded-full bg-[#4DA528]/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-[#4DA528]">{activeHomepageCategories.length} {activeHomepageCategories.length === 1 ? 'tab' : 'tabs'}</span>
+                  </div>
+                  <p className="mt-1 text-sm text-stone-500">These are the active Homepage Category tabs rendered on the homepage, in Display Order.</p>
+                </div>
+                <AdminSearchBar value={featuredSearch} onChange={setFeaturedSearch} placeholder="Search regions" />
+              </div>
+
+              <div className="grid gap-4">
+                {loadingFeaturedCategories ? (
+                  <AdminLoadingState label="Loading featured regions..." />
+                ) : featuredRegionCards.length === 0 ? (
+                  <AdminEmptyState icon={Globe} title="No region matched your search." description="Clear the search to see all active homepage category slots." />
+                ) : (
+                  featuredRegionCards.map(({ region, existingCategory, linkedCount, enabled }) => (
+                    <article key={region.slug} className="rounded-[18px] border border-stone-200 bg-white p-4 shadow-[0_10px_28px_rgba(18,38,32,0.05)]">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 items-center gap-4">
+                          <div className="h-16 w-20 overflow-hidden rounded-[12px] bg-stone-100">
+                            <img src={getTravelImage(existingCategory?.imageUrl || '')} alt={region.title} className="h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h5 className="text-base font-extrabold text-stone-950">{region.title}</h5>
+                              <span className={`rounded-full px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-wider ${enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>{enabled ? 'Live' : 'Hidden'}</span>
+                              {!existingCategory && <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-wider text-amber-700">Not saved</span>}
+                            </div>
+                            <p className="mt-1 text-xs text-stone-500">{existingCategory?.description || region.description}</p>
+                            <p className="mt-2 text-[10px] font-extrabold uppercase tracking-wider text-[#4DA528]">{linkedCount} linked packages</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {existingCategory && (
+                            <button type="button" title={enabled ? 'Hide region' : 'Show region'} aria-label={`${enabled ? 'Hide' : 'Show'} ${region.title}`} onClick={() => handleToggleFeaturedStatus(existingCategory)} className="flex h-9 w-9 items-center justify-center rounded-[9px] border border-stone-200 bg-white text-stone-600 transition hover:border-[#4DA528] hover:text-[#4DA528]">
+                              <Eye className="h-4 w-4" />
+                            </button>
+                          )}
+                          <button type="button" title={`Edit ${region.title}`} aria-label={`Edit ${region.title}`} onClick={() => handleEditFeaturedRegion(region.slug)} className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-[#f2f6ec] text-[#4DA528] transition hover:bg-[#4DA528] hover:text-white"><Edit2 className="h-4 w-4" /></button>
+                          {existingCategory && (
+                            <button type="button" title={`Delete ${region.title} slot`} aria-label={`Delete ${region.title} slot`} onClick={() => handleDeleteFeaturedCategory(existingCategory.id)} className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-rose-50 text-rose-600 transition hover:bg-rose-600 hover:text-white"><Trash2 className="h-4 w-4" /></button>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+          )}
         </div>
       </section>
       )}
@@ -1272,8 +1603,8 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
             </div>
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <form onSubmit={handleActivityRecommendationSave} className="space-y-5 rounded-[20px] border border-stone-200 bg-[#f7f8f3] p-6">
+          <div className="space-y-6">
+            <form onSubmit={handleActivityRecommendationSave} className="space-y-5 rounded-[20px] border border-stone-200 bg-linear-to-br from-[#f7f8f3] to-white p-5 sm:p-6">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Activity</label>
@@ -1331,18 +1662,25 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
                 <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Image URL</label>
                 <input value={activeActivityRecommendationForm.thumbnailUrl || ''} onChange={(e) => setActiveActivityRecommendationForm((prev) => ({ ...prev, thumbnailUrl: e.target.value }))} className="mt-2 w-full rounded-[12px] border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:ring-1 focus:ring-[#4DA528]/30" />
               </div>
-              <label className="rounded-[16px] border border-dashed border-stone-300 bg-white p-4">
-                <span className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Upload recommendation image</span>
-                <input type="file" accept="image/*" onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const url = await uploadActivityRecommendationImage(file);
-                  setActiveActivityRecommendationForm((prev) => ({ ...prev, thumbnailUrl: url }));
-                  e.target.value = '';
-                }} className="mt-3 block w-full text-xs" />
-                <span className="mt-2 block text-xs text-stone-500">{activityRecommendationImageUploading ? 'Uploading...' : 'Upload or paste direct image URL'}</span>
-              </label>
-              <AdminImagePreview src={activeActivityRecommendationForm.thumbnailUrl} label="Recommendation image preview" />
+              <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                <label className="flex min-h-44 flex-col justify-center rounded-[16px] border border-dashed border-stone-300 bg-white p-5 transition hover:border-[#4DA528]/60">
+                  <span className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Upload recommendation image</span>
+                  <input type="file" accept={SUPPORTED_IMAGE_ACCEPT} onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const url = await uploadActivityRecommendationImage(file);
+                      setActiveActivityRecommendationForm((prev) => ({ ...prev, thumbnailUrl: url }));
+                    } catch (error) {
+                      alert(error instanceof Error ? error.message : 'Unable to upload image.');
+                    } finally {
+                      e.target.value = '';
+                    }
+                  }} className="mt-4 block w-full text-xs" />
+                  <span className="mt-3 block text-xs leading-5 text-stone-500">{activityRecommendationImageUploading ? 'Uploading...' : 'Upload a landscape image or paste a direct image URL above.'}</span>
+                </label>
+                <AdminImagePreview src={activeActivityRecommendationForm.thumbnailUrl} label="Recommendation image preview" />
+              </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="flex items-center gap-3 rounded-[12px] border border-stone-200 bg-white px-4 py-3 text-sm">
                   <input type="checkbox" checked={activeActivityRecommendationForm.enabled ?? true} onChange={(e) => setActiveActivityRecommendationForm((prev) => ({ ...prev, enabled: e.target.checked }))} className="h-4 w-4 rounded border-stone-300 text-[#4DA528] focus:ring-[#4DA528]" />
@@ -1364,11 +1702,14 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
               </div>
             </form>
 
-            <div className="rounded-[20px] border border-stone-200 bg-white p-6">
+            <div className="rounded-[20px] border border-stone-200 bg-[#fbfcf8] p-5 sm:p-6">
               <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h4 className="text-lg font-bold text-stone-950">Recommendations</h4>
-                  <p className="text-sm text-stone-500">Search, filter, reorder, and publish recommendation cards.</p>
+                  <div className="flex items-center gap-3">
+                    <h4 className="text-lg font-bold text-stone-950">Saved recommendations</h4>
+                    <span className="rounded-full bg-[#4DA528]/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-[#4DA528]">{filteredActivityRecommendations.length} cards</span>
+                  </div>
+                  <p className="mt-1 text-sm text-stone-500">Curated recommendations are grouped below the editor as visual cards.</p>
                 </div>
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <select value={activityRecommendationFilter} onChange={(e) => setActivityRecommendationFilter(e.target.value)} className="h-12 rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 text-sm outline-none focus:border-[#4DA528] focus:bg-white">
@@ -1380,38 +1721,46 @@ export function ActivitiesTab({ packages, onRefreshData }: ActivitiesTabProps) {
                   <AdminSearchBar value={activityRecommendationSearch} onChange={setActivityRecommendationSearch} placeholder="Search recommendations" />
                 </div>
               </div>
-              <div className="space-y-4">
+              <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
                 {loadingActivityRecommendations ? (
-                  <AdminLoadingState label="Loading recommendations..." />
+                  <div className="md:col-span-2 2xl:col-span-3"><AdminLoadingState label="Loading recommendations..." /></div>
                 ) : filteredActivityRecommendations.length === 0 ? (
-                  <AdminEmptyState icon={Sparkles} title="No recommendations match your search." description="Clear the activity filter or search a wider badge, location, duration, or package term." />
+                  <div className="md:col-span-2 2xl:col-span-3"><AdminEmptyState icon={Sparkles} title="No recommendations match your search." description="Clear the activity filter or search a wider badge, location, duration, or package term." /></div>
                 ) : (
                   filteredActivityRecommendations.map((item, index) => {
                     const itemActivity = activities.find((activity) => activity.id === item.activityId);
                     const linkedPackage = packages.find((pkg) => pkg.id === item.linkedPackageId);
                     return (
-                      <div key={item.id} className="rounded-[18px] border border-stone-200 p-4">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <h5 className="text-sm font-bold text-stone-950">{item.title}</h5>
-                            <p className="text-xs text-stone-500">{itemActivity?.title || 'Activity'} • {item.badge || item.subtitle || 'Recommendation card'} • {linkedPackage?.title ? `Package: ${linkedPackage.title}` : 'No package linked'}</p>
+                      <article key={item.id} className="group flex min-h-full flex-col overflow-hidden rounded-[18px] border border-stone-200 bg-white shadow-[0_10px_28px_rgba(18,38,32,0.06)] transition duration-300 hover:-translate-y-1 hover:border-[#4DA528]/40 hover:shadow-[0_18px_38px_rgba(18,38,32,0.12)]">
+                        <div className="relative aspect-[16/9] overflow-hidden bg-stone-100">
+                          <img src={getTravelImage(item.thumbnailUrl)} alt={item.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" loading="lazy" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+                          <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-3">
+                            <span className="max-w-[70%] truncate rounded-full bg-black/70 px-3 py-1 text-[9px] font-extrabold uppercase tracking-wider text-white backdrop-blur-sm">{item.badge || itemActivity?.title || 'Recommended'}</span>
+                            <button type="button" onClick={() => handleToggleActivityRecommendationStatus(item)} className={`rounded-full px-3 py-1 text-[9px] font-extrabold uppercase tracking-wider shadow-sm backdrop-blur-sm ${item.enabled ? 'bg-emerald-500 text-white' : 'bg-white/90 text-stone-600'}`}>{item.enabled ? 'Live' : 'Hidden'}</button>
+                        </div>
+                        </div>
+                        <div className="flex flex-1 flex-col p-5">
+                          <h5 className="text-base font-extrabold text-stone-950">{item.title}</h5>
+                          <p className="mt-1 truncate text-xs font-semibold text-[#4DA528]">{itemActivity?.title || 'Activity'} · {linkedPackage?.title ? linkedPackage.title : 'No package linked'}</p>
+                          <p className="mt-3 line-clamp-3 text-sm leading-6 text-stone-500">{item.description}</p>
+                          <div className="mt-4 flex flex-wrap gap-2 text-[10px] font-bold text-stone-600">
+                            {item.price ? <span className="rounded-full bg-[#4DA528]/10 px-3 py-1.5 text-[#4DA528]">{formatPrice(item.price)}</span> : null}
+                            {item.duration ? <span className="rounded-full bg-stone-100 px-3 py-1.5">{item.duration}</span> : null}
+                            {item.location ? <span className="rounded-full bg-stone-100 px-3 py-1.5">{item.location}</span> : null}
+                            {item.rating ? <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-700">★ {item.rating}</span> : null}
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <button type="button" onClick={() => reorderDocuments(filteredActivityRecommendations, item.id, 'up', 'activityRecommendations')} disabled={index === 0} className="rounded-[10px] border border-stone-200 bg-white px-3 py-2 text-xs font-bold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528] disabled:cursor-not-allowed disabled:opacity-50">Up</button>
-                            <button type="button" onClick={() => reorderDocuments(filteredActivityRecommendations, item.id, 'down', 'activityRecommendations')} disabled={index === filteredActivityRecommendations.length - 1} className="rounded-[10px] border border-stone-200 bg-white px-3 py-2 text-xs font-bold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528] disabled:cursor-not-allowed disabled:opacity-50">Down</button>
-                            <button type="button" onClick={() => handleEditActivityRecommendation(item)} className="rounded-[10px] border border-stone-200 bg-[#f7f8f3] px-3 py-2 text-xs font-bold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]">Edit</button>
-                            <button type="button" onClick={() => handleDeleteActivityRecommendation(item.id)} className="rounded-[10px] border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100">Delete</button>
-                            <button type="button" onClick={() => handleToggleActivityRecommendationStatus(item)} className={`rounded-[10px] px-3 py-2 text-xs font-bold ${item.enabled ? 'border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border border-stone-200 bg-white text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'}`}>{item.enabled ? 'Enabled' : 'Disabled'}</button>
+                          <div className="mt-auto flex items-center justify-between gap-3 border-t border-stone-100 pt-4">
+                            <div className="flex items-center gap-2">
+                              <button type="button" title="Move recommendation up" aria-label="Move recommendation up" onClick={() => reorderDocuments(filteredActivityRecommendations, item.id, 'up', 'activityRecommendations')} disabled={index === 0} className="flex h-9 w-9 items-center justify-center rounded-[9px] border border-stone-200 bg-white text-stone-600 transition hover:border-[#4DA528] hover:text-[#4DA528] disabled:cursor-not-allowed disabled:opacity-35"><ChevronUp className="h-4 w-4" /></button>
+                              <button type="button" title="Move recommendation down" aria-label="Move recommendation down" onClick={() => reorderDocuments(filteredActivityRecommendations, item.id, 'down', 'activityRecommendations')} disabled={index === filteredActivityRecommendations.length - 1} className="flex h-9 w-9 items-center justify-center rounded-[9px] border border-stone-200 bg-white text-stone-600 transition hover:border-[#4DA528] hover:text-[#4DA528] disabled:cursor-not-allowed disabled:opacity-35"><ChevronDown className="h-4 w-4" /></button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button type="button" title="Edit recommendation" aria-label={`Edit ${item.title}`} onClick={() => handleEditActivityRecommendation(item)} className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-[#f2f6ec] text-[#4DA528] transition hover:bg-[#4DA528] hover:text-white"><Edit2 className="h-4 w-4" /></button>
+                              <button type="button" title="Delete recommendation" aria-label={`Delete ${item.title}`} onClick={() => handleDeleteActivityRecommendation(item.id)} className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-rose-50 text-rose-600 transition hover:bg-rose-600 hover:text-white"><Trash2 className="h-4 w-4" /></button>
+                            </div>
                           </div>
                         </div>
-                        <p className="mt-3 text-sm leading-6 text-stone-500 line-clamp-3">{item.description}</p>
-                        <div className="mt-3 flex flex-wrap gap-3 text-xs text-stone-500">
-                          {item.price ? <span className="rounded-full bg-[#4DA528]/10 px-3 py-1 font-semibold text-[#4DA528]">₹{item.price}</span> : null}
-                          {item.duration ? <span className="rounded-full bg-stone-100 px-3 py-1">{item.duration}</span> : null}
-                          {item.location ? <span className="rounded-full bg-stone-100 px-3 py-1">{item.location}</span> : null}
-                          {item.rating ? <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">★ {item.rating}</span> : null}
-                        </div>
-                      </div>
+                      </article>
                     );
                   })
                 )}
@@ -1456,6 +1805,12 @@ export function WebsiteTab(props: WebsiteTabProps) {
     { label: 'Local imagery', description: 'Swap tour visuals and gallery assets from one place.', icon: Images },
     { label: 'Brand settings', description: 'Sync footer contact details, address, and SEO metadata.', icon: Globe },
   ];
+  const cmsTextField = (field: keyof WebsiteCMSSettings) => String(cmsFormData[field] ?? DEFAULT_WEBSITE_CMS[field] ?? '');
+  const updateCmsTextField = (field: keyof WebsiteCMSSettings, value: string) => {
+    setCmsFormData((prev) => ({ ...prev, [field]: value }));
+  };
+  const inputClass = 'rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white';
+  const labelClass = 'mb-1.5 block text-[10px] font-extrabold uppercase tracking-wider text-stone-500';
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -1531,12 +1886,12 @@ export function WebsiteTab(props: WebsiteTabProps) {
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="rounded-[16px] border border-dashed border-stone-300 bg-[#f7f8f3] p-4">
                 <span className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Upload hero background</span>
-                <input type="file" accept="image/*" onChange={(e) => handleCmsImageUpload(e, 'heroBackgroundImageUrl')} className="mt-3 block w-full text-xs" />
+                <input type="file" accept={SUPPORTED_IMAGE_ACCEPT} onChange={(e) => handleCmsImageUpload(e, 'heroBackgroundImageUrl')} className="mt-3 block w-full text-xs" />
                 <span className="mt-2 block text-xs text-stone-500">{cmsUploadingField === 'heroBackgroundImageUrl' ? 'Uploading...' : 'Uploads to Firebase Storage'}</span>
               </label>
               <label className="rounded-[16px] border border-dashed border-stone-300 bg-[#f7f8f3] p-4">
                 <span className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Upload logo</span>
-                <input type="file" accept="image/*" onChange={(e) => handleCmsImageUpload(e, 'logoUrl')} className="mt-3 block w-full text-xs" />
+                <input type="file" accept={SUPPORTED_IMAGE_ACCEPT} onChange={(e) => handleCmsImageUpload(e, 'logoUrl')} className="mt-3 block w-full text-xs" />
                 <span className="mt-2 block text-xs text-stone-500">{cmsUploadingField === 'logoUrl' ? 'Uploading...' : 'Header and footer update automatically'}</span>
               </label>
             </div>
@@ -1546,6 +1901,16 @@ export function WebsiteTab(props: WebsiteTabProps) {
         <section className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
           <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Footer & SEO</span>
           <div className="mt-5 space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelClass}>Company name</label>
+                <input value={cmsTextField('companyName')} onChange={(e) => updateCmsTextField('companyName', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Tagline</label>
+                <input value={cmsTextField('companyTagline')} onChange={(e) => updateCmsTextField('companyTagline', e.target.value)} className={inputClass} />
+              </div>
+            </div>
             <textarea value={cmsFormData.footerContactInfo} onChange={(e) => setCmsFormData(prev => ({ ...prev, footerContactInfo: e.target.value }))} rows={3} placeholder="Footer description" className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
             <div className="grid gap-4 sm:grid-cols-2">
               <input value={cmsFormData.footerEmail} onChange={(e) => setCmsFormData(prev => ({ ...prev, footerEmail: e.target.value }))} placeholder="Email" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
@@ -1553,14 +1918,110 @@ export function WebsiteTab(props: WebsiteTabProps) {
             </div>
             <input value={cmsFormData.footerAddress} onChange={(e) => setCmsFormData(prev => ({ ...prev, footerAddress: e.target.value }))} placeholder="Address" className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
             <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelClass}>Office name</label>
+                <input value={cmsTextField('officeName')} onChange={(e) => updateCmsTextField('officeName', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Primary phone</label>
+                <input value={cmsTextField('primaryPhone')} onChange={(e) => updateCmsTextField('primaryPhone', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Secondary phone</label>
+                <input value={cmsTextField('secondaryPhone')} onChange={(e) => updateCmsTextField('secondaryPhone', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>WhatsApp number</label>
+                <input value={cmsTextField('whatsappNumber')} onChange={(e) => updateCmsTextField('whatsappNumber', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Primary email</label>
+                <input value={cmsTextField('primaryEmail')} onChange={(e) => updateCmsTextField('primaryEmail', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Secondary email</label>
+                <input value={cmsTextField('secondaryEmail')} onChange={(e) => updateCmsTextField('secondaryEmail', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>City</label>
+                <input value={cmsTextField('city')} onChange={(e) => updateCmsTextField('city', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>State</label>
+                <input value={cmsTextField('state')} onChange={(e) => updateCmsTextField('state', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Country</label>
+                <input value={cmsTextField('country')} onChange={(e) => updateCmsTextField('country', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Postal code</label>
+                <input value={cmsTextField('postalCode')} onChange={(e) => updateCmsTextField('postalCode', e.target.value)} className={inputClass} />
+              </div>
+            </div>
+            <div>
+              <label className={labelClass}>Office address</label>
+              <input value={cmsTextField('officeAddress')} onChange={(e) => updateCmsTextField('officeAddress', e.target.value)} className={`w-full ${inputClass}`} />
+            </div>
+            <div>
+              <label className={labelClass}>Google Maps embed URL</label>
+              <input value={cmsTextField('googleMapsEmbedUrl')} onChange={(e) => updateCmsTextField('googleMapsEmbedUrl', e.target.value)} className={`w-full ${inputClass}`} />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelClass}>Office working hours</label>
+                <input value={cmsTextField('officeWorkingHours')} onChange={(e) => updateCmsTextField('officeWorkingHours', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Sunday / weekend hours</label>
+                <input value={cmsTextField('weekendHours')} onChange={(e) => updateCmsTextField('weekendHours', e.target.value)} className={inputClass} />
+              </div>
+            </div>
+            <div>
+              <label className={labelClass}>Contact section heading</label>
+              <input value={cmsTextField('contactHeading')} onChange={(e) => updateCmsTextField('contactHeading', e.target.value)} className={`w-full ${inputClass}`} />
+            </div>
+            <div>
+              <label className={labelClass}>Contact section description</label>
+              <textarea value={cmsTextField('contactDescription')} onChange={(e) => updateCmsTextField('contactDescription', e.target.value)} rows={2} className={`w-full ${inputClass}`} />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
               <input value={cmsFormData.socialFacebook} onChange={(e) => setCmsFormData(prev => ({ ...prev, socialFacebook: e.target.value }))} placeholder="Facebook URL" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
               <input value={cmsFormData.socialX} onChange={(e) => setCmsFormData(prev => ({ ...prev, socialX: e.target.value }))} placeholder="X URL" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
               <input value={cmsFormData.socialLinkedIn} onChange={(e) => setCmsFormData(prev => ({ ...prev, socialLinkedIn: e.target.value }))} placeholder="LinkedIn URL" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
               <input value={cmsFormData.socialInstagram} onChange={(e) => setCmsFormData(prev => ({ ...prev, socialInstagram: e.target.value }))} placeholder="Instagram URL" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
             </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelClass}>GST number</label>
+                <input value={cmsTextField('gstNumber')} onChange={(e) => updateCmsTextField('gstNumber', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>PAN number</label>
+                <input value={cmsTextField('panNumber')} onChange={(e) => updateCmsTextField('panNumber', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Support email</label>
+                <input value={cmsTextField('supportEmail')} onChange={(e) => updateCmsTextField('supportEmail', e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Booking email</label>
+                <input value={cmsTextField('bookingEmail')} onChange={(e) => updateCmsTextField('bookingEmail', e.target.value)} className={inputClass} />
+              </div>
+            </div>
+            <input value={cmsTextField('footerText')} onChange={(e) => updateCmsTextField('footerText', e.target.value)} placeholder="Footer text" className={`w-full ${inputClass}`} />
+            <input value={cmsTextField('copyrightText')} onChange={(e) => updateCmsTextField('copyrightText', e.target.value)} placeholder="Copyright text" className={`w-full ${inputClass}`} />
             <input value={cmsFormData.seoTitle} onChange={(e) => setCmsFormData(prev => ({ ...prev, seoTitle: e.target.value }))} placeholder="Meta title" className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
             <textarea value={cmsFormData.seoDescription} onChange={(e) => setCmsFormData(prev => ({ ...prev, seoDescription: e.target.value }))} rows={2} placeholder="Meta description" className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
             <input value={cmsFormData.seoKeywords} onChange={(e) => setCmsFormData(prev => ({ ...prev, seoKeywords: e.target.value }))} placeholder="SEO keywords" className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <input value={cmsTextField('ogImageUrl')} onChange={(e) => updateCmsTextField('ogImageUrl', e.target.value)} placeholder="Open Graph image URL" className={inputClass} />
+              <input value={cmsTextField('twitterImageUrl')} onChange={(e) => updateCmsTextField('twitterImageUrl', e.target.value)} placeholder="Twitter card image URL" className={inputClass} />
+              <input value={cmsTextField('faviconUrl')} onChange={(e) => updateCmsTextField('faviconUrl', e.target.value)} placeholder="Favicon URL" className={inputClass} />
+              <input value={cmsTextField('googleAnalyticsId')} onChange={(e) => updateCmsTextField('googleAnalyticsId', e.target.value)} placeholder="Google Analytics ID" className={inputClass} />
+              <input value={cmsTextField('googleTagManagerId')} onChange={(e) => updateCmsTextField('googleTagManagerId', e.target.value)} placeholder="Google Tag Manager ID" className={inputClass} />
+              <input value={cmsTextField('facebookPixelId')} onChange={(e) => updateCmsTextField('facebookPixelId', e.target.value)} placeholder="Facebook Pixel ID" className={inputClass} />
+            </div>
           </div>
         </section>
       </form>
@@ -1616,11 +2077,11 @@ export function MediaLibraryTab(props: MediaLibraryTabProps) {
             <Upload className="h-7 w-7" />
           </div>
           <h2 className="mt-5 text-2xl font-extrabold text-stone-950">Upload media</h2>
-          <p className="mx-auto mt-3 max-w-sm text-sm leading-7 text-stone-500">Upload images to Firebase Storage and publish them into the existing public gallery collection.</p>
+          <p className="mx-auto mt-3 max-w-sm text-sm leading-7 text-stone-500">Upload images or WebM videos to Firebase Storage and publish them into the existing public gallery collection.</p>
           <label className={`mt-6 inline-flex cursor-pointer items-center justify-center gap-2 rounded-[5px] px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition ${mediaUploading ? 'bg-stone-400' : 'bg-[#4DA528] hover:bg-[#FF970D]'}`}>
             <Upload className="h-4 w-4" />
-            <span>{mediaUploading ? 'Uploading...' : 'Select Images'}</span>
-            <input type="file" accept="image/*" multiple onChange={handleMediaLibraryUpload} disabled={mediaUploading} className="hidden" />
+            <span>{mediaUploading ? 'Uploading...' : 'Select Media'}</span>
+            <input type="file" accept={SUPPORTED_MEDIA_ACCEPT} multiple onChange={handleMediaLibraryUpload} disabled={mediaUploading} className="hidden" />
           </label>
         </div>
 
@@ -1673,7 +2134,7 @@ export function MediaLibraryTab(props: MediaLibraryTabProps) {
           mediaLibraryImages.map((img) => (
             <div key={img.id} className="group overflow-hidden rounded-[20px] border border-stone-200 bg-white shadow-[0_14px_38px_rgba(18,38,32,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_55px_rgba(18,38,32,0.14)]">
               <div className="relative aspect-[4/3] overflow-hidden bg-stone-100">
-                <img src={img.imageUrl} alt={img.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" loading="lazy" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+                <TravelMedia src={img.imageUrl} alt={img.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" loading="lazy" />
                 <span className="absolute left-3 top-3 rounded bg-white/95 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-[#4DA528] shadow-sm">{img.category}</span>
                 <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition group-hover:opacity-100">
                   <button type="button" onClick={() => handleMoveGalleryImage(img.id, 'up')} className="rounded bg-white/95 p-1.5 text-stone-700 shadow-sm transition hover:bg-[#4DA528] hover:text-white" title="Move up">
@@ -1709,14 +2170,20 @@ interface PackagesTabProps {
   handleOpenPkgAdd: () => void;
   handleOpenPkgEdit: (pkg: TravelPackage) => void;
   handleDeletePackage: (id: string) => Promise<void>;
+  handleRestorePackage: (id: string) => Promise<void>;
+  handlePermanentDeletePackage: (id: string) => Promise<void>;
   handleArchivePackage: (id: string) => Promise<void>;
-  handleDuplicatePackage: (id: string) => Promise<void>;
+  handleDuplicatePackage: (pkg: TravelPackage) => Promise<void>;
   togglePackageActive: (pkg: TravelPackage) => Promise<void>;
+  handlePreviewPackage: (pkg: TravelPackage) => void;
+  handleToggleFeatured: (pkg: TravelPackage) => Promise<void>;
+  handleUpdateDisplayOrder: (pkg: TravelPackage, nextOrder: number | undefined) => Promise<void>;
   formatPriceValue: (value: number) => string;
 }
 
-type PackageStatusFilter = 'all' | 'published' | 'draft' | 'archived';
+type PackageStatusFilter = 'all' | 'published' | 'draft' | 'archived' | 'deleted';
 type PackageSortMode = 'updated-desc' | 'created-desc' | 'title-asc' | 'price-desc';
+type PackageFeaturedFilter = 'all' | 'featured' | 'not-featured';
 
 export function PackagesTab(props: PackagesTabProps) {
   const {
@@ -1726,13 +2193,20 @@ export function PackagesTab(props: PackagesTabProps) {
     handleOpenPkgAdd,
     handleOpenPkgEdit,
     handleDeletePackage,
+    handleRestorePackage,
+    handlePermanentDeletePackage,
     handleArchivePackage,
     handleDuplicatePackage,
     togglePackageActive,
+    handlePreviewPackage,
+    handleToggleFeatured,
+    handleUpdateDisplayOrder,
     formatPriceValue,
   } = props;
   const [statusFilter, setStatusFilter] = useState<PackageStatusFilter>('all');
   const [destinationFilter, setDestinationFilter] = useState('All');
+  const [categoryFilter, setCategoryFilter] = useState('All');
+  const [featuredFilter, setFeaturedFilter] = useState<PackageFeaturedFilter>('all');
   const [sortMode, setSortMode] = useState<PackageSortMode>('updated-desc');
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -1740,38 +2214,54 @@ export function PackagesTab(props: PackagesTabProps) {
   const [detailsImports, setDetailsImports] = useState<PackageImportRecord[]>([]);
   const [detailsLogs, setDetailsLogs] = useState<PackageActivityLog[]>([]);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [orderDraft, setOrderDraft] = useState<Record<string, string>>({});
   const pageSize = 10;
 
   const getPackageStatus = (pkg: TravelPackage): Exclude<PackageStatusFilter, 'all'> => {
     if (pkg.cmsStatus === 'archived') return 'archived';
-    if (pkg.cmsStatus === 'deleted') return 'draft';
+    if (pkg.cmsStatus === 'deleted') return 'deleted';
     return pkg.cmsStatus === 'draft' || pkg.active === false ? 'draft' : 'published';
   };
 
   const destinationOptions = useMemo(() => {
     const values = new Set<string>();
     packages.forEach((pkg) => {
-      if (pkg.cmsStatus === 'deleted') return;
+      if (statusFilter === 'deleted' ? pkg.cmsStatus !== 'deleted' : pkg.cmsStatus === 'deleted') return;
       if (pkg.destination) values.add(pkg.destination);
       (pkg.destinations || []).forEach((destination) => {
         if (destination) values.add(destination);
       });
     });
     return ['All', ...Array.from(values).sort((left, right) => left.localeCompare(right))];
-  }, [packages]);
+  }, [packages, statusFilter]);
+
+  const categoryOptions = useMemo(() => {
+    const values = new Set<string>();
+    packages.forEach((pkg) => {
+      if (statusFilter === 'deleted' ? pkg.cmsStatus !== 'deleted' : pkg.cmsStatus === 'deleted') return;
+      if (pkg.category) values.add(pkg.category);
+    });
+    return ['All', ...Array.from(values).sort((left, right) => left.localeCompare(right))];
+  }, [packages, statusFilter]);
 
   const filteredPackages = useMemo(() => {
     const search = packageSearch.trim().toLowerCase();
     const destination = destinationFilter.toLowerCase();
     const rows = packages
-      .filter((pkg) => pkg.cmsStatus !== 'deleted')
       .filter((pkg) => {
+        if (statusFilter === 'deleted') return pkg.cmsStatus === 'deleted';
+        if (pkg.cmsStatus === 'deleted') return false;
         if (statusFilter === 'all') return true;
         return getPackageStatus(pkg) === statusFilter;
       })
       .filter((pkg) => {
         if (destinationFilter === 'All') return true;
         return [pkg.destination, ...(pkg.destinations || [])].some((item) => item?.toLowerCase() === destination);
+      })
+      .filter((pkg) => (categoryFilter === 'All' ? true : pkg.category === categoryFilter))
+      .filter((pkg) => {
+        if (featuredFilter === 'all') return true;
+        return featuredFilter === 'featured' ? Boolean(pkg.featured) : !pkg.featured;
       })
       .filter((pkg) => {
         if (!search) return true;
@@ -1792,7 +2282,7 @@ export function PackagesTab(props: PackagesTabProps) {
       const rightDate = new Date(sortMode === 'created-desc' ? right.createdAt : right.updatedAt || right.createdAt).getTime();
       return rightDate - leftDate;
     });
-  }, [destinationFilter, packageSearch, packages, sortMode, statusFilter]);
+  }, [categoryFilter, destinationFilter, featuredFilter, packageSearch, packages, sortMode, statusFilter]);
 
   const pageCount = Math.max(1, Math.ceil(filteredPackages.length / pageSize));
   const pagedPackages = filteredPackages.slice((page - 1) * pageSize, page * pageSize);
@@ -1801,7 +2291,7 @@ export function PackagesTab(props: PackagesTabProps) {
   useEffect(() => {
     setPage(1);
     setSelectedIds([]);
-  }, [destinationFilter, packageSearch, sortMode, statusFilter]);
+  }, [categoryFilter, destinationFilter, featuredFilter, packageSearch, sortMode, statusFilter]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1855,9 +2345,12 @@ export function PackagesTab(props: PackagesTabProps) {
 
   const selectedPackages = packages.filter((pkg) => selectedIds.includes(pkg.id));
 
-  const runBulkAction = async (action: 'publish' | 'archive' | 'delete') => {
+  const runBulkAction = async (action: 'publish' | 'unpublish' | 'archive' | 'delete' | 'feature' | 'unfeature') => {
     for (const pkg of selectedPackages) {
       if (action === 'publish' && getPackageStatus(pkg) !== 'published') {
+        await togglePackageActive(pkg);
+      }
+      if (action === 'unpublish' && getPackageStatus(pkg) === 'published') {
         await togglePackageActive(pkg);
       }
       if (action === 'archive') {
@@ -1865,6 +2358,12 @@ export function PackagesTab(props: PackagesTabProps) {
       }
       if (action === 'delete') {
         await handleDeletePackage(pkg.id);
+      }
+      if (action === 'feature' && !pkg.featured) {
+        await handleToggleFeatured(pkg);
+      }
+      if (action === 'unfeature' && pkg.featured) {
+        await handleToggleFeatured(pkg);
       }
     }
     setSelectedIds([]);
@@ -1874,6 +2373,7 @@ export function PackagesTab(props: PackagesTabProps) {
     const status = getPackageStatus(pkg);
     if (status === 'published') return 'bg-emerald-50 border-emerald-100 text-emerald-800';
     if (status === 'archived') return 'bg-amber-50 border-amber-100 text-amber-800';
+    if (status === 'deleted') return 'bg-rose-50 border-rose-100 text-rose-800';
     return 'bg-stone-100 border-stone-200 text-stone-700';
   };
 
@@ -1891,7 +2391,7 @@ export function PackagesTab(props: PackagesTabProps) {
       </div>
 
       <div className="bg-white border border-stone-200 rounded shadow-xs overflow-hidden">
-        <div className="grid gap-3 border-b border-stone-100 bg-stone-50 p-4 lg:grid-cols-[1fr_170px_190px_170px] lg:items-center">
+        <div className="grid gap-3 border-b border-stone-100 bg-stone-50 p-4 lg:grid-cols-[1fr_150px_150px_150px_130px_170px] lg:items-center">
           <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
             <input type="text" placeholder="Search packages by title or destination..." value={packageSearch} onChange={(e) => setPackageSearch(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white border border-stone-200 rounded text-xs focus:outline-none focus:border-[#008080]" />
@@ -1901,9 +2401,18 @@ export function PackagesTab(props: PackagesTabProps) {
             <option value="published">Published</option>
             <option value="draft">Draft</option>
             <option value="archived">Archived</option>
+            <option value="deleted">Trash ({packages.filter((pkg) => pkg.cmsStatus === 'deleted').length})</option>
           </select>
           <select value={destinationFilter} onChange={(event) => setDestinationFilter(event.target.value)} className="w-full rounded border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 focus:border-[#008080] focus:outline-none">
             {destinationOptions.map((destination) => <option key={destination} value={destination}>{destination === 'All' ? 'All Destinations' : destination}</option>)}
+          </select>
+          <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="w-full rounded border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 focus:border-[#008080] focus:outline-none">
+            {categoryOptions.map((category) => <option key={category} value={category}>{category === 'All' ? 'All Categories' : category}</option>)}
+          </select>
+          <select value={featuredFilter} onChange={(event) => setFeaturedFilter(event.target.value as PackageFeaturedFilter)} className="w-full rounded border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 focus:border-[#008080] focus:outline-none">
+            <option value="all">Featured: All</option>
+            <option value="featured">Featured Only</option>
+            <option value="not-featured">Not Featured</option>
           </select>
           <select value={sortMode} onChange={(event) => setSortMode(event.target.value as PackageSortMode)} className="w-full rounded border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 focus:border-[#008080] focus:outline-none">
             <option value="updated-desc">Recently Updated</option>
@@ -1917,9 +2426,18 @@ export function PackagesTab(props: PackagesTabProps) {
           <div className="flex flex-col gap-3 border-b border-stone-100 bg-[#fcfbf9] px-4 py-3 text-xs text-stone-600 sm:flex-row sm:items-center sm:justify-between">
             <span className="font-bold">{selectedIds.length} package{selectedIds.length === 1 ? '' : 's'} selected</span>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => runBulkAction('publish')} className="rounded-sm bg-emerald-600 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-emerald-700">Publish</button>
-              <button type="button" onClick={() => runBulkAction('archive')} className="rounded-sm bg-amber-500 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-amber-600">Archive</button>
-              <button type="button" onClick={() => runBulkAction('delete')} className="rounded-sm bg-rose-600 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-rose-700">Delete</button>
+              {statusFilter === 'deleted' ? (
+                <span className="self-center text-[10px] font-bold uppercase tracking-wider text-stone-400">Use row actions to restore or permanently delete</span>
+              ) : (
+                <>
+                  <button type="button" onClick={() => runBulkAction('publish')} className="rounded-sm bg-emerald-600 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-emerald-700">Publish</button>
+                  <button type="button" onClick={() => runBulkAction('unpublish')} className="rounded-sm bg-stone-500 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-stone-600">Unpublish</button>
+                  <button type="button" onClick={() => runBulkAction('archive')} className="rounded-sm bg-amber-500 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-amber-600">Archive</button>
+                  <button type="button" onClick={() => runBulkAction('feature')} className="rounded-sm bg-[#F4C430] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-[#dba81f]">Feature</button>
+                  <button type="button" onClick={() => runBulkAction('unfeature')} className="rounded-sm border border-stone-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-stone-600 transition hover:border-stone-400">Unfeature</button>
+                  <button type="button" onClick={() => runBulkAction('delete')} className="rounded-sm bg-rose-600 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-rose-700">Delete</button>
+                </>
+              )}
               <button type="button" onClick={() => setSelectedIds([])} className="rounded-sm border border-stone-200 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-stone-600 transition hover:border-stone-400">Clear</button>
             </div>
           </div>
@@ -1938,11 +2456,13 @@ export function PackagesTab(props: PackagesTabProps) {
                   <input type="checkbox" checked={allPageSelected} onChange={togglePageSelection} aria-label="Select all packages on this page" className="h-4 w-4 accent-[#008080]" />
                 </th>
                 <th className="py-4 px-6">Image / Title</th>
+                <th className="py-4 px-6">Destination</th>
                 <th className="py-4 px-6">Category</th>
-                <th className="py-4 px-6">Duration</th>
                 <th className="py-4 px-6">Price</th>
                 <th className="py-4 px-6">Featured</th>
+                <th className="py-4 px-6">Order</th>
                 <th className="py-4 px-6 text-center">Status</th>
+                <th className="py-4 px-6">Last Updated</th>
                 <th className="py-4 px-6 text-right">Actions</th>
               </tr>
             </thead>
@@ -1953,56 +2473,132 @@ export function PackagesTab(props: PackagesTabProps) {
                     <input type="checkbox" checked={selectedIds.includes(pkg.id)} onChange={() => toggleSelection(pkg.id)} aria-label={`Select ${pkg.title}`} className="h-4 w-4 accent-[#008080]" />
                   </td>
                   <td className="py-4 px-6 flex items-center gap-3">
-                    <img src={pkg.imageUrl} alt="" className="w-12 h-12 object-cover rounded-sm shrink-0 bg-[#f8f7f4] border border-stone-200" referrerPolicy="no-referrer" />
+                    <TravelMedia src={pkg.imageUrl} alt="" className="w-12 h-12 object-cover rounded-sm shrink-0 bg-[#f8f7f4] border border-stone-200" loading="lazy" />
                     <div>
                       <strong className="text-[#333333] font-bold block leading-snug">{pkg.title}</strong>
-                      <span className="text-[10px] text-stone-400 block font-light">{pkg.destination}</span>
                       <span className="mt-0.5 block text-[9px] uppercase tracking-wider text-stone-400">v{pkg.version || 1} • {pkg.parserVersion || 'manual'}</span>
                     </div>
                   </td>
+                  <td className="py-4 px-6 font-light text-stone-500">{pkg.destination}</td>
                   <td className="py-4 px-6">
                     <span className="px-2 py-0.5 bg-stone-100 text-stone-700 text-[9px] font-bold uppercase tracking-wider rounded-none">{pkg.category}</span>
                   </td>
-                  <td className="py-4 px-6 font-light text-stone-500">{pkg.duration}</td>
                   <td className="py-4 px-6 font-bold text-stone-900">{formatPriceValue(pkg.price)}</td>
                   <td className="py-4 px-6">
-                    <span className={`text-[10px] font-bold ${pkg.featured ? 'text-[#F4C430] flex items-center gap-1' : 'text-stone-300 font-normal'}`}>
-                      {pkg.featured ? '★ Yes' : 'No'}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleFeatured(pkg)}
+                      className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 text-[10px] font-bold uppercase transition cursor-pointer ${pkg.featured ? 'bg-amber-50 text-[#F4C430]' : 'bg-stone-100 text-stone-400 hover:text-stone-600'}`}
+                      title={pkg.featured ? 'Unfeature this package' : 'Feature this package'}
+                    >
+                      <Star className={`h-3.5 w-3.5 ${pkg.featured ? 'fill-[#F4C430]' : ''}`} />
+                      {pkg.featured ? 'Yes' : 'No'}
+                    </button>
+                  </td>
+                  <td className="py-4 px-6">
+                    <input
+                      type="number"
+                      value={orderDraft[pkg.id] ?? (pkg.displayOrder ?? '')}
+                      placeholder="—"
+                      onChange={(event) => setOrderDraft((prev) => ({ ...prev, [pkg.id]: event.target.value }))}
+                      onBlur={(event) => {
+                        const raw = event.target.value.trim();
+                        const nextOrder = raw === '' ? undefined : Number(raw);
+                        if (nextOrder !== undefined && !Number.isFinite(nextOrder)) return;
+                        if (nextOrder === (pkg.displayOrder ?? undefined)) return;
+                        // Clear the local draft once the save settles (success or failure) so
+                        // the field reflects the real saved value instead of permanently
+                        // showing whatever was last typed — including after a failed save,
+                        // where it would otherwise look committed when it silently wasn't.
+                        void handleUpdateDisplayOrder(pkg, nextOrder).finally(() => {
+                          setOrderDraft((prev) => {
+                            const next = { ...prev };
+                            delete next[pkg.id];
+                            return next;
+                          });
+                        });
+                      }}
+                      className="w-16 rounded-sm border border-stone-200 px-2 py-1 text-xs text-stone-700 focus:border-[#008080] focus:outline-none"
+                      aria-label={`Display order for ${pkg.title}`}
+                    />
                   </td>
                   <td className="py-4 px-6 text-center">
-                    <button onClick={() => togglePackageActive(pkg)} className={`px-2.5 py-1 rounded-none text-[9px] font-bold uppercase cursor-pointer transition border ${statusBadgeClass(pkg)} hover:bg-stone-100`}>
-                      {getPackageStatus(pkg)}
-                    </button>
+                    {pkg.cmsStatus === 'deleted' ? (
+                      <span className={`inline-flex px-2.5 py-1 rounded-none text-[9px] font-bold uppercase border ${statusBadgeClass(pkg)}`}>
+                        Deleted
+                      </span>
+                    ) : pkg.cmsStatus === 'archived' ? (
+                      <span className={`inline-flex px-2.5 py-1 rounded-none text-[9px] font-bold uppercase border ${statusBadgeClass(pkg)}`}>
+                        Archived
+                      </span>
+                    ) : (
+                      <button onClick={() => togglePackageActive(pkg)} className={`px-2.5 py-1 rounded-none text-[9px] font-bold uppercase cursor-pointer transition border ${statusBadgeClass(pkg)} hover:bg-stone-100`}>
+                        {getPackageStatus(pkg)}
+                      </button>
+                    )}
+                  </td>
+                  <td className="py-4 px-6 font-light text-stone-500">
+                    {new Date(pkg.updatedAt || pkg.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                   </td>
                   <td className="py-4 px-6 text-right">
                     <div className="flex justify-end gap-2">
-                    <button onClick={() => setDetailsPackage(pkg)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-stone-800 hover:text-white rounded-sm transition cursor-pointer" title="View Details">
+                    <button onClick={() => handlePreviewPackage(pkg)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-[#4DA528] hover:text-white rounded-sm transition cursor-pointer" title="Preview on public site">
                       <Eye className="w-3.5 h-3.5" />
                     </button>
-                    <button onClick={() => handleOpenPkgEdit(pkg)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-[#008080] hover:text-white rounded-sm transition cursor-pointer" title="Edit Package">
-                      <Edit2 className="w-3.5 h-3.5" />
+                    <button onClick={() => setDetailsPackage(pkg)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-stone-800 hover:text-white rounded-sm transition cursor-pointer" title="View Details">
+                      <Info className="w-3.5 h-3.5" />
                     </button>
-                    <button onClick={() => handleDuplicatePackage(pkg.id)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-[#4DA528] hover:text-white rounded-sm transition cursor-pointer" title="Duplicate Package">
-                      <Clipboard className="w-3.5 h-3.5" />
-                    </button>
-                    <button onClick={() => handleArchivePackage(pkg.id)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-amber-500 hover:text-white rounded-sm transition cursor-pointer" title="Archive Package">
-                      <FileText className="w-3.5 h-3.5" />
-                    </button>
-                    <button onClick={() => handleDeletePackage(pkg.id)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-rose-600 hover:text-white rounded-sm transition cursor-pointer" title="Delete Package">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {pkg.cmsStatus === 'deleted' ? (
+                      <>
+                        <button onClick={() => handleRestorePackage(pkg.id)} className="p-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white rounded-sm transition cursor-pointer" title="Restore Package">
+                          <RefreshCw className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handlePermanentDeletePackage(pkg.id)} className="p-1.5 bg-rose-50 text-rose-700 hover:bg-rose-700 hover:text-white rounded-sm transition cursor-pointer" title="Permanently Delete Package">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    ) : pkg.cmsStatus === 'archived' ? (
+                      <>
+                        <button onClick={() => handleOpenPkgEdit(pkg)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-[#008080] hover:text-white rounded-sm transition cursor-pointer" title="Edit Package">
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleDuplicatePackage(pkg)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-[#4DA528] hover:text-white rounded-sm transition cursor-pointer" title="Clone Package">
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleRestorePackage(pkg.id)} className="p-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white rounded-sm transition cursor-pointer" title="Restore from Archive">
+                          <RefreshCw className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleDeletePackage(pkg.id)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-rose-600 hover:text-white rounded-sm transition cursor-pointer" title="Move to Trash">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => handleOpenPkgEdit(pkg)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-[#008080] hover:text-white rounded-sm transition cursor-pointer" title="Edit Package">
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleDuplicatePackage(pkg)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-[#4DA528] hover:text-white rounded-sm transition cursor-pointer" title="Clone Package">
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleArchivePackage(pkg.id)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-amber-500 hover:text-white rounded-sm transition cursor-pointer" title="Archive Package">
+                          <Archive className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleDeletePackage(pkg.id)} className="p-1.5 bg-stone-100 text-stone-600 hover:bg-rose-600 hover:text-white rounded-sm transition cursor-pointer" title="Move to Trash">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
                     </div>
                   </td>
                 </tr>
               ))}
               {pagedPackages.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-6 py-14 text-center">
+                  <td colSpan={10} className="px-6 py-14 text-center">
                     <div className="mx-auto max-w-sm">
                       <Package className="mx-auto h-10 w-10 text-stone-300" />
-                      <h3 className="mt-4 text-sm font-bold text-stone-900">No packages match these filters.</h3>
-                      <p className="mt-1 text-xs text-stone-500">Try clearing the search, changing destination, or viewing all statuses.</p>
+                      <h3 className="mt-4 text-sm font-bold text-stone-900">{statusFilter === 'deleted' ? 'Trash is empty.' : 'No packages match these filters.'}</h3>
+                      <p className="mt-1 text-xs text-stone-500">{statusFilter === 'deleted' ? 'Soft-deleted packages will appear here until restored or permanently deleted.' : 'Try clearing the search, changing destination, or viewing all statuses.'}</p>
                     </div>
                   </td>
                 </tr>
@@ -2043,7 +2639,7 @@ export function PackagesTab(props: PackagesTabProps) {
             </div>
             <div className="grid gap-5 p-5 lg:grid-cols-[0.9fr_1.1fr]">
               <div className="overflow-hidden rounded-[18px] border border-stone-200 bg-stone-50">
-                <img src={detailsPackage.packageBannerUrl || detailsPackage.imageUrl} alt={detailsPackage.title} onError={handleTravelImageError} className="aspect-[16/10] w-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+                <TravelMedia src={detailsPackage.packageBannerUrl || detailsPackage.imageUrl} alt={detailsPackage.title} className="aspect-[16/10] w-full object-cover" loading="lazy" />
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {[
@@ -2104,9 +2700,19 @@ export function PackagesTab(props: PackagesTabProps) {
                 </div>
               </div>
               <div className="lg:col-span-2 flex flex-wrap justify-end gap-2 border-t border-stone-100 pt-5">
-                <button type="button" onClick={() => handleOpenPkgEdit(detailsPackage)} className="rounded-sm bg-[#008080] px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-[#006666]">Edit</button>
-                <button type="button" onClick={() => handleDuplicatePackage(detailsPackage.id)} className="rounded-sm border border-stone-200 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]">Duplicate</button>
-                <button type="button" onClick={() => handleArchivePackage(detailsPackage.id)} className="rounded-sm border border-amber-200 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 transition hover:bg-amber-50">Archive</button>
+                {detailsPackage.cmsStatus === 'deleted' ? (
+                  <>
+                    <button type="button" onClick={() => { setDetailsPackage(null); void handleRestorePackage(detailsPackage.id); }} className="rounded-sm bg-emerald-600 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-emerald-700">Restore</button>
+                    <button type="button" onClick={() => { setDetailsPackage(null); void handlePermanentDeletePackage(detailsPackage.id); }} className="rounded-sm bg-rose-700 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-rose-800">Permanently Delete</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => handleOpenPkgEdit(detailsPackage)} className="rounded-sm bg-[#008080] px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-[#006666]">Edit</button>
+                    <button type="button" onClick={() => handlePreviewPackage(detailsPackage)} className="rounded-sm border border-stone-200 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]">Preview</button>
+                    <button type="button" onClick={() => handleDuplicatePackage(detailsPackage)} className="rounded-sm border border-stone-200 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]">Clone</button>
+                    <button type="button" onClick={() => handleArchivePackage(detailsPackage.id)} className="rounded-sm border border-amber-200 px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 transition hover:bg-amber-50">Archive</button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -2136,12 +2742,16 @@ interface EnquiriesTabProps {
   uniqueEnquiryAssignees: string[];
   enquiryCrmMetrics: {
     total: number;
+    todayCount: number;
     newCount: number;
     contactedCount: number;
+    followUpCount: number;
     quoteSentCount: number;
     confirmedCount: number;
+    pendingCount: number;
     completedCount: number;
     cancelledCount: number;
+    lostCount: number;
     revenueExpected: number;
     advanceReceived: number;
     pendingPayments: number;
@@ -2235,13 +2845,17 @@ export function EnquiriesTab(props: EnquiriesTabProps) {
   } = props;
 
   const crmCards = [
-    { label: 'Total Enquiries', value: enquiryCrmMetrics.total, icon: Users, tone: 'border-stone-200 bg-white text-stone-700' },
+    { label: 'Total Leads', value: enquiryCrmMetrics.total, icon: Users, tone: 'border-stone-200 bg-white text-stone-700' },
+    { label: "Today's Leads", value: enquiryCrmMetrics.todayCount, icon: Clock, tone: 'border-blue-200 bg-blue-50 text-blue-700' },
     { label: 'New', value: enquiryCrmMetrics.newCount, icon: Clock, tone: 'border-blue-200 bg-blue-50 text-blue-700' },
     { label: 'Contacted', value: enquiryCrmMetrics.contactedCount, icon: Phone, tone: 'border-sky-200 bg-sky-50 text-sky-700' },
+    { label: 'Follow-up', value: enquiryCrmMetrics.followUpCount, icon: Clock, tone: 'border-amber-200 bg-amber-50 text-amber-700' },
     { label: 'Quote Sent', value: enquiryCrmMetrics.quoteSentCount, icon: MessageSquare, tone: 'border-violet-200 bg-violet-50 text-violet-700' },
-    { label: 'Confirmed', value: enquiryCrmMetrics.confirmedCount, icon: CheckCircle, tone: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+    { label: 'Booked', value: enquiryCrmMetrics.confirmedCount, icon: CheckCircle, tone: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+    { label: 'Pending', value: enquiryCrmMetrics.pendingCount, icon: Clipboard, tone: 'border-amber-200 bg-amber-50 text-amber-700' },
     { label: 'Completed', value: enquiryCrmMetrics.completedCount, icon: Star, tone: 'border-teal-200 bg-teal-50 text-teal-700' },
     { label: 'Cancelled', value: enquiryCrmMetrics.cancelledCount, icon: X, tone: 'border-rose-200 bg-rose-50 text-rose-700' },
+    { label: 'Lost', value: enquiryCrmMetrics.lostCount, icon: X, tone: 'border-stone-300 bg-stone-100 text-stone-600' },
     { label: 'Revenue Expected', value: formatPriceValue(enquiryCrmMetrics.revenueExpected), icon: DollarSign, tone: 'border-emerald-200 bg-white text-emerald-700' },
     { label: 'Advance Received', value: formatPriceValue(enquiryCrmMetrics.advanceReceived), icon: DollarSign, tone: 'border-[#008080]/20 bg-[#008080]/5 text-[#008080]' },
     { label: 'Pending Payments', value: formatPriceValue(enquiryCrmMetrics.pendingPayments), icon: Clipboard, tone: 'border-amber-200 bg-amber-50 text-amber-700' },
@@ -3690,8 +4304,12 @@ export function ReviewsTab(props: ReviewsTabProps) {
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <h4 className="text-sm font-bold text-stone-900">{r.name}</h4>
-                      <span className="text-[10px] text-stone-400 font-light">•</span>
-                      <span className="text-xs text-stone-500 font-mono">{r.email}</span>
+                      {r.email && (
+                        <>
+                          <span className="text-[10px] text-stone-400 font-light">•</span>
+                          <span className="text-xs text-stone-500 font-mono">{r.email}</span>
+                        </>
+                      )}
                       {r.destination && (
                         <>
                           <span className="text-[10px] text-stone-400 font-light">•</span>

@@ -198,11 +198,13 @@ export default function VerifiedReviews({ onNavigate }: VerifiedReviewsProps) {
                       <div className="absolute inset-0 bg-black/10 rounded-[10px] group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                         <span className="bg-white/95 backdrop-blur-xs px-2.5 py-1 text-[9px] text-stone-850 font-bold uppercase tracking-wider rounded-full shadow border border-stone-200">Expand Photo</span>
                       </div>
-                      <img 
-                        src={review.imageUrl} 
-                        alt={`${review.name}'s trip`} 
-                        className="w-full aspect-video rounded-[10px] object-cover border border-stone-200 shadow-inner" 
+                      <img
+                        src={review.imageUrl}
+                        alt={`${review.name}'s trip`}
+                        className="w-full aspect-video rounded-[10px] object-cover border border-stone-200 shadow-inner"
                         referrerPolicy="no-referrer"
+                        loading="lazy"
+                        decoding="async"
                       />
                     </div>
                   )}

@@ -3,13 +3,17 @@ import {
   ArrowRight, Star, Heart, Compass, ShieldCheck, Map, 
   PlaneTakeoff, Trash2, Search, Sparkles, AlertCircle,
   X, GripVertical, ArrowUp, ArrowDown, Users, Clock, Check, Send,
-  ChevronUp, ChevronDown
+  ChevronUp, ChevronDown, ChevronRight
 } from 'lucide-react';
-import { TravelPackage, formatPrice, DestinationCategory, WebsiteCMSSettings, PACKAGE_LOCATIONS, PackageLocation, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem } from '../types';
+import { TravelPackage, formatPrice, DestinationCategory, WebsiteCMSSettings, DEFAULT_WEBSITE_CMS, PACKAGE_LOCATIONS, PackageLocation, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem, BlogPost } from '../types';
+import { deriveDestinationLabel, getPackageDestinationLabel, getDestinationKey } from '../utils/destinationLabel';
+import { sortPackagesForDisplay } from '../utils/packageOrdering';
+import { formatBlogDate, getBlogExcerpt, getBlogRouteSegment } from '../utils/blogContent';
 import InteractiveRouteMap from './InteractiveRouteMap';
 import { db, collection, addDoc } from '../lib/firebase';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 import { SkeletonCard } from './SkeletonLoader';
+import TravelMedia from './TravelMedia';
 import aboutImageVideo from '../assets/about-section/about-us/image-video.png?url';
 import enjoyImage from '../assets/about-section/page/enjoy.png';
 import founderNameImage from '../assets/about-section/page/name.png';
@@ -31,6 +35,7 @@ interface HomeViewProps {
   activityRecommendations?: ActivityRecommendation[];
   featuredCategories?: FeaturedCategoryItem[];
   packages?: TravelPackage[];
+  blogPosts?: BlogPost[];
 }
 
 type ActivityDestination = {
@@ -65,6 +70,16 @@ const getPackageRouteSegment = (pkg: Pick<TravelPackage, 'id' | 'title'>) => {
   return slug ? `${slug}-${pkg.id}` : String(pkg.id);
 };
 
+const sanitizeWhatsAppPhone = (value?: string) => {
+  const digits = String(value ?? '').replace(/[^\d]/g, '');
+  if (!digits) return '';
+  const trimmed = digits.replace(/^0+/, '');
+  // Only treat the number as already carrying the "91" country code at the full 12-digit
+  // length — a raw 10-digit Indian mobile number that happens to start with "91" (e.g.
+  // 9198765432) was previously misdetected as already coded, producing a broken wa.me link.
+  return trimmed.length === 12 && trimmed.startsWith('91') ? trimmed : `91${trimmed}`;
+};
+
 const PackageCard = React.memo(function PackageCard({
   pkg,
   index,
@@ -80,11 +95,12 @@ const PackageCard = React.memo(function PackageCard({
   const rating = pkg.category === 'Treks' ? 4.8 : pkg.category === 'Adventure' ? 4.7 : 4.9;
   const difficulty = pkg.category === 'Treks' ? 'Moderate' : pkg.category === 'Adventure' ? 'Thrilling' : 'Easy';
   const locationLabel = pkg.location || pkg.destination;
+  const packageImage = String(pkg.imageUrl || pkg.packageBannerUrl || '').trim();
 
   const handleOpen = () => onNavigate('package-detail', getPackageRouteSegment(pkg));
 
   return (
-    <article className="group wow fadeInUp animated h-full overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-[0_18px_42px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_24px_56px_rgba(15,23,42,0.12)]" data-wow-delay={`${(index + 1) / 10}s`}>
+    <article className="group wow fadeInUp animated flex h-full flex-col overflow-hidden rounded-[14px] border border-stone-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_44px_rgba(15,23,42,0.12)]" data-wow-delay={`${(index + 1) / 10}s`}>
       <div
         role="button"
         tabIndex={0}
@@ -95,24 +111,29 @@ const PackageCard = React.memo(function PackageCard({
             handleOpen();
           }
         }}
-        className="relative block h-[270px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left"
+        className="relative block aspect-[4/3] max-h-[210px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left"
       >
-        <img
-          src={getTravelImage(pkg.imageUrl)}
-          alt={pkg.title}
-          className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-          referrerPolicy="no-referrer"
-          loading="lazy"
-          decoding="async"
-          onError={handleTravelImageError}
-        />
+        {packageImage ? (
+          <TravelMedia
+            src={packageImage}
+            alt={pkg.title}
+            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+            loading="lazy"
+            decoding="async"
+            disableFallback
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-[#f8f7f4] px-5 text-center text-xs font-semibold text-stone-400">
+            Package image not uploaded
+          </div>
+        )}
         <div className="absolute inset-0 bg-linear-to-t from-stone-950/35 via-transparent to-transparent" />
-        <div className="absolute left-4 top-4 flex flex-wrap gap-2">
-          <span className="rounded-full bg-[#4DA528] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-white">
+        <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+          <span className="rounded-full bg-[#4DA528] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-white">
             {hasOffer ? 'Limited Offer' : 'Featured'}
           </span>
           {hasOffer ? (
-            <span className="rounded-full bg-white/90 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-stone-700">
+            <span className="rounded-full bg-white/90 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-stone-700">
               -{discountPercent}%
             </span>
           ) : null}
@@ -123,7 +144,7 @@ const PackageCard = React.memo(function PackageCard({
             event.stopPropagation();
             onToggleWishlist?.(pkg);
           }}
-          className="absolute right-4 top-4 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/90 text-rose-500 shadow-lg transition duration-200 hover:scale-110"
+          className="absolute right-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-white/70 bg-white/90 text-rose-500 shadow-lg transition duration-200 hover:scale-110"
           title={isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
           aria-label={isWishlisted ? 'Remove package from wishlist' : 'Add package to wishlist'}
         >
@@ -136,7 +157,7 @@ const PackageCard = React.memo(function PackageCard({
               event.stopPropagation();
               onDeletePackage(pkg.id);
             }}
-            className="absolute bottom-4 right-4 z-20 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-red-600 text-white shadow-md transition hover:bg-red-700"
+            className="absolute bottom-3 right-3 z-20 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-red-600 text-white shadow-md transition hover:bg-red-700"
             title="Delete Package"
             aria-label="Delete package"
           >
@@ -144,9 +165,9 @@ const PackageCard = React.memo(function PackageCard({
           </button>
         )}
       </div>
-      <div className="flex flex-1 flex-col p-6">
+      <div className="flex flex-1 flex-col p-4">
         <div className="flex items-start justify-between gap-3">
-          <span className="rounded-full bg-[#FF970D]/12 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#D57400]">
+          <span className="rounded-full bg-[#FF970D]/12 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-[#D57400]">
             {pkg.category}
           </span>
           <div className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-semibold text-amber-700">
@@ -154,44 +175,47 @@ const PackageCard = React.memo(function PackageCard({
             {rating.toFixed(1)}
           </div>
         </div>
-        <div className="mt-4 flex items-center gap-2 text-[14px] font-medium text-stone-500">
+        <div className="mt-3 flex items-center gap-2 text-[12px] font-medium text-stone-500">
           <Map className="h-4 w-4 text-[#4DA528]" />
           <span className="truncate">{locationLabel}</span>
         </div>
-        <h3 className="mt-4 text-[20px] font-bold leading-tight text-stone-950">
+        <h3 className="mt-3 line-clamp-2 min-h-[2.75rem] text-[17px] font-bold leading-snug text-stone-950">
           <button onClick={handleOpen} className="text-left transition hover:text-[#4DA528]">
             {pkg.title}
           </button>
         </h3>
-        <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-stone-600">
-          <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1">
-            <Clock className="h-4 w-4 text-[#4DA528]" />
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-stone-600">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-stone-100 px-2.5 py-1">
+            <Clock className="h-3.5 w-3.5 text-[#4DA528]" />
             {pkg.duration}
           </span>
-          <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1">
-            <Users className="h-4 w-4 text-[#4DA528]" />
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-stone-100 px-2.5 py-1">
+            <Users className="h-3.5 w-3.5 text-[#4DA528]" />
             {difficulty}
           </span>
         </div>
-        <p className="mt-4 line-clamp-3 text-sm leading-6 text-stone-600">
+        <p className="mt-3 line-clamp-2 text-[13px] leading-5 text-stone-600">
           {pkg.shortDescription || pkg.destination}
         </p>
-        <div className="mt-6 flex flex-col gap-4 border-t border-stone-100 pt-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-stone-500">Starting from</p>
+        <div className="mt-auto border-t border-stone-100 pt-4">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-stone-500">Starting from</p>
             <div className="mt-1 flex items-center gap-2">
-              <span className="text-[22px] font-extrabold text-[#4DA528]">{formatPrice(offerPrice)}</span>
-              {hasOffer ? <span className="text-sm text-stone-400 line-through">{formatPrice(pkg.price)}</span> : null}
+                <span className="text-[20px] font-extrabold text-[#4DA528]">{formatPrice(offerPrice)}</span>
+                {hasOffer ? <span className="text-xs text-stone-400 line-through">{formatPrice(pkg.price)}</span> : null}
+              </div>
             </div>
+            <ChevronRight className="h-5 w-5 text-stone-300 transition group-hover:translate-x-1 group-hover:text-[#4DA528]" />
           </div>
-          <div className="flex flex-col gap-2 sm:min-w-[144px]">
+          <div className="mt-3 grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
                 handleOpen();
               }}
-              className="inline-flex items-center justify-center rounded-full bg-[#4DA528] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3a8d1f]"
+              className="inline-flex items-center justify-center rounded-[6px] bg-[#4DA528] px-3 py-2.5 text-xs font-semibold text-white transition hover:bg-[#3a8d1f]"
             >
               Book Now
             </button>
@@ -201,7 +225,7 @@ const PackageCard = React.memo(function PackageCard({
                 event.stopPropagation();
                 handleOpen();
               }}
-              className="inline-flex items-center justify-center rounded-full border border-stone-200 bg-white px-4 py-3 text-sm font-semibold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
+              className="inline-flex items-center justify-center rounded-[6px] border border-stone-200 bg-white px-3 py-2.5 text-xs font-semibold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
             >
               View Details
             </button>
@@ -308,10 +332,11 @@ export default function HomeView({
   activityRecommendations = [],
   featuredCategories = [],
   packages: packageList = [],
+  blogPosts = [],
 }: HomeViewProps) {
   // Wizard Planner State
   const [plannerCategory, setPlannerCategory] = useState<DestinationCategory>('Pilgrimage');
-  const [plannerStyle, setPlannerStyle] = useState<string>('Bespoke Luxury');
+  const [plannerStyle, setPlannerStyle] = useState<string>('Standard');
   const [plannerDuration, setPlannerDuration] = useState<string>('Medium (5-7 Days)');
   const [plannerLocation, setPlannerLocation] = useState<PackageLocation | string>('Uttarakhand');
   const [activeLocationFilter, setActiveLocationFilter] = useState<string>('All');
@@ -319,10 +344,13 @@ export default function HomeView({
   const [plannerActivity, setPlannerActivity] = useState<string>('Pilgrimage');
   const [activeActivityId, setActiveActivityId] = useState<string>('');
   const [activeFeaturedSlug, setActiveFeaturedSlug] = useState<string>('');
+  const [activeCountryKey, setActiveCountryKey] = useState<string>('');
+  const [activeSubDestinationKey, setActiveSubDestinationKey] = useState<string>('');
   const [priceRange, setPriceRange] = useState<[number, number]>([15000, 50000]);
   const priceMin = 5000;
   const priceMax = 120000;
   const locationOptions = PACKAGE_LOCATIONS;
+  const companyName = websiteCMS.companyName || DEFAULT_WEBSITE_CMS.companyName || 'Pravaah Travels';
 
   // AI-Powered Personalized Quiz State
   const [showQuizModal, setShowQuizModal] = useState(false);
@@ -353,6 +381,7 @@ export default function HomeView({
   });
   const [aiEnquirySubmitting, setAiEnquirySubmitting] = useState(false);
   const [aiEnquirySuccess, setAiEnquirySuccess] = useState(false);
+  const [aiEnquiryError, setAiEnquiryError] = useState('');
   const [featuredIndex, setFeaturedIndex] = useState(0);
   const [packagesVisible, setPackagesVisible] = useState(true);
 
@@ -427,43 +456,57 @@ export default function HomeView({
       : fallbacks;
   }, [activities]);
 
+  // Homepage Category tabs are Master Data driven (Add/Edit/Delete/Order/Active-Inactive
+  // managed from Master Data → Homepage Categories). `websiteCMS.homepageCategoryOrder` is
+  // the public mirror of the active, ordered list. If it hasn't been populated yet (nothing
+  // hardcoded, so nothing to migrate), fall back to whatever enabled featuredCategories slots
+  // already exist in Firestore, sorted by their own order — this is real persisted CMS data,
+  // not a hardcoded array, so existing sites keep working with zero admin action required.
   const featuredCategoryCards = useMemo(() => {
-    if (featuredCategories.length > 0) {
-      return featuredCategories.map((item) => ({
-        id: item.id,
-        title: item.title,
-        description: item.description,
-        image: item.imageUrl,
-        category: item.category,
-        location: item.location,
-        packageIds: item.packageIds || [],
-        slug: item.slug,
-      }));
-    }
+    const enabledFeaturedCategories = featuredCategories.filter((item) => item.enabled !== false);
+    const orderedNames = websiteCMS.homepageCategoryOrder && websiteCMS.homepageCategoryOrder.length > 0
+      ? websiteCMS.homepageCategoryOrder
+      : [...enabledFeaturedCategories].sort((a, b) => a.order - b.order).map((item) => item.title);
 
-    return [
-      {
-        id: 'pilgrimage',
-        title: 'Pilgrimage Escapes',
-        description: 'Sacred valleys, temple towns, and curated spiritual comfort.',
-        image: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&q=80&w=600',
-        category: 'Pilgrimage' as DestinationCategory,
-        location: 'Uttarakhand',
-        packageIds: [],
-        slug: 'pilgrimage-escapes',
-      },
-      {
-        id: 'treks',
-        title: 'Trek & Trails',
-        description: 'High-altitude adventures with premium logistics support.',
-        image: 'https://images.unsplash.com/photo-1544717297-fa95b6ee9643?auto=format&fit=crop&q=80&w=600',
-        category: 'Treks' as DestinationCategory,
-        location: 'Uttarakhand',
-        packageIds: [],
-        slug: 'trek-trails',
-      },
-    ];
-  }, [featuredCategories]);
+    const seen = new Set<string>();
+    const cards: Array<{
+      id: string;
+      title: string;
+      description: string;
+      image: string;
+      category?: DestinationCategory;
+      location: string;
+      packageIds: string[];
+      slug: string;
+      name: string;
+    }> = [];
+
+    orderedNames.forEach((name) => {
+      const cleanedName = String(name ?? '').trim();
+      const key = cleanedName.toLowerCase();
+      if (!cleanedName || seen.has(key)) return;
+      seen.add(key);
+
+      const slug = slugifyPackageTitle(cleanedName);
+      const matchingCmsCategory = enabledFeaturedCategories.find((item) => (
+        item.slug === slug || item.title.trim().toLowerCase() === key
+      ));
+
+      cards.push({
+        id: matchingCmsCategory?.id || slug,
+        title: cleanedName,
+        description: matchingCmsCategory?.description || `${cleanedName} featured packages`,
+        image: matchingCmsCategory?.imageUrl || '',
+        category: matchingCmsCategory?.category,
+        location: matchingCmsCategory?.location || cleanedName,
+        packageIds: matchingCmsCategory?.packageIds || [],
+        slug,
+        name: cleanedName,
+      });
+    });
+
+    return cards;
+  }, [featuredCategories, websiteCMS.homepageCategoryOrder]);
 
   const handleLaunchPlanner = () => {
     // Open the interactive wizard quiz modal
@@ -600,6 +643,7 @@ export default function HomeView({
   const handleAiBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!aiResult) return;
+    setAiEnquiryError('');
     setAiEnquirySubmitting(true);
 
     try {
@@ -618,6 +662,7 @@ export default function HomeView({
                  aiResult.itinerary.map((d: any) => `Day ${d.day}: ${d.title}`).join('\n') +
                  `\nSpecial requirements: ${quizAnswers.specialRequests || 'None'}`,
         status: 'New',
+        source: 'AI Planner',
         createdAt: new Date().toISOString()
       };
 
@@ -625,7 +670,7 @@ export default function HomeView({
       setAiEnquirySuccess(true);
     } catch (err) {
       console.error(err);
-      alert('We could not submit your trip request right now. Please check your connection and try again.');
+      setAiEnquiryError('We could not submit your trip request right now. Please check your connection and try again.');
     } finally {
       setAiEnquirySubmitting(false);
     }
@@ -677,6 +722,18 @@ export default function HomeView({
   const activeFeaturedCategory = featuredCategoryCards.find((item) => item.slug === activeFeaturedSlug) || featuredCategoryCards[0] || null;
 
   const itemActivityTitle = (activityId: string) => activities.find((activity) => activity.id === activityId)?.title || 'Activity';
+  const whatsappPhone = (
+    sanitizeWhatsAppPhone(websiteCMS.whatsappNumber) ||
+    sanitizeWhatsAppPhone(websiteCMS.primaryPhone) ||
+    sanitizeWhatsAppPhone(websiteCMS.footerPhone) ||
+    sanitizeWhatsAppPhone(DEFAULT_WEBSITE_CMS.whatsappNumber) ||
+    sanitizeWhatsAppPhone(DEFAULT_WEBSITE_CMS.footerPhone)
+  );
+  const getActivityWhatsAppUrl = (item: ActivityChildItem) => {
+    const activityTitle = itemActivityTitle(item.activityId);
+    const message = `Hello Pravaah Travels,\nI want to book ${item.title}.\nActivity: ${activityTitle}\nPlease share availability and booking details.`;
+    return `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(message)}`;
+  };
 
   useEffect(() => {
     if (!activeFeaturedSlug && featuredCategoryCards.length > 0) {
@@ -705,17 +762,8 @@ export default function HomeView({
 
   const handleFeaturedCategoryClick = (slug: string) => {
     setActiveFeaturedSlug(slug);
+    setFeaturedIndex(0);
     scrollToFeaturedPackages();
-  };
-
-  const handlePlannerCategorySelect = (category: DestinationCategory) => {
-    setPlannerCategory(category);
-    const relatedFeatured = featuredCategoryCards.find((item) => item.category === category);
-    if (relatedFeatured) {
-      setActiveFeaturedSlug(relatedFeatured.slug);
-    } else if (featuredCategoryCards.length > 0) {
-      setActiveFeaturedSlug(featuredCategoryCards[0].slug);
-    }
   };
 
   const filteredCategoryPackages = useMemo(() => {
@@ -723,39 +771,162 @@ export default function HomeView({
     const linkedPackageIds = Array.isArray(activeFeaturedCategory?.packageIds) ? activeFeaturedCategory.packageIds : [];
 
     if (linkedPackageIds.length > 0) {
-      return packagesSource.filter((pkg) => linkedPackageIds.includes(String(pkg.id ?? '')));
+      return sortPackagesForDisplay(packagesSource.filter((pkg) => linkedPackageIds.includes(String(pkg.id ?? ''))));
     }
 
-    return packagesSource.filter((pkg) => {
-      const matchesFeaturedCategory = activeFeaturedCategory
-        ? (activeFeaturedCategory.category && pkg.category === activeFeaturedCategory.category)
-          || (activeFeaturedCategory.location && (String(pkg.location ?? '').toLowerCase().includes(String(activeFeaturedCategory.location ?? '').toLowerCase()) || String(pkg.destination ?? '').toLowerCase().includes(String(activeFeaturedCategory.location ?? '').toLowerCase())))
-        : false;
+    const matched = packagesSource.filter((pkg) => {
+      if (!activeFeaturedCategory) return false;
+      const categoryNameLower = activeFeaturedCategory.name.toLowerCase();
 
-      const matchesPlannerCategory = plannerCategory ? pkg.category === plannerCategory : false;
-      return matchesFeaturedCategory || matchesPlannerCategory;
+      // Highest priority: the package was explicitly assigned to this Homepage Category
+      // from the Package CMS dropdown (Master Data → Homepage Categories).
+      if (pkg.homepageCategory && pkg.homepageCategory.trim().toLowerCase() === categoryNameLower) {
+        return true;
+      }
+
+      // Fallback for packages without an explicit assignment: match the category name
+      // against location/destination/category text, same as before this was Master Data driven.
+      const packageHaystack = [pkg.location, pkg.destination, ...(pkg.destinations || []), pkg.category]
+        .join(' ')
+        .toLowerCase();
+
+      return packageHaystack.includes(categoryNameLower)
+        || (activeFeaturedCategory.location && packageHaystack.includes(String(activeFeaturedCategory.location).toLowerCase()));
     });
-  }, [packageList, activeFeaturedCategory, plannerCategory]);
 
-  const activeOfferPackages = filteredCategoryPackages.filter((pkg) => {
+    // Featured packages first, then admin Display Order — additive fields, so packages
+    // without them keep the existing createdAt-desc order as their tiebreak.
+    return sortPackagesForDisplay(matched);
+  }, [packageList, activeFeaturedCategory]);
+
+  const isInternationalTabActive = activeFeaturedCategory?.slug === 'international';
+
+  // Country -> Destination hierarchy, computed in memory from the packages already loaded
+  // for the International tab. No extra Firestore reads and nothing hardcoded. Country falls
+  // back to the same heuristic used before this hierarchy existed (reading pkg.location /
+  // pkg.destination), so packages without an explicit pkg.country keep working exactly as
+  // they did — the flat single-row behavior is what you get when no finer data is available.
+  const getPackageCountryLabel = (pkg: TravelPackage) => deriveDestinationLabel(pkg.country) || getPackageDestinationLabel(pkg);
+
+  const sortByFeaturedOrder = <T extends { label: string; count: number }>(entries: T[], orderList?: string[]): T[] => {
+    if (!orderList || orderList.length === 0) {
+      return [...entries].sort((a, b) => (b.count - a.count) || a.label.localeCompare(b.label));
+    }
+    const priority: Record<string, number> = Object.create(null);
+    orderList.forEach((name, index) => { priority[name.toLowerCase()] = index; });
+    return [...entries].sort((a, b) => {
+      const aPriority = priority[a.label.toLowerCase()] ?? Number.MAX_SAFE_INTEGER;
+      const bPriority = priority[b.label.toLowerCase()] ?? Number.MAX_SAFE_INTEGER;
+      if (aPriority !== bPriority) return aPriority - bPriority;
+      return (b.count - a.count) || a.label.localeCompare(b.label);
+    });
+  };
+
+  const internationalCountries = useMemo(() => {
+    if (!isInternationalTabActive) return [];
+
+    const grouped: Record<string, { key: string; label: string; count: number }> = Object.create(null);
+    filteredCategoryPackages.forEach((pkg) => {
+      const label = getPackageCountryLabel(pkg);
+      const key = getDestinationKey(label);
+      const existing = grouped[key];
+      if (existing) {
+        existing.count += 1;
+        return;
+      }
+      grouped[key] = { key, label, count: 1 };
+    });
+
+    return sortByFeaturedOrder(Object.values(grouped), websiteCMS.featuredCountryOrder);
+  }, [isInternationalTabActive, filteredCategoryPackages, websiteCMS.featuredCountryOrder]);
+
+  // Keeps the country selection valid when packages are created, edited or deleted in the CMS.
+  useEffect(() => {
+    if (!isInternationalTabActive || internationalCountries.length === 0) {
+      setActiveCountryKey((prev) => (prev ? '' : prev));
+      return;
+    }
+    setActiveCountryKey((prev) => (
+      internationalCountries.some((country) => country.key === prev)
+        ? prev
+        : internationalCountries[0].key
+    ));
+  }, [isInternationalTabActive, internationalCountries]);
+
+  const countryFilteredPackages = useMemo(() => {
+    if (!isInternationalTabActive || !activeCountryKey) return filteredCategoryPackages;
+    return filteredCategoryPackages.filter((pkg) => getDestinationKey(getPackageCountryLabel(pkg)) === activeCountryKey);
+  }, [filteredCategoryPackages, isInternationalTabActive, activeCountryKey]);
+
+  // Second-level destination buttons within the selected country (Thailand -> Bangkok,
+  // Phuket, Krabi). Only packages whose pkg.destination is meaningfully different from the
+  // country label contribute a button — legacy packages with no finer breakdown simply show
+  // directly under the country, exactly like before this hierarchy existed.
+  const countryDestinations = useMemo(() => {
+    if (!isInternationalTabActive || !activeCountryKey) return [];
+
+    const activeCountryLabel = internationalCountries.find((country) => country.key === activeCountryKey)?.label || '';
+    const grouped: Record<string, { key: string; label: string; count: number }> = Object.create(null);
+    countryFilteredPackages.forEach((pkg) => {
+      const label = deriveDestinationLabel(pkg.destination);
+      if (!label || getDestinationKey(label) === getDestinationKey(activeCountryLabel)) return;
+      const key = getDestinationKey(label);
+      const existing = grouped[key];
+      if (existing) {
+        existing.count += 1;
+        return;
+      }
+      grouped[key] = { key, label, count: 1 };
+    });
+
+    return sortByFeaturedOrder(Object.values(grouped), websiteCMS.featuredDestinationOrder);
+  }, [isInternationalTabActive, activeCountryKey, internationalCountries, countryFilteredPackages, websiteCMS.featuredDestinationOrder]);
+
+  // Resets to "All" within a country whenever the country or its destination set changes.
+  useEffect(() => {
+    setActiveSubDestinationKey((prev) => (
+      countryDestinations.some((destination) => destination.key === prev) ? prev : ''
+    ));
+  }, [countryDestinations]);
+
+  const visibleCategoryPackages = useMemo(() => {
+    if (!isInternationalTabActive) return filteredCategoryPackages;
+    if (!activeSubDestinationKey) return countryFilteredPackages;
+    return countryFilteredPackages.filter((pkg) => getDestinationKey(deriveDestinationLabel(pkg.destination)) === activeSubDestinationKey);
+  }, [filteredCategoryPackages, countryFilteredPackages, isInternationalTabActive, activeSubDestinationKey]);
+
+  const handleCountryClick = (countryKey: string) => {
+    if (countryKey === activeCountryKey) return;
+    setActiveCountryKey(countryKey);
+    setActiveSubDestinationKey('');
+    setFeaturedIndex(0);
+  };
+
+  const handleSubDestinationClick = (destinationKey: string) => {
+    if (destinationKey === activeSubDestinationKey) return;
+    setActiveSubDestinationKey(destinationKey);
+    setFeaturedIndex(0);
+  };
+
+  const activeOfferPackages = visibleCategoryPackages.filter((pkg) => {
     const price = Number(pkg.price);
     const offerPrice = Number(pkg.offerPrice);
     return Number.isFinite(price) && Number.isFinite(offerPrice) && offerPrice > 0 && offerPrice < price;
   });
-  const offerPackages = activeOfferPackages.length > 0 ? activeOfferPackages : filteredCategoryPackages;
+  const offerPackages = activeOfferPackages.length > 0 ? activeOfferPackages : visibleCategoryPackages;
 
   const featuredCarouselPackages = useMemo(() => {
-    const visible = filteredCategoryPackages.slice(0, 6);
+    const visible = visibleCategoryPackages.slice(0, 6);
     if (visible.length === 0) return [];
     return visible.slice(featuredIndex, featuredIndex + 3);
-  }, [featuredIndex, filteredCategoryPackages]);
+  }, [featuredIndex, visibleCategoryPackages]);
 
   const handlePrevFeatured = () => {
-    setFeaturedIndex((prev) => (prev === 0 ? Math.max(0, filteredCategoryPackages.length - 3) : prev - 1));
+    setFeaturedIndex((prev) => (prev === 0 ? Math.max(0, visibleCategoryPackages.length - 3) : prev - 1));
   };
 
   const handleNextFeatured = () => {
-    setFeaturedIndex((prev) => (prev + 1 >= filteredCategoryPackages.length - 2 ? 0 : prev + 1));
+    setFeaturedIndex((prev) => (prev + 1 >= visibleCategoryPackages.length - 2 ? 0 : prev + 1));
   };
   const bestOfferDiscount = activeOfferPackages.length > 0
     ? Math.max(
@@ -766,6 +937,13 @@ export default function HomeView({
         })
       )
     : 0;
+
+  const latestBlogPosts = useMemo(() => (
+    blogPosts
+      .filter((post) => post.status === 'Publish')
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      .slice(0, 3)
+  ), [blogPosts]);
 
   return (
     <div id="home-view" className="animate-fade-in overflow-hidden bg-white font-sans">
@@ -902,10 +1080,10 @@ export default function HomeView({
                     onChange={(e) => setPlannerStyle(e.target.value)}
                     className="nice-select current w-full appearance-none bg-transparent text-[17px] font-extrabold text-stone-950 outline-none"
                   >
-                    <option value="Bespoke Luxury">Bespoke Luxury</option>
-                    <option value="Family Comfort">Family Comfort</option>
-                    <option value="Sacred Slow Travel">Sacred Slow Travel</option>
-                    <option value="Adventure Led">Adventure Led</option>
+                    <option value="Standard">Standard</option>
+                    <option value="Original">Original</option>
+                    <option value="Premium">Premium</option>
+                    <option value="Luxury">Luxury</option>
                   </select>
                 </span>
               </label>
@@ -963,8 +1141,8 @@ export default function HomeView({
           <div className="mt-0 grid gap-12 lg:grid-cols-2 lg:items-center lg:pt-8">
             <div>
               <div className="travel-video relative">
-                <img src={aboutImageVideo} alt="Adventure experience" className="image-video h-[420px] w-full rounded-[24px] object-cover shadow-[0_20px_48px_rgba(18,38,32,0.12)] sm:h-[520px]" />
-                <img src={enjoyImage} alt="" className="mask-enjoy absolute -bottom-8 right-8 hidden rounded-[18px] bg-transparent p-5 shadow-[0_0px_0px_rgba(0,0,0,0.14)] sm:block" />
+                <img src={aboutImageVideo} alt="Adventure experience" className="image-video h-[420px] w-full rounded-[24px] object-cover shadow-[0_20px_48px_rgba(18,38,32,0.12)] sm:h-[520px]" loading="lazy" decoding="async" />
+                <img src={enjoyImage} alt="" className="mask-enjoy absolute -bottom-8 right-8 hidden rounded-[18px] bg-transparent p-5 shadow-[0_0px_0px_rgba(0,0,0,0.14)] sm:block" loading="lazy" decoding="async" />
               </div>
             </div>
             <div>
@@ -974,7 +1152,7 @@ export default function HomeView({
                   Great opportunity for <span className="text-gray font-yes font-serif italic font-medium text-stone-400">adventure</span> & travels
                 </h2>
                 <p className="des-heading fadeInUp wow mt-6 max-w-xl text-[16px] leading-8 text-stone-600">
-                Adventure begins where ordinary ends. Explore hidden valleys, majestic mountains, sacred temples, thrilling bike expeditions, and unforgettable road trips with Pravaah Travels. Every itinerary is carefully planned to give you the perfect balance of comfort, excitement, and authentic local experiences.
+                Adventure begins where ordinary ends. Explore hidden valleys, majestic mountains, sacred temples, thrilling bike expeditions, and unforgettable road trips with {companyName}. Every itinerary is carefully planned to give you the perfect balance of comfort, excitement, and authentic local experiences.
                 </p>
                 <div className="fadeInUp wow mt-9 grid gap-5 sm:grid-cols-2">
                   <div>
@@ -1023,10 +1201,10 @@ export default function HomeView({
                   </button>
                   <div className="profile flex items-center gap-3">
                     <div className="image h-12 w-12 overflow-hidden rounded-full">
-                      <img src={avatar10} alt="Founder" className="h-full w-full object-cover" />
+                      <img src={avatar10} alt="Founder" className="h-full w-full object-cover" loading="lazy" decoding="async" />
                     </div>
                     <div className="content">
-                      <img src={founderNameImage} alt="Pravaah Curator" className="h-6 w-auto object-contain" />
+                      <img src={founderNameImage} alt="Pravaah Curator" className="h-6 w-auto object-contain" loading="lazy" decoding="async" />
                       <span className="mt-1 block text-[12px] font-bold uppercase tracking-wider text-[#4DA528]">Ceo & Founder</span>
                     </div>
                   </div>
@@ -1050,26 +1228,7 @@ export default function HomeView({
             </h2>
           </div>
           <div className="tab-tour-list">
-                <ul className="tab-list mb-6 flex flex-wrap justify-center gap-3" id="myTab" role="tablist">
-                  {(['Pilgrimage', 'Treks', 'Adventure', 'Himachal', 'Ladakh'] as DestinationCategory[]).map((category) => (
-                    <li key={category} className="nav-item" role="presentation">
-                      <button
-                        className={`nav-link cursor-pointer rounded-full border px-6 py-3 text-[14px] font-bold transition ${
-                          plannerCategory === category
-                            ? 'active border-[#4DA528] bg-[#4DA528] text-white shadow-lg'
-                            : 'border-stone-200 bg-white text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'
-                        }`}
-                        type="button"
-                        role="tab"
-                        aria-selected={plannerCategory === category}
-                        onClick={() => handlePlannerCategorySelect(category)}
-                      >
-                        {category}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <ul className="tab-list mb-10 flex flex-wrap justify-center gap-3">
+                <ul className="tab-list mb-10 flex flex-wrap justify-center gap-3" id="myTab" role="tablist">
                   {featuredCategoryCards.map((item) => (
                     <li key={item.slug} className="nav-item" role="presentation">
                       <button
@@ -1088,6 +1247,75 @@ export default function HomeView({
                     </li>
                   ))}
                 </ul>
+                {isInternationalTabActive && internationalCountries.length > 0 ? (
+                  <div className="-mt-6 mb-4 overflow-x-auto pb-2 sm:overflow-x-visible">
+                    <ul
+                      className="tab-list flex min-w-max flex-nowrap items-center justify-start gap-2.5 px-1 sm:min-w-0 sm:flex-wrap sm:justify-center sm:px-0"
+                      role="tablist"
+                      aria-label="International countries"
+                    >
+                      {internationalCountries.map((country) => (
+                        <li key={country.key} className="nav-item" role="presentation">
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeCountryKey === country.key}
+                            onClick={() => handleCountryClick(country.key)}
+                            className={`nav-link cursor-pointer whitespace-nowrap rounded-full border px-5 py-2.5 text-[13px] font-bold transition ${
+                              activeCountryKey === country.key
+                                ? 'active border-[#4DA528] bg-[#4DA528] text-white shadow-lg'
+                                : 'border-stone-200 bg-white text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'
+                            }`}
+                          >
+                            {country.label}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {isInternationalTabActive && countryDestinations.length > 0 ? (
+                  <div className="-mt-2 mb-10 overflow-x-auto pb-2 sm:overflow-x-visible">
+                    <ul
+                      className="tab-list flex min-w-max flex-nowrap items-center justify-start gap-2 px-1 sm:min-w-0 sm:flex-wrap sm:justify-center sm:px-0"
+                      role="tablist"
+                      aria-label="Destinations"
+                    >
+                      <li className="nav-item" role="presentation">
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={!activeSubDestinationKey}
+                          onClick={() => handleSubDestinationClick('')}
+                          className={`nav-link cursor-pointer whitespace-nowrap rounded-full border px-4 py-2 text-[12px] font-bold transition ${
+                            !activeSubDestinationKey
+                              ? 'active border-[#FF970D] bg-[#FF970D] text-white shadow'
+                              : 'border-stone-200 bg-white text-stone-600 hover:border-[#FF970D] hover:text-[#FF970D]'
+                          }`}
+                        >
+                          All
+                        </button>
+                      </li>
+                      {countryDestinations.map((destination) => (
+                        <li key={destination.key} className="nav-item" role="presentation">
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeSubDestinationKey === destination.key}
+                            onClick={() => handleSubDestinationClick(destination.key)}
+                            className={`nav-link cursor-pointer whitespace-nowrap rounded-full border px-4 py-2 text-[12px] font-bold transition ${
+                              activeSubDestinationKey === destination.key
+                                ? 'active border-[#FF970D] bg-[#FF970D] text-white shadow'
+                                : 'border-stone-200 bg-white text-stone-600 hover:border-[#FF970D] hover:text-[#FF970D]'
+                            }`}
+                          >
+                            {destination.label}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
                 <div className="tab-content" id="myTabContent">
                   <div className="tab-pane fade show active" role="tabpanel" tabIndex={0}>
                     {loading ? (
@@ -1096,7 +1324,7 @@ export default function HomeView({
                           <SkeletonCard key={idx} />
                         ))}
                       </div>
-                    ) : filteredCategoryPackages.length === 0 ? (
+                    ) : visibleCategoryPackages.length === 0 ? (
                       <div className="mx-auto max-w-2xl border border-dashed border-stone-300 bg-white p-12 text-center">
                         <AlertCircle className="mx-auto mb-4 h-8 w-8 text-stone-300" />
                         <p className="text-sm text-stone-500">No packages available for the selected category or featured collection.</p>
@@ -1118,7 +1346,7 @@ export default function HomeView({
                               />
                             </div>
                           );
-                        }) : filteredCategoryPackages.slice(0, 4).map((pkg, idx) => {
+                        }) : visibleCategoryPackages.slice(0, 4).map((pkg, idx) => {
                           const isWishlisted = Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(pkg.id ?? '')) : false;
                           return (
                             <div key={pkg.id} className="h-full">
@@ -1179,119 +1407,117 @@ export default function HomeView({
             </div>
           </div>
 
-          <div className={`grid gap-6 ${packagesVisible ? 'opacity-100' : 'opacity-0'} transition-opacity duration-300 sm:grid-cols-2 lg:grid-cols-3`}>
-            {filteredActivityItems.length > 0 ? (
-              filteredActivityItems.map((item, idx) => {
-                const linkedPackage = packageList.find((pkg) => pkg.id === item.linkedPackageId);
-                const imageUrl = item.thumbnailUrl || linkedPackage?.imageUrl || 'https://images.unsplash.com/photo-1516685304081-de7947d419d3?auto=format&fit=crop&w=800&q=80';
-                return (
-                  <article key={item.id} className="tour-listing wow fadeInUp animated group flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-1" data-wow-delay={`${(idx + 1) / 10}s`}>
-                    <button type="button" onClick={() => linkedPackage ? onNavigate('package-detail', getPackageRouteSegment(linkedPackage)) : undefined} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
-                      <img src={getTravelImage(imageUrl)} alt={item.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" loading="lazy" decoding="async" width="800" height="560" onError={handleTravelImageError} />
-                    </button>
-                    <div className="tour-listing-content flex flex-1 flex-col p-6">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="tag-listing inline-block rounded bg-[#FF970D]/12 px-3 py-1 text-[12px] font-bold text-[#D57400]">{linkedPackage?.category || 'Activity'}</span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (linkedPackage) onToggleWishlist?.(linkedPackage);
-                          }}
-                          className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 transition hover:bg-[#4DA528] hover:text-white"
-                          title={linkedPackage ? (Array.isArray(wishlistPackageIds) && wishlistPackageIds.includes(String(linkedPackage.id ?? '')) ? 'Remove from Wishlist' : 'Add to Wishlist') : 'Link a package to enable wishlist'}
-                        >
-                          <Heart className={`h-4 w-4 transition ${linkedPackage && Array.isArray(wishlistPackageIds) && wishlistPackageIds.includes(String(linkedPackage.id ?? '')) ? 'fill-rose-600 text-rose-600' : 'text-rose-500'}`} />
-                        </button>
-                      </div>
-                      <span className="map mt-4 flex items-center gap-2 text-[14px] font-medium text-stone-500">
-                        <Map className="h-4 w-4 text-[#4DA528]" />
-                        {item.subtitle || (linkedPackage?.destination ?? 'Explore')}
-                      </span>
-                      <h3 className="title-tour-list mt-3 text-[22px] font-bold leading-tight text-stone-950">
-                        <button onClick={() => linkedPackage ? onNavigate('package-detail', getPackageRouteSegment(linkedPackage)) : undefined} className="cursor-pointer text-left transition hover:text-[#4DA528]">
-                          {item.title}
-                        </button>
-                      </h3>
-                      <div className="mt-3 text-sm text-stone-600">
-                        <span className="font-semibold text-stone-900">From {formatPrice(item.startingPrice)}</span>
-                      </div>
-                      <p className="mt-4 line-clamp-3 text-sm leading-6 text-stone-600">{item.description}</p>
-                      <div className="mt-auto flex flex-col gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-sm text-stone-500">Activity</p>
-                          <p className="text-sm font-semibold text-stone-900">{itemActivityTitle(item.activityId)}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => linkedPackage ? onNavigate('package-detail', getPackageRouteSegment(linkedPackage)) : undefined}
-                          disabled={!linkedPackage}
-                          className={`inline-flex items-center justify-center rounded-full px-5 py-3 text-sm font-bold text-white transition ${linkedPackage ? 'bg-[#4DA528] hover:bg-[#3a8d1f]' : 'bg-stone-300 cursor-not-allowed'}`}
-                        >
-                          {linkedPackage ? 'View package' : 'No package linked'}
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })
-            ) : filteredActivityPackages.length === 0 ? (
+          <div className={`grid gap-4 ${packagesVisible ? 'opacity-100' : 'opacity-0'} transition-opacity duration-300 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5`}>
+            {filteredActivityItems.length === 0 && filteredActivityPackages.length === 0 ? (
               <div className="col-span-full rounded-[20px] border border-stone-200 bg-white p-10 text-center text-stone-500 shadow-sm">
                 No packages are available for this activity yet.
               </div>
             ) : (
-              filteredActivityPackages.map((pkg, idx) => {
-                const isWishlisted = Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(pkg.id ?? '')) : false;
+              <>
+              {filteredActivityItems.map((item, idx) => {
+                const linkedPackage = packageList.find((pkg) => pkg.id === item.linkedPackageId);
+                const imageUrl = item.thumbnailUrl || linkedPackage?.imageUrl || 'https://images.unsplash.com/photo-1516685304081-de7947d419d3?auto=format&fit=crop&w=800&q=80';
+                const hasPrice = Number.isFinite(item.startingPrice) && item.startingPrice > 0;
                 return (
-                  <article key={pkg.id} className="tour-listing wow fadeInUp animated group flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-1" data-wow-delay={`${(idx + 1) / 10}s`}>
-                    <button type="button" onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
-                      <img src={getTravelImage(pkg.imageUrl)} alt={pkg.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" loading="lazy" decoding="async" width="800" height="560" onError={handleTravelImageError} />
+                  <article key={item.id} className="tour-listing wow fadeInUp animated group flex h-full flex-col overflow-hidden rounded-[10px] border border-stone-200 bg-white shadow-[0_10px_28px_rgba(15,23,42,0.06)] transition duration-300 hover:-translate-y-1 hover:border-[#4DA528]/40 hover:shadow-[0_18px_38px_rgba(15,23,42,0.12)]" data-wow-delay={`${(idx + 1) / 10}s`}>
+                    <button type="button" onClick={() => onNavigate('contact')} className="tour-listing-image relative block aspect-[5/4] max-h-[150px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
+                      <TravelMedia src={imageUrl} alt={item.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" loading="lazy" decoding="async" width="800" height="560" />
+                      <div className="absolute inset-0 bg-linear-to-t from-stone-950/35 via-transparent to-transparent" />
+                      <span className="absolute left-3 top-3 rounded-full bg-white/95 px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#4DA528] shadow-sm">
+                        {itemActivityTitle(item.activityId)}
+                      </span>
                     </button>
-                    <div className="tour-listing-content flex flex-1 flex-col p-6">
+                    <div className="tour-listing-content flex flex-1 flex-col p-4">
+                      <span className="map flex items-center gap-2 text-[12px] font-semibold text-stone-500">
+                        <Map className="h-3.5 w-3.5 text-[#4DA528]" />
+                        <span className="truncate">{item.subtitle || (linkedPackage?.destination ?? 'Adventure')}</span>
+                      </span>
+                      <h3 className="title-tour-list mt-2 line-clamp-2 min-h-[2.45rem] text-[16px] font-extrabold leading-snug text-stone-950">
+                        <button onClick={() => onNavigate('contact')} className="cursor-pointer text-left transition hover:text-[#4DA528]">
+                          {item.title}
+                        </button>
+                      </h3>
+                      <p className="mt-2 line-clamp-2 min-h-[2.5rem] text-[13px] leading-5 text-stone-600">{item.description}</p>
+                      <div className="mt-auto border-t border-stone-100 pt-3">
+                        <div className="flex items-end justify-between gap-3">
+                          <div>
+                            <p className="text-[9px] font-extrabold uppercase tracking-[0.14em] text-stone-400">Starts from</p>
+                            <p className="mt-1 text-[18px] font-extrabold text-[#4DA528]">{hasPrice ? formatPrice(item.startingPrice) : 'On request'}</p>
+                          </div>
+                          <a
+                            href={getActivityWhatsAppUrl(item)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex h-9 shrink-0 items-center justify-center rounded-[6px] bg-[#FF5722] px-3 text-[11px] font-extrabold uppercase tracking-[0.08em] text-white transition hover:bg-[#4DA528]"
+                            aria-label={`Book ${item.title} on WhatsApp`}
+                          >
+                            Book Now
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+              {filteredActivityPackages.map((pkg, idx) => {
+                const isWishlisted = Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(pkg.id ?? '')) : false;
+                const packageImage = String(pkg.imageUrl || pkg.packageBannerUrl || '').trim();
+                return (
+                  <article key={pkg.id} className="tour-listing wow fadeInUp animated group flex h-full flex-col overflow-hidden rounded-[10px] border border-stone-200 bg-white shadow-[0_10px_28px_rgba(15,23,42,0.06)] transition duration-300 hover:-translate-y-1 hover:border-[#4DA528]/40 hover:shadow-[0_18px_38px_rgba(15,23,42,0.12)]" data-wow-delay={`${(idx + 1) / 10}s`}>
+                    <button type="button" onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="tour-listing-image relative block aspect-[5/4] max-h-[150px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
+                      {packageImage ? (
+                        <TravelMedia src={packageImage} alt={pkg.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" loading="lazy" decoding="async" width="800" height="560" disableFallback />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-[#f8f7f4] px-4 text-center text-xs font-semibold text-stone-400">Package image not uploaded</div>
+                      )}
+                      <div className="absolute inset-0 bg-linear-to-t from-stone-950/35 via-transparent to-transparent" />
+                    </button>
+                    <div className="tour-listing-content flex flex-1 flex-col p-4">
                       <div className="flex items-center justify-between gap-3">
-                        <span className="tag-listing inline-block rounded bg-[#FF970D]/12 px-3 py-1 text-[12px] font-bold text-[#D57400]">{pkg.category}</span>
+                        <span className="tag-listing inline-block rounded-full bg-[#FF970D]/12 px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#D57400]">{pkg.category}</span>
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             onToggleWishlist?.(pkg);
                           }}
-                          className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 transition hover:bg-[#4DA528] hover:text-white"
+                          className="icon-bookmark flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 transition hover:bg-[#4DA528] hover:text-white"
                           title={isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
                         >
-                          <Heart className={`h-4 w-4 transition ${isWishlisted ? 'fill-rose-600 text-rose-600' : 'text-rose-500'}`} />
+                          <Heart className={`h-3.5 w-3.5 transition ${isWishlisted ? 'fill-rose-600 text-rose-600' : 'text-rose-500'}`} />
                         </button>
                       </div>
-                      <span className="map mt-4 flex items-center gap-2 text-[14px] font-medium text-stone-500">
-                        <Map className="h-4 w-4 text-[#4DA528]" />
-                        {pkg.location || pkg.destination}
+                      <span className="map mt-3 flex items-center gap-2 text-[12px] font-semibold text-stone-500">
+                        <Map className="h-3.5 w-3.5 text-[#4DA528]" />
+                        <span className="truncate">{pkg.location || pkg.destination}</span>
                       </span>
-                      <h3 className="title-tour-list mt-3 text-[22px] font-bold leading-tight text-stone-950">
+                      <h3 className="title-tour-list mt-2 line-clamp-2 min-h-[2.45rem] text-[16px] font-extrabold leading-snug text-stone-950">
                         <button onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="cursor-pointer text-left transition hover:text-[#4DA528]">
                           {pkg.title}
                         </button>
                       </h3>
-                      <div className="mt-3 text-sm text-stone-600">
+                      <div className="mt-2 text-xs text-stone-600">
                         <span className="font-semibold text-stone-900">{pkg.duration}</span>
                       </div>
-                      <p className="mt-4 line-clamp-3 text-sm leading-6 text-stone-600">{pkg.shortDescription || pkg.destination}</p>
-                      <div className="mt-auto flex flex-col gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="mt-2 line-clamp-2 min-h-[2.5rem] text-[13px] leading-5 text-stone-600">{pkg.shortDescription || pkg.destination}</p>
+                      <div className="mt-auto flex items-end justify-between gap-3 border-t border-stone-100 pt-3">
                         <div>
-                          <p className="text-sm text-stone-500">Starting</p>
-                          <p className="text-xl font-bold text-[#4DA528]">{formatPrice(pkg.offerPrice || pkg.price)}</p>
+                          <p className="text-[9px] font-extrabold uppercase tracking-[0.14em] text-stone-400">Starting</p>
+                          <p className="text-[18px] font-extrabold text-[#4DA528]">{formatPrice(pkg.offerPrice || pkg.price)}</p>
                         </div>
                         <button
                           type="button"
                           onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))}
-                          className="inline-flex items-center justify-center rounded-full bg-[#4DA528] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#3a8d1f]"
+                          className="inline-flex h-9 shrink-0 items-center justify-center rounded-[6px] bg-[#4DA528] px-3 text-[11px] font-extrabold uppercase tracking-[0.08em] text-white transition hover:bg-[#FF5722]"
                         >
-                          Book Now
+                          View
                         </button>
                       </div>
                     </div>
                   </article>
                 );
-              })
+              })}
+              </>
             )}
           </div>
         </div>
@@ -1324,7 +1550,7 @@ export default function HomeView({
       )}
 
       {featuredPackages.length > 0 && <section className="offer-package bg-1 relative overflow-hidden bg-white py-20">
-        <img src={getTravelImage(popularDestinations[3].image)} alt={popularDestinations[3].name} className="feature-ofer absolute inset-y-0 right-0 hidden h-full w-[34%] object-cover opacity-20 lg:block" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+        <img src={getTravelImage(popularDestinations[3].image)} alt={popularDestinations[3].name} className="feature-ofer absolute inset-y-0 right-0 hidden h-full w-[34%] object-cover opacity-20 lg:block" referrerPolicy="no-referrer" loading="lazy" decoding="async" onError={handleTravelImageError} />
         <div className="tf-container relative z-index3 mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
           <div className="grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
             <div>
@@ -1365,29 +1591,37 @@ export default function HomeView({
               <div className="on-week-swipper-wrap relative">
                 <div className="swiper offer-package-swipper overflow-hidden relative">
                   <div className="swiper-wrapper grid items-stretch gap-7 md:grid-cols-2">
-                    {offerPackages.slice(0, 2).map((pkg) => (
-                      <div key={`offer-${pkg.id}`} className="swiper-slide h-full">
-                        <article className="tour-listing flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)]">
-                          <button type="button" onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="tour-listing-image relative block h-[260px] w-full cursor-pointer overflow-hidden text-left">
-                            <img src={getTravelImage(pkg.imageUrl)} alt={pkg.title} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
-                            <span className="feature absolute left-4 top-4 rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">Featured</span>
-                          </button>
-                          <div className="tour-listing-content flex flex-1 flex-col p-6">
-                            <span className="tag-listing inline-block rounded bg-[#FF970D]/12 px-3 py-1 text-[12px] font-bold text-[#D57400]">{pkg.category}</span>
-                            <h3 className="title-tour-list mt-4 text-[22px] font-bold leading-tight text-stone-950">{pkg.title}</h3>
-                            <div className="flex-two mt-auto flex items-center justify-between pt-5">
-                              <p className="text-[14px] text-stone-500">
-                                From <span className="price-sale text-[20px] font-extrabold text-[#4DA528]">{formatPrice(pkg.offerPrice || pkg.price)}</span>
-                                {pkg.offerPrice && <span className="ml-2 text-xs font-semibold text-stone-400 line-through">{formatPrice(pkg.price)}</span>}
-                              </p>
-                              <button onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-[#4DA528] hover:text-white">
-                                <Heart className="h-4 w-4" />
-                              </button>
+                    {offerPackages.slice(0, 2).map((pkg) => {
+                      const packageImage = String(pkg.imageUrl || pkg.packageBannerUrl || '').trim();
+
+                      return (
+                        <div key={`offer-${pkg.id}`} className="swiper-slide h-full">
+                          <article className="tour-listing flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)]">
+                            <button type="button" onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="tour-listing-image relative block h-[260px] w-full cursor-pointer overflow-hidden text-left">
+                              {packageImage ? (
+                                <TravelMedia src={packageImage} alt={pkg.title} className="h-full w-full object-cover" disableFallback />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-[#f8f7f4] px-4 text-center text-xs font-semibold text-stone-400">Package image not uploaded</div>
+                              )}
+                              <span className="feature absolute left-4 top-4 rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">Featured</span>
+                            </button>
+                            <div className="tour-listing-content flex flex-1 flex-col p-6">
+                              <span className="tag-listing inline-block rounded bg-[#FF970D]/12 px-3 py-1 text-[12px] font-bold text-[#D57400]">{pkg.category}</span>
+                              <h3 className="title-tour-list mt-4 text-[22px] font-bold leading-tight text-stone-950">{pkg.title}</h3>
+                              <div className="flex-two mt-auto flex items-center justify-between pt-5">
+                                <p className="text-[14px] text-stone-500">
+                                  From <span className="price-sale text-[20px] font-extrabold text-[#4DA528]">{formatPrice(pkg.offerPrice || pkg.price)}</span>
+                                  {pkg.offerPrice && <span className="ml-2 text-xs font-semibold text-stone-400 line-through">{formatPrice(pkg.price)}</span>}
+                                </p>
+                                <button onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-[#4DA528] hover:text-white">
+                                  <Heart className="h-4 w-4" />
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        </article>
-                      </div>
-                    ))}
+                          </article>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -1396,8 +1630,63 @@ export default function HomeView({
         </div>
       </section>}
 
+      {latestBlogPosts.length > 0 && (
+        <section className="bg-[#F7F8F4] py-20" id="home-latest-blogs">
+          <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
+            <div className="center m0-auto w-text-heading mx-auto mb-12 max-w-3xl text-center">
+              <span className="sub-title-heading text-main mb-4 fadeInUp wow font-serif text-[30px] italic text-[#4DA528] sm:text-[32px]">Stories & Guides</span>
+              <h2 className="title-heading fadeInUp wow mt-3 text-[34px] font-extrabold leading-tight text-stone-950 sm:text-[46px] lg:text-[50px]">
+                Latest From the <span className="text-gray font-yes font-serif italic font-medium text-stone-400">Travel Journal</span>
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+              {latestBlogPosts.map((post) => (
+                <article
+                  key={post.id}
+                  onClick={() => onNavigate('blog-detail', getBlogRouteSegment(post))}
+                  className="group cursor-pointer overflow-hidden rounded-[16px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(18,38,32,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_55px_rgba(18,38,32,0.14)]"
+                >
+                  <div className="relative aspect-[16/10] overflow-hidden bg-stone-100">
+                    <TravelMedia
+                      src={getTravelImage(post.featuredImageUrl)}
+                      alt={post.title}
+                      className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                    {post.category && (
+                      <span className="absolute left-4 top-4 rounded-full bg-[#4DA528] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow">
+                        {post.category}
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-3 p-6">
+                    <h3 className="line-clamp-2 text-lg font-extrabold leading-snug text-stone-950 transition group-hover:text-[#4DA528]">
+                      {post.title}
+                    </h3>
+                    <p className="line-clamp-2 text-sm leading-6 text-stone-500">{getBlogExcerpt(post.content, 110)}</p>
+                    <p className="text-[11px] font-medium text-stone-400">{formatBlogDate(post.createdAt)}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <div className="mt-12 text-center">
+              <button
+                onClick={() => onNavigate('blogs')}
+                className="inline-flex cursor-pointer items-center justify-center gap-3 rounded-full bg-[#4DA528] px-8 py-[16px] text-[14px] font-semibold uppercase tracking-[0.16em] text-white transition hover:bg-[#FF970D]"
+              >
+                <span>View all articles</span>
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
       <section className="relative overflow-hidden bg-[#081E2A] py-20 text-white" id="home-banner-contact">
-        <img src={getTravelImage('https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=1800&q=80')} alt="Adventure route" className="absolute inset-0 h-full w-full object-cover opacity-30" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+        <img src={getTravelImage('https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=1800&q=80')} alt="Adventure route" className="absolute inset-0 h-full w-full object-cover opacity-30" referrerPolicy="no-referrer" loading="lazy" decoding="async" onError={handleTravelImageError} />
         <div className="relative mx-auto grid max-w-[1320px] gap-10 px-4 sm:px-6 lg:grid-cols-[1.2fr_0.8fr] lg:px-8">
           <div>
             <span className="font-serif text-[32px] italic text-[#4DA528]">Explore the world</span>
@@ -1407,12 +1696,12 @@ export default function HomeView({
                 <Sparkles className="h-7 w-7" />
               </button>
               <address className="not-italic text-[17px] leading-8 text-white/78">
-                Contact us at <a href="mailto:pravaahtravels@gmail.com" className="text-[#4DA528]">pravaahtravels@gmail.com</a>
+                Contact us at <a href={`mailto:${websiteCMS.primaryEmail || websiteCMS.footerEmail || DEFAULT_WEBSITE_CMS.primaryEmail || DEFAULT_WEBSITE_CMS.footerEmail}`} className="text-[#4DA528]">{websiteCMS.primaryEmail || websiteCMS.footerEmail || DEFAULT_WEBSITE_CMS.primaryEmail || DEFAULT_WEBSITE_CMS.footerEmail}</a>
               </address>
             </div>
           </div>
           <div className="hidden items-end justify-end lg:flex">
-            <img src={getTravelImage('https://images.unsplash.com/photo-1593693397690-362cb9666fc2?auto=format&fit=crop&w=650&q=80')} alt="Adventure" className="h-[360px] w-[360px] rounded-full object-cover ring-[18px] ring-white/10" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+            <img src={getTravelImage('https://images.unsplash.com/photo-1593693397690-362cb9666fc2?auto=format&fit=crop&w=650&q=80')} alt="Adventure" className="h-[360px] w-[360px] rounded-full object-cover ring-[18px] ring-white/10" referrerPolicy="no-referrer" loading="lazy" decoding="async" onError={handleTravelImageError} />
           </div>
         </div>
       </section>
@@ -1858,11 +2147,17 @@ export default function HomeView({
                         </div>
                         <h5 className="text-sm font-bold text-stone-800">Booking Enquiry Registered!</h5>
                         <p className="text-xs text-stone-600 leading-relaxed font-light">
-                          Your custom AI draft layout has been recorded successfully in Firestore. Pravaah travels support team will contact you on your registered mobile number shortly.
+                          Your custom AI draft layout has been recorded successfully in Firestore. {companyName} support team will contact you on your registered mobile number shortly.
                         </p>
                       </div>
                     ) : (
                       <form onSubmit={handleAiBookingSubmit} className="space-y-4">
+                        {aiEnquiryError && (
+                          <div role="alert" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-medium text-rose-700">
+                            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                            <span>{aiEnquiryError}</span>
+                          </div>
+                        )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="space-y-1.5">
                             <label className="block text-[10px] font-bold text-[#333333] uppercase tracking-wider">Your Name</label>

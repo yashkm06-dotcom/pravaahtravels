@@ -1,5 +1,5 @@
 import { ArrowRight, Check, Compass, Mail, MapPin, Phone, Send, Shield } from 'lucide-react';
-import { GalleryImage, WebsiteCMSSettings } from '../types';
+import { DEFAULT_WEBSITE_CMS, GalleryImage, WebsiteCMSSettings } from '../types';
 import { handleTravelImageError } from '../utils/imageFallback';
 
 interface FooterProps {
@@ -31,8 +31,10 @@ export default function Footer({ onNavigate, websiteCMS, gallery, loading = fals
     ['in', websiteCMS.socialLinkedIn],
     ['ig', websiteCMS.socialInstagram],
   ].filter(([, href]) => isValidUrl(href));
+  const companyName = websiteCMS.companyName || DEFAULT_WEBSITE_CMS.companyName;
+  const companyTagline = websiteCMS.companyTagline || DEFAULT_WEBSITE_CMS.companyTagline;
   const logoMark = websiteCMS.logoUrl ? (
-    <img src={websiteCMS.logoUrl} alt="Pravaah Travels logo" className="h-full w-full object-contain" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+    <img src={websiteCMS.logoUrl} alt={`${companyName} logo`} className="h-full w-full object-contain" referrerPolicy="no-referrer" loading="lazy" decoding="async" onError={handleTravelImageError} />
   ) : (
     <Compass className="h-7 w-7" />
   );
@@ -42,9 +44,9 @@ export default function Footer({ onNavigate, websiteCMS, gallery, loading = fals
       <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-12 border-b border-white/10 pb-16 sm:grid-cols-2 lg:grid-cols-[1.1fr_0.7fr_0.9fr_1fr]">
           <div className="space-y-7">
-            <button
-              type="button"
-              onClick={() => onNavigate('home')}
+            <a
+              href="/"
+              onClick={(event) => { event.preventDefault(); onNavigate('home'); }}
               className="group flex cursor-pointer items-center gap-3"
               id="footer-logo"
             >
@@ -52,10 +54,10 @@ export default function Footer({ onNavigate, websiteCMS, gallery, loading = fals
                 {logoMark}
               </span>
               <span className="text-left">
-                <span className="block text-2xl font-extrabold leading-none">Pravaah</span>
-                <span className="mt-1 block text-[11px] font-bold uppercase tracking-[0.24em] text-[#4DA528]">Travels</span>
+                <span className="block text-2xl font-extrabold leading-none">{companyName}</span>
+                <span className="mt-1 block text-[11px] font-bold uppercase tracking-[0.24em] text-[#4DA528]">{companyTagline}</span>
               </span>
-            </button>
+            </a>
             <p className="max-w-sm text-[15px] font-light leading-8 text-white/70">
               {websiteCMS.footerContactInfo}
             </p>
@@ -86,10 +88,10 @@ export default function Footer({ onNavigate, websiteCMS, gallery, loading = fals
                 ['Customer Portal', 'portal'],
               ].map(([label, view]) => (
                 <li key={view}>
-                  <button onClick={() => onNavigate(view)} className="group flex cursor-pointer items-center gap-2 transition hover:text-[#4DA528] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[#081E2A]">
+                  <a href={view === 'home' ? '/' : `/${view}`} onClick={(event) => { event.preventDefault(); onNavigate(view); }} className="group flex cursor-pointer items-center gap-2 transition hover:text-[#4DA528] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[#081E2A]">
                     <ArrowRight className="h-3.5 w-3.5 opacity-0 transition group-hover:opacity-100" />
                     <span>{label}</span>
-                  </button>
+                  </a>
                 </li>
               ))}
             </ul>
@@ -115,6 +117,8 @@ export default function Footer({ onNavigate, websiteCMS, gallery, loading = fals
                       alt={`Travel gallery ${idx + 1}`}
                       className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
                       referrerPolicy="no-referrer"
+                      loading="lazy"
+                      decoding="async"
                       onError={handleTravelImageError}
                     />
                   </button>
@@ -165,12 +169,12 @@ export default function Footer({ onNavigate, websiteCMS, gallery, loading = fals
         </div>
 
         <div className="flex flex-col items-center justify-between gap-5 py-8 text-[14px] text-white/62 md:flex-row">
-          <p>Copyright © {currentYear} by <span className="text-[#4DA528]">Pravaah Travels.</span> All Rights Reserved</p>
+          <p>{websiteCMS.copyrightText || `Copyright © ${currentYear} by ${companyName}. All Rights Reserved`}</p>
           <div className="flex flex-wrap items-center justify-center gap-5">
-            <button onClick={() => onNavigate('admin-dashboard')} className="flex cursor-pointer items-center gap-2 transition hover:text-[#4DA528]">
+            <a href="/admin-dashboard" onClick={(event) => { event.preventDefault(); onNavigate('admin-dashboard'); }} className="flex cursor-pointer items-center gap-2 transition hover:text-[#4DA528]">
               <Shield className="h-4 w-4" />
               <span>Admin Gateway</span>
-            </button>
+            </a>
             <span>Terms</span>
             <span>Privacy</span>
           </div>

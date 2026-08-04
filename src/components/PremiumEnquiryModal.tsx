@@ -33,7 +33,7 @@ const initialFormState = {
   adults: 2,
   children: 0,
   budget: 'Rs. 20,000 - Rs. 50,000',
-  travelType: 'Family Comfort',
+  travelType: 'Original',
   preferredContactMethod: 'Phone Call',
   message: '',
 };
@@ -157,6 +157,7 @@ export default function PremiumEnquiryModal({ isOpen, onClose, onSuccess }: Prem
         budget: formData.budget,
         message: detailMessage,
         status: 'New',
+        source: 'Premium Enquiry',
         createdAt: new Date().toISOString(),
       };
 
@@ -328,10 +329,10 @@ export default function PremiumEnquiryModal({ isOpen, onClose, onSuccess }: Prem
               <label className="space-y-2">
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Travel Type</span>
                 <select name="travelType" value={formData.travelType} onChange={handleFieldChange} className="h-12 w-full rounded-[14px] border border-stone-200 bg-[#fffaf1] px-4 text-sm font-semibold text-stone-900 outline-none transition focus:border-[#4DA528] focus:bg-white focus:ring-2 focus:ring-[#4DA528]/15">
-                  <option>Family Comfort</option>
-                  <option>Bespoke Luxury</option>
-                  <option>Adventure Led</option>
-                  <option>Sacred Slow Travel</option>
+                  <option>Standard</option>
+                  <option>Original</option>
+                  <option>Luxury</option>
+                  <option>Premium</option>
                   <option>Corporate Group</option>
                 </select>
               </label>

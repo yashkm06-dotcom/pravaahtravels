@@ -89,6 +89,31 @@ const sanitizeRecord = (record: Record<string, unknown>): Record<string, unknown
   removeUndefinedValues(record) as Record<string, unknown>
 );
 
+const collectPackageAssetUrls = (data: PackageRecord): string[] => {
+  const urls = new Set<string>();
+  const addUrl = (value: unknown) => {
+    if (typeof value === 'string' && value.trim()) urls.add(value.trim());
+  };
+  const addUrls = (value: unknown) => {
+    if (Array.isArray(value)) value.forEach(addUrl);
+  };
+
+  addUrl(data.imageUrl);
+  addUrl(data.packageBannerUrl);
+  addUrl(data.heroImage);
+  addUrls(data.gallery);
+  addUrls(data.galleryImages);
+
+  if (Array.isArray(data.itinerary)) {
+    data.itinerary.forEach((day) => {
+      if (!day || typeof day !== 'object') return;
+      addUrls((day as Record<string, unknown>).images);
+    });
+  }
+
+  return Array.from(urls);
+};
+
 const mapSnapshotData = (id: string, data: PackageRecord): PackageCmsDocument => {
   const destinations = toStringArray(data.destinations);
   const fallbackDestination = cleanPackageText(data.destination);
@@ -98,8 +123,10 @@ const mapSnapshotData = (id: string, data: PackageRecord): PackageCmsDocument =>
     : isPackageCmsStatus(data.status)
       ? data.status
       : data.active === false
-        ? 'draft'
-        : 'published';
+      ? 'draft'
+      : 'published';
+  const legacyBasePrice = toNumber(data.price, 0);
+  const legacyOfferPrice = toNumber(data.offerPrice, 0);
 
   return {
     id,
@@ -115,27 +142,34 @@ const mapSnapshotData = (id: string, data: PackageRecord): PackageCmsDocument =>
         ? data.imageUrl
         : null,
     gallery,
+    activityId: typeof data.activityId === 'string' ? data.activityId : null,
     duration: typeof data.duration === 'string' ? data.duration : null,
     destinations: destinations.length ? destinations : (fallbackDestination ? [fallbackDestination] : []),
-    overview: typeof data.overview === 'string'
-      ? data.overview
-      : typeof data.shortDescription === 'string'
-        ? data.shortDescription
-        : null,
+    overview: typeof data.fullDescription === 'string' && data.fullDescription.trim()
+      ? data.fullDescription
+      : typeof data.overview === 'string'
+        ? data.overview
+        : typeof data.shortDescription === 'string'
+          ? data.shortDescription
+          : null,
     itinerary: Array.isArray(data.itinerary) ? data.itinerary as PackageCmsDocument['itinerary'] : [],
     hotels: Array.isArray(data.hotels) ? data.hotels as PackageCmsDocument['hotels'] : [],
     pricing: data.pricing && typeof data.pricing === 'object'
       ? data.pricing as PackageCmsDocument['pricing']
       : {
         currency: 'INR',
-        price: toNumber(data.price, 0),
-        originalPrice: toNumber(data.offerPrice, 0) || null,
+        price: legacyOfferPrice || legacyBasePrice,
+        originalPrice: legacyOfferPrice ? legacyBasePrice || null : null,
         discount: null,
         priceType: null,
         occupancy: null,
-      },
+    },
     inclusions: toStringArray(data.inclusions),
     exclusions: toStringArray(data.exclusions),
+    packageOptions: Array.isArray(data.packageOptions) ? data.packageOptions as PackageCmsDocument['packageOptions'] : [],
+    knowBeforeYouGo: toStringArray(data.knowBeforeYouGo),
+    thingsToCarry: toStringArray(data.thingsToCarry),
+    difficultyLevel: typeof data.difficultyLevel === 'number' ? data.difficultyLevel : null,
     faqs: Array.isArray(data.faqs) ? data.faqs as PackageCmsDocument['faqs'] : [],
     policies: toStringArray(data.policies),
     importQuality: data.importQuality && typeof data.importQuality === 'object'
@@ -163,6 +197,7 @@ const buildVersionSnapshot = (data: PackageRecord): Record<string, unknown> => (
   sourceDomain: data.sourceDomain,
   heroImage: data.heroImage,
   gallery: data.gallery,
+  activityId: data.activityId,
   duration: data.duration,
   destinations: data.destinations,
   overview: data.overview,
@@ -171,6 +206,10 @@ const buildVersionSnapshot = (data: PackageRecord): Record<string, unknown> => (
   pricing: data.pricing,
   inclusions: data.inclusions,
   exclusions: data.exclusions,
+  packageOptions: data.packageOptions,
+  knowBeforeYouGo: data.knowBeforeYouGo,
+  thingsToCarry: data.thingsToCarry,
+  difficultyLevel: data.difficultyLevel,
   faqs: data.faqs,
   policies: data.policies,
   importQuality: data.importQuality,
@@ -270,11 +309,25 @@ export class PackageRepository {
       const versionHistory = Array.isArray(existingData?.versionHistory)
         ? existingData.versionHistory as PackageVersionHistoryEntry[]
         : [];
+      const hasLegacyCoverImage = Object.prototype.hasOwnProperty.call(packageInput.legacy || {}, 'imageUrl');
+      const hasLegacyBannerImage = Object.prototype.hasOwnProperty.call(packageInput.legacy || {}, 'packageBannerUrl');
+      const mappedLegacyFields = mapCmsToLegacyPackageFields({ ...normalized, slug });
+      const mediaPatch = {
+        imageUrl: hasLegacyCoverImage
+          ? cleanPackageText(packageInput.legacy?.imageUrl)
+          : cleanPackageText(existingData?.imageUrl) || mappedLegacyFields.imageUrl,
+        packageBannerUrl: hasLegacyBannerImage
+          ? cleanPackageText(packageInput.legacy?.packageBannerUrl)
+          : cleanPackageText(existingData?.packageBannerUrl) || mappedLegacyFields.packageBannerUrl,
+      };
 
       const basePayload = {
         ...(packageInput.legacy || {}),
         ...normalized,
-        ...mapCmsToLegacyPackageFields({ ...normalized, slug }),
+        ...mappedLegacyFields,
+        ...mediaPatch,
+        shortDescription: cleanPackageText(packageInput.legacy?.shortDescription) || normalized.overview || '',
+        fullDescription: cleanPackageText(packageInput.legacy?.fullDescription) || normalized.overview || '',
         slug,
         cmsStatus: normalized.status,
         version: nextVersion,
@@ -388,6 +441,45 @@ export class PackageRepository {
     const saved = await this.getPackage(packageId);
     if (!saved) throw new Error('Package status update failed.');
     return saved;
+  }
+
+  async permanentlyDeletePackage(
+    packageId: string,
+    userId: string,
+  ): Promise<{ packageId: string; title: string; assetUrls: string[] }> {
+    const packageRef = this.packageRef(packageId);
+    const timestamp = nowIso();
+    let title = '';
+    let assetUrls: string[] = [];
+
+    await runTransaction(this.firestore, async (transaction) => {
+      const snapshot = await transaction.get(packageRef);
+      if (!snapshot.exists()) throw new Error('Package not found.');
+
+      const data = snapshot.data();
+      const status = isPackageCmsStatus(data.cmsStatus) ? data.cmsStatus : null;
+      if (status !== 'deleted') {
+        throw new Error('Only packages in Trash can be permanently deleted.');
+      }
+
+      title = cleanPackageText(data.title);
+      assetUrls = collectPackageAssetUrls(data);
+
+      transaction.delete(packageRef);
+      transaction.set(doc(this.activityLogsRef()), {
+        packageId,
+        action: 'permanent-delete',
+        actorId: userId,
+        createdAt: timestamp,
+        message: `permanently deleted package ${title}`,
+        metadata: {
+          title,
+          assetCount: assetUrls.length,
+        },
+      });
+    });
+
+    return { packageId, title, assetUrls };
   }
 
   async getImportHistory(packageId: string): Promise<PackageImportRecord[]> {
