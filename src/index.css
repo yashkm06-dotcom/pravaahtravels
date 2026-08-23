@@ -1,0 +1,206 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..700;1,400..700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --pravaah-ink: #123c3c;
+    --pravaah-teal: #0f766e;
+    --pravaah-teal-dark: #0d5f59;
+    --pravaah-sun: #f59e0b;
+    --pravaah-coral: #f97350;
+    --pravaah-paper: #fffaf1;
+    --pravaah-cream: #f8f0df;
+    --pravaah-line: rgba(120, 113, 108, 0.22);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    background: var(--pravaah-paper);
+    scroll-padding-top: 6rem;
+  }
+
+  body {
+    margin: 0;
+    overflow-x: hidden;
+    background:
+      radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 32rem),
+      linear-gradient(180deg, #fffaf1 0%, #f8f0df 46%, #fffaf1 100%);
+    color: var(--pravaah-ink);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    letter-spacing: 0;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background: rgba(245, 158, 11, 0.28);
+    color: var(--pravaah-ink);
+  }
+
+  img {
+    display: block;
+    max-width: 100%;
+  }
+
+  section[id],
+  [id] {
+    scroll-margin-top: 6rem;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: 0;
+  }
+
+  p,
+  li {
+    letter-spacing: 0;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    letter-spacing: 0;
+  }
+
+  button,
+  a {
+    transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+    transition-duration: 180ms;
+    transition-timing-function: ease-out;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 3px solid rgba(15, 118, 110, 0.28);
+    outline-offset: 3px;
+  }
+
+  input,
+  select,
+  textarea {
+    border-radius: 0.85rem;
+  }
+}
+
+@layer components {
+  #app-root {
+    background: transparent;
+  }
+
+  #app-root main {
+    background: transparent;
+  }
+
+  #home-view,
+  #packages-view,
+  #package-detail-view,
+  #destinations-view,
+  #gallery-view,
+  #contact-view,
+  #about-view,
+  #ai-curator-view-root,
+  #unified-login-view,
+  #customer-portal-active-root {
+    color: var(--pravaah-ink);
+  }
+
+  #home-view section,
+  #packages-view,
+  #package-detail-view,
+  #destinations-view,
+  #gallery-view,
+  #contact-view,
+  #about-view,
+  #ai-curator-view-root {
+    background-color: transparent;
+  }
+
+  #packages-grid > div,
+  #gallery-grid > div,
+  #featured-packages .grid > div,
+  #popular-destinations .grid > div,
+  #destinations-view .grid > div,
+  #brand-ethos .grid > div,
+  #testimonials .grid > div,
+  #filter-panel,
+  #detail-enquiry-card,
+  #contact-form-card,
+  #customer-login-box,
+  #quiz-wizard-card,
+  #customer-portal-active-root > div,
+  #admin-dashboard-layout aside,
+  #admin-dashboard-layout main > div,
+  #bookings-panel > div {
+    border-color: var(--pravaah-line);
+    box-shadow: 0 18px 45px rgba(18, 38, 32, 0.08);
+  }
+
+  #packages-grid > div,
+  #featured-packages .grid > div,
+  #popular-destinations .grid > div,
+  #destinations-view .grid > div,
+  #gallery-grid > div {
+    border-radius: 1.25rem;
+  }
+
+  #packages-grid > div,
+  #featured-packages .grid > div,
+  #destinations-view .grid > div,
+  #gallery-grid > div {
+    background: rgba(255, 255, 255, 0.9);
+  }
+
+  #packages-grid > div:hover,
+  #featured-packages .grid > div:hover,
+  #popular-destinations .grid > div:hover,
+  #destinations-view .grid > div:hover,
+  #gallery-grid > div:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 24px 60px rgba(18, 38, 32, 0.14);
+  }
+
+  #app-root button[class*="bg-[#008080]"],
+  #app-root button[class*="bg-[#FF7F50]"],
+  #app-root a[class*="bg-[#008080]"] {
+    box-shadow: 0 14px 28px rgba(15, 118, 110, 0.18);
+  }
+
+  #app-root button[class*="bg-[#008080]"]:hover,
+  #app-root button[class*="bg-[#FF7F50]"]:hover,
+  #app-root a[class*="bg-[#008080]"]:hover {
+    transform: translateY(-1px);
+  }
+
+  #app-root button:disabled {
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  #floating-actions-stack button,
+  #floating-actions-stack a {
+    border-radius: 999px;
+    box-shadow: 0 18px 38px rgba(18, 38, 32, 0.22);
+  }
+
+  #main-header + main {
+    isolation: isolate;
+  }
+}

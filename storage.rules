@@ -1,0 +1,27 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() { return isSignedIn() && request.auth.token.admin == true; }
+    function isSafeImage() { return request.resource != null && request.resource.size <= 10 * 1024 * 1024 && request.resource.contentType.matches('image/(jpeg|png|webp|gif)'); }
+    function isSafeCustomerDocument() { return request.resource != null && request.resource.size <= 10 * 1024 * 1024 && request.resource.contentType.matches('(application/pdf|image/jpeg|image/png|image/webp)'); }
+
+    match /cms/{path=**} { allow read: if true; allow create, update: if isAdmin() && isSafeImage(); allow delete: if isAdmin(); }
+    match /homepage-cms/{path=**} { allow read: if true; allow create, update: if isAdmin() && isSafeImage(); allow delete: if isAdmin(); }
+    match /gallery/{path=**} { allow read: if true; allow create, update: if isAdmin() && isSafeImage(); allow delete: if isAdmin(); }
+    match /packages/{path=**} { allow read: if true; allow create, update: if isAdmin() && isSafeImage(); allow delete: if isAdmin(); }
+    match /blogs/{path=**} { allow read: if true; allow create, update: if isAdmin() && isSafeImage(); allow delete: if isAdmin(); }
+    match /reviews/{path=**} { allow read: if true; allow create, update: if isAdmin() && isSafeImage(); allow delete: if isAdmin(); }
+    match /bookings/{bookingId}/operations/{fileName} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin() && isSafeCustomerDocument();
+      allow delete: if isAdmin();
+    }
+    match /users/{userId}/tripDocuments/{bookingId}/{fileName} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow create, update: if isSignedIn() && request.auth.uid == userId && isSafeCustomerDocument();
+      allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+    }
+    match /{path=**} { allow read, write: if false; }
+  }
+}

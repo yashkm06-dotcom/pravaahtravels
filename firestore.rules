@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() { return isSignedIn() && request.auth.token.admin == true; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isBookingOwner(data) { return isSignedIn() && data.userId == request.auth.uid; }
+    function isReasonableString(value, min, max) { return value is string && value.size() >= min && value.size() <= max; }
+    function isIsoDate(value) { return value is string && value.size() >= 10 && value.size() <= 40; }
+
+    function validEnquiry() {
+      let d = request.resource.data;
+      return d.keys().hasAll(['name', 'phone', 'email', 'destination', 'travelDate', 'travelers', 'status', 'createdAt'])
+        && d.keys().hasOnly(['name', 'phone', 'email', 'destination', 'travelDate', 'travelers', 'budget', 'message', 'packageId', 'packageName', 'status', 'createdAt'])
+        && isReasonableString(d.name, 1, 120)
+        && isReasonableString(d.phone, 7, 24) && d.phone.matches('^[0-9+() .-]{7,24}$')
+        && isReasonableString(d.email, 3, 254) && d.email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
+        && isReasonableString(d.destination, 1, 160) && isIsoDate(d.travelDate)
+        && d.travelers is int && d.travelers >= 1 && d.travelers <= 100
+        && (!('budget' in d) || isReasonableString(d.budget, 0, 100))
+        && (!('message' in d) || isReasonableString(d.message, 0, 5000))
+        && (!('packageId' in d) || isReasonableString(d.packageId, 0, 160))
+        && (!('packageName' in d) || isReasonableString(d.packageName, 0, 200))
+        && d.status == 'New' && isIsoDate(d.createdAt);
+    }
+
+    function validAnalyticsEvent() {
+      let d = request.resource.data;
+      return d.keys().hasAll(['eventType', 'targetId', 'targetName', 'sessionId', 'createdAt'])
+        && d.keys().hasOnly(['eventType', 'targetId', 'targetName', 'sessionId', 'createdAt'])
+        && d.eventType in ['page_view', 'package_view', 'destination_view']
+        && isReasonableString(d.targetId, 0, 180) && isReasonableString(d.targetName, 0, 240)
+        && isReasonableString(d.sessionId, 8, 100) && isIsoDate(d.createdAt);
+    }
+
+    function validUserReview() {
+      let d = request.resource.data;
+      return d.keys().hasAll(['userId', 'name', 'rating', 'comment', 'destination', 'status', 'verified', 'createdAt'])
+        && d.keys().hasOnly(['userId', 'name', 'rating', 'comment', 'destination', 'imageUrl', 'packageId', 'bookingId', 'status', 'verified', 'createdAt'])
+        && d.userId == request.auth.uid && isReasonableString(d.name, 1, 120)
+        && d.rating is int && d.rating >= 1 && d.rating <= 5
+        && isReasonableString(d.comment, 1, 4000) && isReasonableString(d.destination, 1, 160)
+        && (!('imageUrl' in d) || isReasonableString(d.imageUrl, 0, 500000))
+        && (!('packageId' in d) || isReasonableString(d.packageId, 0, 160))
+        && (!('bookingId' in d) || isReasonableString(d.bookingId, 0, 160))
+        && d.status == 'Pending' && d.verified == false && isIsoDate(d.createdAt);
+    }
+
+    match /packages/{id} { allow read: if true; allow create, update, delete: if isAdmin(); }
+    match /enquiries/{id} { allow create: if validEnquiry(); allow read, update, delete: if isAdmin(); }
+    match /gallery/{id} { allow read: if true; allow create, update, delete: if isAdmin(); }
+    match /reviews/{id} {
+      allow read: if isAdmin() || resource.data.status == 'Approved';
+      allow create: if isAdmin() || (isSignedIn() && validUserReview());
+      allow update, delete: if isAdmin();
+    }
+    match /bookings/{id} {
+      allow create: if isAdmin() || (isSignedIn() && request.resource.data.userId == request.auth.uid
+        && request.resource.data.customerEmail == request.auth.token.email
+        && request.resource.data.status == 'Pending' && request.resource.data.paymentStatus in ['Unpaid', 'Pending']);
+      allow read: if isAdmin() || isBookingOwner(resource.data);
+      allow update: if isAdmin() || (isBookingOwner(resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelRequested', 'rescheduleRequested'])
+        && (!('cancelRequested' in request.resource.data) || request.resource.data.cancelRequested is bool)
+        && (!('rescheduleRequested' in request.resource.data) || request.resource.data.rescheduleRequested is bool));
+      allow delete: if isAdmin();
+    }
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && request.resource.data.keys().hasOnly(['name', 'email', 'phone', 'whatsapp', 'preferredDestinations', 'photoURL', 'provider', 'createdAt', 'updatedAt', 'lastLogin', 'role']) && request.resource.data.get('role', 'traveler') == 'traveler';
+      allow update: if isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'email', 'phone', 'whatsapp', 'preferredDestinations', 'photoURL', 'provider', 'createdAt', 'updatedAt', 'lastLogin']);
+      allow create, update, delete: if isAdmin();
+      match /private/{docId} { allow read, write: if isOwner(userId) || isAdmin(); }
+    }
+    match /analytics_events/{id} { allow create: if validAnalyticsEvent(); allow read, update, delete: if isAdmin(); }
+    match /siteSettings/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /activities/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /activityItems/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /activityRecommendations/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /featuredCategories/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /blogs/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /settings/{id} { allow read, write: if isAdmin(); }
+    match /sent_emails/{id} { allow read, write: if isAdmin(); }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
