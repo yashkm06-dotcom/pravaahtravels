@@ -159,12 +159,7 @@ const SECTION_ALIASES = [
   { key: 'destination', patterns: [/^destination$/, /^location$/, /^places?\s+covered$/, /^route$/] },
 ];
 
-const isAdminEmail = (email = '') => {
-  const normalized = String(email).trim().toLowerCase();
-  return normalized === 'yash.km06@gmail.com' ||
-    normalized === 'admin@pravaahtravels.com' ||
-    normalized.endsWith('@pravaahtravels.com');
-};
+const hasAdminClaim = (auth) => auth?.token?.admin === true;
 
 const isPrivateIp = (address) => {
   const normalized = String(address || '').toLowerCase();
@@ -2137,8 +2132,7 @@ exports.analyzePackageUrl = onCall({
   memory: '512MiB',
 }, async (request) => {
   try {
-    const email = request.auth && request.auth.token ? request.auth.token.email : '';
-    if (!isAdminEmail(email)) {
+    if (!hasAdminClaim(request.auth)) {
       throw new HttpsError('permission-denied', 'Only Pravaah Travels admins can analyze package URLs.');
     }
 

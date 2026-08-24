@@ -2,6 +2,8 @@ export interface ItineraryDay {
   day: number;
   title: string;
   description: string;
+  location?: string;
+  images?: string[];
 }
 
 export type DestinationCategory =
@@ -27,11 +29,24 @@ export type PackageLocation = (typeof PACKAGE_LOCATIONS)[number];
 export interface TravelPackage {
   id: string;
   title: string;
+  slug?: string;
   destination: string;
+  destinations?: string[];
   location: PackageLocation | string;
   bookingType?: string;
   maxGuests?: number;
   category: DestinationCategory;
+  country?: string;
+  city?: string;
+  activityTypes?: string[];
+  tags?: string[];
+  difficultyLabel?: string;
+  mealPlans?: string[];
+  transportType?: string;
+  homepageCategory?: string;
+  displayOrder?: number;
+  hotelIds?: string[];
+  departures?: PackageDeparture[];
   duration: string; // e.g., "5 Days / 4 Nights"
   price: number;
   offerPrice?: number;
@@ -46,7 +61,10 @@ export interface TravelPackage {
   itinerary: ItineraryDay[];
   inclusions: string[];
   exclusions: string[];
+  packageOptions?: { title: string; description?: string; price?: number | null; originalPrice?: number | null; inclusions?: string[] }[];
+  knowBeforeYouGo?: string[];
   thingsToCarry?: string[];
+  difficultyLevel?: number | null;
   departureDates?: string[];
   faqs?: { question: string; answer: string }[];
   policies?: string[];
@@ -56,7 +74,42 @@ export interface TravelPackage {
   featured: boolean;
   active: boolean; // mapped to Publish/Draft
   status?: 'Publish' | 'Draft';
+  cmsStatus?: 'draft' | 'published' | 'archived' | 'deleted';
+  version?: number;
+  sourceUrl?: string | null;
+  sourceDomain?: string | null;
+  parserVersion?: string;
+  importQuality?: { score: number; status: 'excellent' | 'good' | 'needs_review' | 'poor'; warnings: string[]; missing: string[]; passed: string[] } | null;
+  hotels?: { city: string | null; hotel: string | null; nights: number | null }[];
+  pricing?: { currency?: string | null; price?: number | null; originalPrice?: number | null; discount?: number | null; priceType?: string | null; occupancy?: string | null } | null;
+  gallery?: string[];
+  heroImage?: string | null;
+  overview?: string | null;
+  archivedAt?: string | null;
+  deletedAt?: string | null;
+  publishedAt?: string | null;
+  updatedAt?: string;
+  createdBy?: string;
+  updatedBy?: string;
   createdAt: string;
+}
+
+export type HotelCategory = '3 Star' | '4 Star' | '5 Star';
+export type HotelStatus = 'Active' | 'Inactive';
+export interface Hotel {
+  id: string; name: string; slug: string; destination: string; country?: string; city?: string;
+  category: HotelCategory; starRating: number; shortDescription?: string; fullDescription?: string;
+  address?: string; googleMapsLink?: string; contactNumber?: string; email?: string; website?: string;
+  amenities: string[]; mealPlans: string[]; roomTypes: string[]; checkInTime?: string; checkOutTime?: string;
+  heroImage?: string; bannerImage?: string; galleryImages?: string[]; featured: boolean;
+  displayOrder?: number; status: HotelStatus; createdAt: string; updatedAt?: string;
+}
+export type DepartureStatus = 'Scheduled' | 'Guaranteed' | 'Sold Out' | 'Cancelled';
+export interface PackageDeparture {
+  id: string; departureDate: string; returnDate?: string; duration?: string; totalSeats: number;
+  bookedSeats: number; bookingCutoffDate?: string; guaranteedDeparture: boolean;
+  priceOverride?: number | null; hotelOverrideIds?: string[]; status: DepartureStatus;
+  createdAt: string; updatedAt?: string;
 }
 
 export type EnquiryStatus =

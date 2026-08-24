@@ -6,7 +6,7 @@ import {
   Upload, CheckCircle, Clock, Phone, Mail, MessageSquare, Clipboard, ExternalLink, Star, LineChart as LineChartIcon, RefreshCw, MapPin, Briefcase,
   Menu, Bell, Settings, Palette, Home, Megaphone, Images, PanelLeftClose, PanelLeftOpen, Heart, Sparkles, ChevronRight
 } from 'lucide-react';
-import { TravelPackage, Enquiry, GalleryImage, ActivityItem, DestinationCategory, EnquiryStatus, EnquiryPriority, EnquiryPaymentStatus, Review, formatPrice, WebsiteCMSSettings, PACKAGE_LOCATIONS, type BookingDocumentStatus, type CustomerProfile, type TripChecklistKey, type TripCustomerStatus, type TripDocument, type TripOperationDocument, type TripOperationDocumentType, type TripOperations } from '../types';
+import { TravelPackage, Enquiry, GalleryImage, ActivityItem, DestinationCategory, EnquiryStatus, EnquiryPriority, EnquiryPaymentStatus, Review, formatPrice, WebsiteCMSSettings, PACKAGE_LOCATIONS, type BookingDocumentStatus, type CustomerProfile, type Hotel, type PackageDeparture, type TripChecklistKey, type TripCustomerStatus, type TripDocument, type TripOperationDocument, type TripOperationDocumentType, type TripOperations } from '../types';
 import { auth, db, storage, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, setDoc, writeBatch, getDoc } from '../lib/firebase';
 import { getIdTokenResult } from 'firebase/auth';
 import { collectionGroup } from 'firebase/firestore';
@@ -15,6 +15,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as XLSX from 'xlsx';
 import { fetchAnalyticsEvents } from '../lib/analytics';
 import { handleTravelImageError } from '../utils/imageFallback';
+import { createMasterDataItem, EMPTY_MASTER_DATA_LISTS, migrateMasterDataList, sortForDisplay, type MasterDataFieldKey, type MasterDataItem, type MasterDataLists } from '../utils/masterData';
 
 const OverviewTab = lazy(() => import('./admin/AdminDashboardSections').then((module) => ({ default: module.OverviewTab })));
 const WebsiteTab = lazy(() => import('./admin/AdminDashboardSections').then((module) => ({ default: module.WebsiteTab })));
@@ -28,6 +29,10 @@ const CustomersTab = lazy(() => import('./admin/AdminDashboardSections').then((m
 const BlogsTab = lazy(() => import('./admin/AdminDashboardSections').then((module) => ({ default: module.BlogsTab })));
 const AnalyticsTab = lazy(() => import('./admin/AdminDashboardSections').then((module) => ({ default: module.AnalyticsTab })));
 const SettingsTab = lazy(() => import('./admin/AdminDashboardSections').then((module) => ({ default: module.SettingsTab })));
+const AiPackageImporter = lazy(() => import('./admin/AiPackageImporter'));
+const MasterDataTab = lazy(() => import('./admin/MasterDataTab'));
+const HotelsTab = lazy(() => import('./admin/HotelsTab'));
+const DeparturesTab = lazy(() => import('./admin/DeparturesTab'));
 
 interface AdminDashboardViewProps {
   packages: TravelPackage[];
@@ -41,7 +46,7 @@ interface AdminDashboardViewProps {
   websiteCMS: WebsiteCMSSettings;
 }
 
-type AdminTab = 'overview' | 'packages' | 'enquiries' | 'customers' | 'gallery' | 'media-library' | 'website' | 'activities' | 'bookings' | 'reviews' | 'blogs' | 'analytics' | 'settings';
+type AdminTab = 'overview' | 'packages' | 'enquiries' | 'customers' | 'gallery' | 'media-library' | 'website' | 'activities' | 'bookings' | 'reviews' | 'blogs' | 'analytics' | 'settings' | 'ai-importer' | 'master-data' | 'hotels' | 'departures';
 
 const CRM_ENQUIRY_STATUS_OPTIONS: EnquiryStatus[] = ['New', 'Contacted', 'Quote Sent', 'Booking Confirmed', 'Cancelled', 'Completed'];
 const CRM_PRIORITY_OPTIONS: EnquiryPriority[] = ['Low', 'Medium', 'High'];
@@ -227,6 +232,10 @@ function AdminDashboardView({
   });
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(false);
+  const [masterDataLists, setMasterDataLists] = useState<MasterDataLists>(EMPTY_MASTER_DATA_LISTS);
+  const [masterDataSaving, setMasterDataSaving] = useState(false);
+  const [hotels, setHotels] = useState<Hotel[]>([]);
+  const [hotelSaving, setHotelSaving] = useState(false);
   const [systemHealth, setSystemHealth] = useState({
     firestoreConnected: true,
     authenticationActive: true,
@@ -524,6 +533,7 @@ function AdminDashboardView({
     void fetchAnalyticsData();
     void fetchWishlistAnalytics();
     void fetchAdminSettings();
+    void fetchHotels();
   }, []);
 
   useEffect(() => {
@@ -567,6 +577,18 @@ function AdminDashboardView({
       const snapshot = await getDoc(doc(db, 'settings', 'general'));
       if (snapshot.exists()) {
         const data = snapshot.data();
+        const now = new Date().toISOString();
+        setMasterDataLists({
+          masterCountries: migrateMasterDataList(data.masterCountries, now),
+          masterDestinations: migrateMasterDataList(data.masterDestinations, now),
+          masterCities: migrateMasterDataList(data.masterCities, now),
+          masterActivityTypes: migrateMasterDataList(data.masterActivityTypes, now),
+          masterPackageTags: migrateMasterDataList(data.masterPackageTags, now),
+          masterDifficultyLevels: migrateMasterDataList(data.masterDifficultyLevels, now),
+          masterMealPlans: migrateMasterDataList(data.masterMealPlans, now),
+          masterTransportTypes: migrateMasterDataList(data.masterTransportTypes, now),
+          masterHomepageCategories: migrateMasterDataList(data.masterHomepageCategories, now),
+        });
         setSettingsFormData({
           agencyName: String(data.agencyName || 'Pravaah Travels'),
           phoneNumber: String(data.phoneNumber || '+91 91231 36692'),
@@ -588,6 +610,59 @@ function AdminDashboardView({
     } finally {
       setSettingsLoading(false);
     }
+  };
+
+  const fetchHotels = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, 'hotels'));
+      setHotels(snapshot.docs.map((hotelDoc) => ({ id: hotelDoc.id, ...hotelDoc.data() } as Hotel)));
+    } catch (err) {
+      console.error('Failed to load hotels:', err);
+    }
+  };
+
+  const handleSaveMasterDataList = async (fieldKey: MasterDataFieldKey, updatedItems: MasterDataItem[]) => {
+    setMasterDataSaving(true);
+    try {
+      const sorted = sortForDisplay(updatedItems);
+      await setDoc(doc(db, 'settings', 'general'), { [fieldKey]: sorted, updatedAt: new Date().toISOString() }, { merge: true });
+      setMasterDataLists((current) => ({ ...current, [fieldKey]: sorted }));
+    } finally {
+      setMasterDataSaving(false);
+    }
+  };
+
+  const handleQuickAddMasterDataValue = async (fieldKey: 'masterCountries' | 'masterDestinations' | 'masterCities', name: string, parentName?: string) => {
+    const existing = masterDataLists[fieldKey];
+    const item = createMasterDataItem(name, existing, new Date().toISOString(), { parentName });
+    await handleSaveMasterDataList(fieldKey, [...existing, item]);
+    return item.name;
+  };
+
+  const handleSaveHotel = async (hotel: Hotel) => {
+    setHotelSaving(true);
+    try {
+      const { id, ...payload } = hotel;
+      await setDoc(doc(db, 'hotels', id), { ...payload, updatedAt: new Date().toISOString() }, { merge: true });
+      await fetchHotels();
+    } finally {
+      setHotelSaving(false);
+    }
+  };
+
+  const handleDeleteHotel = async (hotelId: string) => {
+    setHotelSaving(true);
+    try {
+      await deleteDoc(doc(db, 'hotels', hotelId));
+      await fetchHotels();
+    } finally {
+      setHotelSaving(false);
+    }
+  };
+
+  const handleUpdatePackageDepartures = async (packageId: string, departures: PackageDeparture[]) => {
+    await updateDoc(doc(db, 'packages', packageId), { departures, updatedAt: new Date().toISOString() });
+    await onRefreshData();
   };
 
   const handleUpdateBookingStatus = async (bookingId: string, status: string) => {
@@ -2674,6 +2749,10 @@ function AdminDashboardView({
       items: [
         { id: 'activities' as AdminTab, label: 'Activities', icon: Compass, count: activities.length },
         { id: 'packages' as AdminTab, label: 'Packages', icon: Package, count: packages.length },
+        { id: 'ai-importer' as AdminTab, label: 'AI Package Importer', icon: Sparkles, count: null },
+        { id: 'master-data' as AdminTab, label: 'Master Data', icon: Settings, count: null },
+        { id: 'hotels' as AdminTab, label: 'Hotels', icon: Home, count: hotels.length },
+        { id: 'departures' as AdminTab, label: 'Departures', icon: Calendar, count: null },
         { id: 'bookings' as AdminTab, label: 'Bookings', icon: Calendar, count: bookings.length },
         { id: 'customers' as AdminTab, label: 'Customers', icon: Users, count: customers.length },
         { id: 'enquiries' as AdminTab, label: 'Enquiries', icon: FileText, count: enquiries.length },
@@ -3053,6 +3132,38 @@ function AdminDashboardView({
                 handleMoveGalleryImage={handleMoveGalleryImage}
                 handleDeleteGalleryImage={handleDeleteGalleryImage}
               />
+            </Suspense>
+          )}
+
+          {activeTab === 'ai-importer' && (
+            <Suspense fallback={<div className="rounded-[20px] border border-stone-200 bg-white p-8 text-sm text-stone-500">Loading AI package importer…</div>}>
+              <AiPackageImporter onPackagePersisted={onRefreshData} onNavigateToPackages={() => handleAdminTabChange('packages')} />
+            </Suspense>
+          )}
+
+          {activeTab === 'master-data' && (
+            <Suspense fallback={<div className="rounded-[20px] border border-stone-200 bg-white p-8 text-sm text-stone-500">Loading master data…</div>}>
+              <MasterDataTab packages={packages} gallery={gallery} masterDataLists={masterDataLists}
+                isSaving={masterDataSaving} onSaveList={handleSaveMasterDataList} />
+            </Suspense>
+          )}
+
+          {activeTab === 'hotels' && (
+            <Suspense fallback={<div className="rounded-[20px] border border-stone-200 bg-white p-8 text-sm text-stone-500">Loading hotel manager…</div>}>
+              <HotelsTab hotels={hotels} packages={packages} gallery={gallery}
+                masterData={{
+                  countries: masterDataLists.masterCountries.filter((item) => item.status === 'active').map((item) => item.name),
+                  destinations: masterDataLists.masterDestinations.filter((item) => item.status === 'active').map((item) => item.name),
+                  cities: masterDataLists.masterCities.filter((item) => item.status === 'active').map((item) => item.name),
+                }}
+                isSaving={hotelSaving} onSaveHotel={handleSaveHotel} onDeleteHotel={handleDeleteHotel}
+                onQuickAddMasterData={handleQuickAddMasterDataValue} />
+            </Suspense>
+          )}
+
+          {activeTab === 'departures' && (
+            <Suspense fallback={<div className="rounded-[20px] border border-stone-200 bg-white p-8 text-sm text-stone-500">Loading departures…</div>}>
+              <DeparturesTab packages={packages} isSaving={false} onUpdatePackageDepartures={handleUpdatePackageDepartures} />
             </Suspense>
           )}
 

@@ -47,6 +47,9 @@ service cloud.firestore {
     }
 
     match /packages/{id} { allow read: if true; allow create, update, delete: if isAdmin(); }
+    match /imports/{id} { allow read, write: if isAdmin(); }
+    match /activityLogs/{id} { allow read, write: if isAdmin(); }
+    match /hotels/{id} { allow read: if true; allow write: if isAdmin(); }
     match /enquiries/{id} { allow create: if validEnquiry(); allow read, update, delete: if isAdmin(); }
     match /gallery/{id} { allow read: if true; allow create, update, delete: if isAdmin(); }
     match /reviews/{id} {
