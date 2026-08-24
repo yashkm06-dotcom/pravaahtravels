@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Compass, ShieldCheck, Mail, Lock, LogIn, UserPlus, User, Chrome, Github, Phone, MapPin, ArrowLeft, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, GithubAuthProvider, updateProfile, sendPasswordResetEmail, getIdTokenResult, type User as FirebaseUser } from 'firebase/auth';
 import { auth, db, doc, getDoc, setDoc, serverTimestamp } from '../lib/firebase';
-import firebaseConfig from '../../firebase-applet-config.json';
+import { firebaseConfig } from '../lib/environment';
 
 interface LoginModalProps {
   onLoginSuccess: (isAdmin: boolean) => void;

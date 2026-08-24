@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "zealous-theory-q09p9"
+    "default": "zealous-theory-q09p9",
+    "production": "zealous-theory-q09p9",
+    "staging": "pravaah-travels-test"
   }
 }

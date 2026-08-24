@@ -21,7 +21,7 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 
-import firebaseConfig from '../../firebase-applet-config.json';
+import { firebaseConfig } from './environment';
 
 // Prevent duplicate Firebase initialization
 export const app =

@@ -10,6 +10,7 @@ import Footer from './components/Footer';
 import LoginModal from './components/LoginModal';
 import SEO from './components/SEO';
 import PremiumEnquiryModal from './components/PremiumEnquiryModal';
+import { isStaging } from './lib/environment';
 
 const HomeView = lazy(() => import('./components/HomeView'));
 const AboutView = lazy(() => import('./components/AboutView'));
@@ -758,6 +759,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-gray-800 font-sans" id="app-root">
+      {isStaging && (
+        <div className="sticky top-0 z-[100] bg-amber-400 px-3 py-1 text-center text-xs font-bold tracking-[0.18em] text-stone-950">
+          STAGING / TEST ENVIRONMENT
+        </div>
+      )}
       <SEO
         title={pageSeo.title}
         description={pageSeo.description}
