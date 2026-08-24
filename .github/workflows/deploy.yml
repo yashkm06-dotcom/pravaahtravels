@@ -80,7 +80,8 @@ jobs:
         run: test "$PRODUCTION_FIREBASE_PROJECT_ID" = "zealous-theory-q09p9"
       - uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.PRODUCTION_FIREBASE_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+    service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
       - run: npm install -g firebase-tools
       - name: Deploy production only
         run: firebase deploy --project "$PRODUCTION_FIREBASE_PROJECT_ID" --config firebase.production.json --only hosting,functions,firestore,storage --non-interactive
