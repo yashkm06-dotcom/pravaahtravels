@@ -1,0 +1,93 @@
+name: One-time staging admin claim
+
+on:
+  push:
+    branches:
+      - staging
+    paths:
+      - .github/workflows/set-staging-admin-claim-once.yml
+      - scripts/set-admin-claim.ts
+      - package.json
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: one-time-staging-admin-claim
+  cancel-in-progress: false
+
+jobs:
+  set-staging-admin-claim:
+    if: >-
+      github.ref == 'refs/heads/staging' &&
+      github.event.head_commit.message == 'chore(staging): run one-time admin claim [RUN-STAGING-ADMIN-CLAIM]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    env:
+      TARGET_PROJECT_ID: pravaah-travels-test
+      PRODUCTION_PROJECT_ID: zealous-theory-q09p9
+      TARGET_EMAIL: yash.km06@gmail.com
+      EXPECTED_WIF_SERVICE_ACCOUNT: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+    steps:
+      - name: Checkout staging trigger commit
+        uses: actions/checkout@v4
+
+      - name: Verify immutable staging context
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/staging"
+          test "$TARGET_PROJECT_ID" = "pravaah-travels-test"
+          test "$TARGET_PROJECT_ID" != "$PRODUCTION_PROJECT_ID"
+          test "$PRODUCTION_PROJECT_ID" = "zealous-theory-q09p9"
+          test "$TARGET_EMAIL" = "yash.km06@gmail.com"
+          test -n "$EXPECTED_WIF_SERVICE_ACCOUNT"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install script dependencies
+        run: npm ci
+
+      - name: Authenticate to staging through WIF
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: pravaah-travels-test
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Setup gcloud identity verification
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: pravaah-travels-test
+
+      - name: Verify WIF credentials and identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -s "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "${GOOGLE_CLOUD_PROJECT:-}" = "$TARGET_PROJECT_ID"
+          test "$TARGET_PROJECT_ID" != "$PRODUCTION_PROJECT_ID"
+          ACTIVE_ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)')"
+          test -n "$ACTIVE_ACCOUNT"
+          test "$ACTIVE_ACCOUNT" = "$EXPECTED_WIF_SERVICE_ACCOUNT"
+
+      - name: Dry-run staging admin claim
+        run: npm run set-staging-admin-claim
+
+      - name: Apply and verify staging admin claim
+        env:
+          STAGING_ADMIN_CLAIM_CONFIRMATION: SET_ADMIN_TRUE:yash.km06@gmail.com:pravaah-travels-test
+        run: npm run set-staging-admin-claim -- --apply
+
+      - name: Re-read staging admin claim
+        run: npm run set-staging-admin-claim
