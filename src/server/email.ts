@@ -1,6 +1,8 @@
 import nodemailer from 'nodemailer';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { resolveBusinessProfile } from '../utils/businessProfile';
+import type { WebsiteCMSSettings } from '../types';
 
 // Initialize Firebase Admin lazily
 let adminDb: any = null;
@@ -34,7 +36,8 @@ const getSMTPTransporter = () => {
 };
 
 // Generates customized, visually-stunning responsive HTML email templates with Pravaah branding
-export function generateEmailHtml(trigger: string, metadata: any): { subject: string; html: string } {
+export function generateEmailHtml(trigger: string, metadata: any, settings: Partial<WebsiteCMSSettings> = {}): { subject: string; html: string } {
+  const business = resolveBusinessProfile(settings);
   const brandTeal = '#008080';
   const accentCoral = '#FF7F50';
   const textDark = '#1c1917';
@@ -42,19 +45,19 @@ export function generateEmailHtml(trigger: string, metadata: any): { subject: st
 
   const headerHtml = `
     <div style="background-color: #1f2937; padding: 24px; text-align: center; border-radius: 8px 8px 0 0;">
-      <h1 style="color: #ffffff; font-family: 'Georgia', serif; font-style: italic; margin: 0; font-size: 26px; font-weight: normal; letter-spacing: 1px;">Pravaah Travels</h1>
-      <p style="color: ${accentCoral}; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; margin: 6px 0 0 0;">Flow into the Sacred Mountains</p>
+      <h1 style="color: #ffffff; font-family: 'Georgia', serif; font-style: italic; margin: 0; font-size: 26px; font-weight: normal; letter-spacing: 1px;">${business.companyName}</h1>
+      <p style="color: ${accentCoral}; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; margin: 6px 0 0 0;">${business.tagline}</p>
     </div>
   `;
 
   const footerHtml = `
     <div style="background-color: #f5f5f4; border-top: 1px solid #e7e5e4; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; font-family: 'Helvetica Neue', Arial, sans-serif;">
       <p style="color: #78716c; font-size: 11px; line-height: 1.6; margin: 0;">
-        This is an automated system notification from <strong>Pravaah Travels Private Limited</strong>.<br/>
+        This is an automated system notification from <strong>${business.companyName}</strong>.<br/>
         For immediate ground assistance or trip adjustments, please coordinate directly via our WhatsApp support.
       </p>
       <div style="margin-top: 12px;">
-        <a href="https://wa.me/919999999999" style="background-color: #16a34a; color: #ffffff; font-size: 10px; font-weight: bold; text-decoration: none; padding: 6px 12px; border-radius: 4px; text-transform: uppercase; letter-spacing: 1px;">Chat on WhatsApp</a>
+        <a href="${business.whatsappUrl()}" style="background-color: #16a34a; color: #ffffff; font-size: 10px; font-weight: bold; text-decoration: none; padding: 6px 12px; border-radius: 4px; text-transform: uppercase; letter-spacing: 1px;">Chat on WhatsApp</a>
       </div>
     </div>
   `;
@@ -64,7 +67,7 @@ export function generateEmailHtml(trigger: string, metadata: any): { subject: st
 
   switch (trigger) {
     case 'booking-received':
-      subject = 'Booking Request Logged Successfully - Pravaah Travels';
+      subject = `Booking Request Logged Successfully - ${business.companyName}`;
       contentHtml = `
         <h2 style="color: ${brandTeal}; font-family: 'Georgia', serif; font-style: italic; font-size: 20px; margin-top: 0;">Namaste ${metadata.customerName || 'Traveler'},</h2>
         <p style="color: ${textDark}; font-size: 14px; line-height: 1.6; font-family: Arial, sans-serif;">
@@ -84,7 +87,7 @@ export function generateEmailHtml(trigger: string, metadata: any): { subject: st
       break;
 
     case 'booking-confirmed':
-      subject = 'Your Booking is CONFIRMED! 🎉 - Pravaah Travels';
+      subject = `Your Booking is CONFIRMED! 🎉 - ${business.companyName}`;
       contentHtml = `
         <h2 style="color: #15803d; font-family: 'Georgia', serif; font-style: italic; font-size: 20px; margin-top: 0;">Congratulations, ${metadata.customerName || 'Traveler'}!</h2>
         <p style="color: ${textDark}; font-size: 14px; line-height: 1.6; font-family: Arial, sans-serif;">
@@ -103,7 +106,7 @@ export function generateEmailHtml(trigger: string, metadata: any): { subject: st
       break;
 
     case 'booking-cancelled':
-      subject = 'Booking Request Cancelled - Pravaah Travels';
+      subject = `Booking Request Cancelled - ${business.companyName}`;
       contentHtml = `
         <h2 style="color: #b91c1c; font-family: 'Georgia', serif; font-style: italic; font-size: 20px; margin-top: 0;">Booking Notice,</h2>
         <p style="color: ${textDark}; font-size: 14px; line-height: 1.6; font-family: Arial, sans-serif;">
@@ -121,11 +124,11 @@ export function generateEmailHtml(trigger: string, metadata: any): { subject: st
       break;
 
     case 'enquiry-received':
-      subject = 'We Have Received Your Holiday Enquiry - Pravaah Travels';
+      subject = `We Have Received Your Holiday Enquiry - ${business.companyName}`;
       contentHtml = `
         <h2 style="color: ${brandTeal}; font-family: 'Georgia', serif; font-style: italic; font-size: 20px; margin-top: 0;">Hello ${metadata.name},</h2>
         <p style="color: ${textDark}; font-size: 14px; line-height: 1.6; font-family: Arial, sans-serif;">
-          Thank you for exploring destinations with Pravaah Travels! We have received your holiday enquiry regarding <strong>${metadata.destination}</strong>.
+          Thank you for exploring destinations with ${business.companyName}! We have received your holiday enquiry regarding <strong>${metadata.destination}</strong>.
         </p>
         <div style="background-color: ${bgLight}; border-left: 4px solid ${brandTeal}; padding: 16px; margin: 20px 0; font-family: Arial, sans-serif; font-size: 13px;">
           <p style="margin: 0 0 8px 0;"><strong>• Target Destination:</strong> ${metadata.destination}</p>
@@ -208,7 +211,7 @@ export function generateEmailHtml(trigger: string, metadata: any): { subject: st
       break;
 
     default:
-      subject = 'Notification from Pravaah Travels';
+      subject = `Notification from ${business.companyName}`;
       contentHtml = `
         <h2 style="color: ${brandTeal}; font-family: 'Georgia', serif; font-style: italic; font-size: 20px; margin-top: 0;">Notice</h2>
         <p style="color: ${textDark}; font-size: 14px; line-height: 1.6; font-family: Arial, sans-serif;">
@@ -242,7 +245,17 @@ export function generateEmailHtml(trigger: string, metadata: any): { subject: st
 
 // Main Dispatch Function
 export async function triggerSystemEmail(trigger: string, recipientEmail: string, metadata: any) {
-  const { subject, html } = generateEmailHtml(trigger, metadata);
+  let settings: Partial<WebsiteCMSSettings> = {};
+  if (adminDb) {
+    try {
+      const settingsSnapshot = await adminDb.collection('siteSettings').doc('main').get();
+      if (settingsSnapshot.exists) settings = settingsSnapshot.data() as WebsiteCMSSettings;
+    } catch (error) {
+      console.warn('[EMAIL SYSTEM] Public business settings could not be read; centralized defaults will be used.', error);
+    }
+  }
+  const business = resolveBusinessProfile(settings);
+  const { subject, html } = generateEmailHtml(trigger, metadata, settings);
   console.log(`[EMAIL SYSTEM] Trigger: "${trigger}" | To: "${recipientEmail}" | Subject: "${subject}"`);
 
   let emailStatus = 'simulated';
@@ -251,7 +264,7 @@ export async function triggerSystemEmail(trigger: string, recipientEmail: string
   const transporter = getSMTPTransporter();
   if (transporter) {
     try {
-      const fromAddr = process.env.SMTP_FROM || '"Pravaah Travels" <no-reply@pravaahtravels.com>';
+      const fromAddr = process.env.SMTP_FROM || `"${business.companyName}" <no-reply@pravaahtravels.com>`;
       await transporter.sendMail({
         from: fromAddr,
         to: recipientEmail,

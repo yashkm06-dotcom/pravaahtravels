@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CalendarDays, Compass, Mail, Menu, Phone, Search, ShieldAlert, UserCircle, X } from 'lucide-react';
 import { WebsiteCMSSettings } from '../types';
 import { handleTravelImageError } from '../utils/imageFallback';
+import { resolveBusinessProfile } from '../utils/businessProfile';
 
 interface HeaderProps {
   currentView: string;
@@ -21,6 +22,7 @@ export default function Header({
   websiteCMS,
 }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const business = resolveBusinessProfile(websiteCMS);
 
   const isValidSocialUrl = (url?: string) => {
     if (!url) return false;
@@ -52,16 +54,16 @@ export default function Header({
     year: 'numeric',
   }).format(new Date());
 
-  const logoMark = websiteCMS.logoUrl ? (
-    <img src={websiteCMS.logoUrl} alt="Pravaah Travels logo" className="h-full w-full object-contain" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+  const logoMark = business.logoUrl ? (
+    <img src={business.logoUrl} alt={`${business.companyName} logo`} className="h-full w-full object-contain" referrerPolicy="no-referrer" onError={handleTravelImageError} />
   ) : (
     <Compass className="h-7 w-7" />
   );
 
   const socialDots = [
-    { href: websiteCMS.socialFacebook, label: 'Facebook', className: 'bg-[#4DA528]' },
-    { href: websiteCMS.socialInstagram, label: 'Instagram', className: 'bg-[#FF970D]' },
-    { href: websiteCMS.socialLinkedIn, label: 'LinkedIn', className: 'bg-stone-900' },
+    { href: business.socialLinks.find((item) => item.label === 'Facebook')?.href, label: 'Facebook', className: 'bg-[#4DA528]' },
+    { href: business.socialLinks.find((item) => item.label === 'Instagram')?.href, label: 'Instagram', className: 'bg-[#FF970D]' },
+    { href: business.socialLinks.find((item) => item.label === 'LinkedIn')?.href, label: 'LinkedIn', className: 'bg-stone-900' },
   ].filter((item) => isValidSocialUrl(item.href));
 
   const dashboardButton = isAdminLoggedIn ? (
@@ -114,11 +116,11 @@ export default function Header({
             </li>
             <li className="flex items-center gap-2">
               <Mail className="h-4 w-4 text-[#4DA528]" />
-              <span>{websiteCMS.footerEmail}</span>
+              <span>{business.email}</span>
             </li>
             <li className="flex items-center gap-2">
               <Phone className="h-4 w-4 text-[#4DA528]" />
-              <span>{websiteCMS.footerPhone}</span>
+              <span>{business.phone}</span>
             </li>
           </ul>
           <div className="flex items-center gap-7">
@@ -149,8 +151,7 @@ export default function Header({
               {logoMark}
             </span>
             <span className="text-left">
-              <span className="block text-[18px] font-extrabold leading-none text-stone-950 sm:text-2xl">Pravaah</span>
-              <span className="mt-1 block text-[10px] font-bold uppercase tracking-[0.24em] text-[#4DA528] sm:text-[11px]">Travels</span>
+              <span className="block text-[18px] font-extrabold leading-none text-stone-950 sm:text-2xl">{business.companyName}</span>
             </span>
           </button>
 

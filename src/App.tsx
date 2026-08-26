@@ -11,6 +11,16 @@ import LoginModal from './components/LoginModal';
 import SEO from './components/SEO';
 import PremiumEnquiryModal from './components/PremiumEnquiryModal';
 import { isStaging } from './lib/environment';
+import {
+  getCustomLandingRegistration,
+  getRegisteredCustomLandingPath,
+} from './features/customLandings/registry';
+import {
+  getPackageNavigationTarget,
+  getPackageRouteSegment,
+  packageMatchesRouteSegment,
+} from './utils/packageRoute';
+import { resolveBusinessProfile } from './utils/businessProfile';
 
 const HomeView = lazy(() => import('./components/HomeView'));
 const AboutView = lazy(() => import('./components/AboutView'));
@@ -56,33 +66,13 @@ interface PackageFilterSelection {
   availability?: string;
 }
 
-const slugifyPackageTitle = (value: string) => String(value ?? '')
-  .toLowerCase()
-  .trim()
-  .replace(/&/g, 'and')
-  .replace(/[^a-z0-9]+/g, '-')
-  .replace(/^-+|-+$/g, '');
-
-const getPackageRouteSegment = (pkg: Pick<TravelPackage, 'id' | 'title'>) => {
-  const slug = slugifyPackageTitle(pkg.title);
-  return slug ? `${slug}-${pkg.id}` : String(pkg.id);
-};
-
-const sanitizeWhatsAppPhone = (value?: string) => {
-  const raw = String(value ?? '').trim();
-  if (!raw) return '';
-  const digits = raw.replace(/[^\d]/g, '');
-  if (!digits) return '';
-  return digits.startsWith('91') ? digits : `91${digits.replace(/^0+/, '')}`;
-};
-
-const getCmsWhatsAppPhone = (websiteCMS: Partial<WebsiteCMSSettings>) => {
-  return sanitizeWhatsAppPhone(websiteCMS.footerPhone) || sanitizeWhatsAppPhone(DEFAULT_WEBSITE_CMS.footerPhone);
-};
-
-const getPackageCanonicalUrl = (pkg: Pick<TravelPackage, 'id' | 'title'>) => {
-  if (typeof window === 'undefined') return `/packages/${getPackageRouteSegment(pkg)}`;
-  return `${window.location.origin}/packages/${getPackageRouteSegment(pkg)}`;
+const getPackageCanonicalUrl = (pkg: Pick<TravelPackage, 'id' | 'title' | 'customLandingPage'>) => {
+  const target = getPackageNavigationTarget(pkg);
+  if (target.view === 'custom-landing') {
+    return `https://pravaahtravels.com${target.path}`;
+  }
+  if (typeof window === 'undefined') return target.path;
+  return `${window.location.origin}${target.path}`;
 };
 
 const getRouteStateFromUrl = (): RouteState => {
@@ -102,6 +92,9 @@ const getRouteStateFromUrl = (): RouteState => {
     const parts = path.split('/');
     const packageSlug = parts[2] ? decodeURIComponent(parts[2]) : null;
     return { view: 'package-detail', packageId: packageSlug };
+  }
+  if (getCustomLandingRegistration(path)) {
+    return { view: 'custom-landing', packageId: path };
   }
   const cleanPath = path.replace(/^\//, ''); // remove leading slash
   if (cleanPath === 'review' || cleanPath === 'reviews') {
@@ -127,6 +120,7 @@ const getRouteStateFromUrl = (): RouteState => {
 const getUrlFromRouteState = (view: string, packageId: string | null): string => {
   if (view === 'home') return '/';
   if (view === 'package-detail' && packageId) return `/packages/${packageId}`;
+  if (view === 'custom-landing' && getRegisteredCustomLandingPath(packageId)) return packageId as string;
   if (view === 'reviews') return '/review'; // as explicitly requested
   if (view === 'admin-dashboard' && (window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/'))) {
     return window.location.pathname;
@@ -150,6 +144,7 @@ export default function App() {
   const [selectedPackageLocation, setSelectedPackageLocation] = useState<string>('All');
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
+  const [quotePackage, setQuotePackage] = useState<TravelPackage | null>(null);
   const [pendingPostLoginView, setPendingPostLoginView] = useState<string | null>(null);
 
   // Firebase auth state
@@ -421,12 +416,14 @@ export default function App() {
     setSavedPackagesRefreshKey((prev) => prev + 1);
   }, []);
 
-  const handleOpenQuoteModal = useCallback(() => {
+  const handleOpenQuoteModal = useCallback((pkg?: TravelPackage) => {
+    setQuotePackage(pkg || null);
     setQuoteModalOpen(true);
   }, []);
 
   const handleCloseQuoteModal = useCallback(() => {
     setQuoteModalOpen(false);
+    setQuotePackage(null);
   }, []);
 
   const handleToggleWishlist = useCallback(async (pkg: TravelPackage) => {
@@ -582,22 +579,37 @@ export default function App() {
 
   const activeSelectedPackage = useMemo(() => {
     if (!selectedPackageId) return null;
+    if (currentView === 'custom-landing') {
+      const customPath = getRegisteredCustomLandingPath(selectedPackageId);
+      if (!customPath) return null;
+      const matchingPackages = packages.filter((pkg) => (
+        pkg.active !== false
+        && getRegisteredCustomLandingPath(pkg.customLandingPage) === customPath
+      ));
+      return matchingPackages.length === 1 ? matchingPackages[0] : null;
+    }
     const normalizedPackageId = decodeURIComponent(String(selectedPackageId));
-    return packages.find((p) => (
-      String(p.id) === normalizedPackageId ||
-      getPackageRouteSegment(p) === normalizedPackageId ||
-      slugifyPackageTitle(p.title) === normalizedPackageId
-    )) || null;
-  }, [packages, selectedPackageId]);
+    return packages.find((pkg) => packageMatchesRouteSegment(pkg, normalizedPackageId)) || null;
+  }, [currentView, packages, selectedPackageId]);
+
+  const businessProfile = useMemo(() => resolveBusinessProfile(websiteCMS), [websiteCMS]);
+  const customLandingRegistration = currentView === 'custom-landing'
+    ? getCustomLandingRegistration(selectedPackageId)
+    : null;
+  const CustomLandingComponent = customLandingRegistration?.component;
+  const isImmersiveCustomLanding = customLandingRegistration?.shell === 'immersive';
 
   const pageSeo = useMemo(() => {
     const baseUrl = typeof window === 'undefined' ? 'https://pravaahtravels.com' : window.location.origin;
+    const structuredDataBaseUrl = currentView === 'custom-landing'
+      ? 'https://pravaahtravels.com'
+      : baseUrl;
     const fallbackTitle = websiteCMS.seoTitle || DEFAULT_WEBSITE_CMS.seoTitle;
     const fallbackDescription = websiteCMS.seoDescription || DEFAULT_WEBSITE_CMS.seoDescription;
     const fallbackKeywords = websiteCMS.seoKeywords || DEFAULT_WEBSITE_CMS.seoKeywords;
     const fallbackImage = websiteCMS.heroBackgroundImageUrl || DEFAULT_WEBSITE_CMS.heroBackgroundImageUrl;
-    const phone = websiteCMS.footerPhone || DEFAULT_WEBSITE_CMS.footerPhone;
-    const address = websiteCMS.footerAddress || DEFAULT_WEBSITE_CMS.footerAddress;
+    const phone = businessProfile.phone;
+    const address = businessProfile.address;
 
     const viewMeta: Record<string, { title: string; description: string; canonicalPath: string }> = {
       home: {
@@ -655,11 +667,11 @@ export default function App() {
       '@graph': [
         {
           '@type': 'TravelAgency',
-          name: 'Pravaah Travels',
-          url: baseUrl,
+          name: businessProfile.companyName,
+          url: structuredDataBaseUrl,
           image: ogImage,
           telephone: phone,
-          email: websiteCMS.footerEmail || DEFAULT_WEBSITE_CMS.footerEmail,
+          email: businessProfile.email,
           address,
         },
         {
@@ -686,12 +698,12 @@ export default function App() {
     } : {
       '@context': 'https://schema.org',
       '@type': 'TravelAgency',
-      name: 'Pravaah Travels',
-      url: baseUrl,
+      name: businessProfile.companyName,
+      url: structuredDataBaseUrl,
       image: ogImage,
       description,
       telephone: phone,
-      email: websiteCMS.footerEmail || DEFAULT_WEBSITE_CMS.footerEmail,
+      email: businessProfile.email,
       address,
     };
 
@@ -705,14 +717,13 @@ export default function App() {
       ogImage,
       schemaMarkup,
     };
-  }, [activeSelectedPackage, currentView, websiteCMS]);
+  }, [activeSelectedPackage, businessProfile, currentView, websiteCMS]);
 
   const showLoginModal = loginModalOpen || currentView === 'admin-login';
 
   // Generate dynamic WhatsApp contact url containing page context
   const getWhatsAppUrl = () => {
-    const phone = getCmsWhatsAppPhone(websiteCMS);
-    let text = "Hi Pravaah Travels support team! ";
+    let text = `Hi ${businessProfile.companyName} support team! `;
 
     switch (currentView) {
       case 'home':
@@ -725,6 +736,7 @@ export default function App() {
         text += "I am currently viewing the Tour Packages catalog. I'd love to ask about your ready-made and customizable Himalayan itineraries.";
         break;
       case 'package-detail':
+      case 'custom-landing':
         if (activeSelectedPackage) {
           text += `I am viewing the tour details of the package "${activeSelectedPackage.title}" (ID: ${activeSelectedPackage.id}). I'd like to ask about custom pricing and dates for this exact tour.`;
         } else {
@@ -753,7 +765,7 @@ export default function App() {
         text += "I am currently browsing the Pravaah Travels website and would love to consult with a veteran coordinator about customized travel packages.";
     }
 
-    return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+    return businessProfile.whatsappUrl(text);
   };
 
 
@@ -772,10 +784,11 @@ export default function App() {
         ogImage={pageSeo.ogImage}
         ogType={activeSelectedPackage ? 'travel' : 'website'}
         schemaMarkup={pageSeo.schemaMarkup}
+        siteName={businessProfile.companyName}
       />
       
       {/* Hide header on full-screen admin dashboard */}
-      {currentView !== 'admin-dashboard' && (
+      {currentView !== 'admin-dashboard' && !isImmersiveCustomLanding && (
         <Header
           currentView={currentView}
           onNavigate={handleNavigate}
@@ -869,6 +882,34 @@ export default function App() {
             </div>
           )}
 
+          {currentView === 'custom-landing' && CustomLandingComponent && activeSelectedPackage && (
+            <CustomLandingComponent
+              pkg={activeSelectedPackage}
+              business={businessProfile}
+              onNavigate={handleNavigate}
+              onOpenEnquiry={handleOpenQuoteModal}
+            />
+          )}
+
+          {currentView === 'custom-landing' && !loadingData && (!CustomLandingComponent || !activeSelectedPackage) && (
+            <div className="flex min-h-[70vh] items-center justify-center bg-[#faf8f3] px-4 py-20 text-center">
+              <div className="max-w-lg rounded-[28px] border border-stone-200 bg-white p-8 shadow-[0_24px_80px_rgba(18,38,32,0.10)]">
+                <Compass className="mx-auto h-12 w-12 text-[#4DA528]" />
+                <h1 className="mt-5 text-3xl font-extrabold text-stone-950">Expedition page unavailable</h1>
+                <p className="mt-3 text-sm leading-7 text-stone-500">
+                  This custom page is not currently connected to an active package.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleNavigate('packages')}
+                  className="mt-6 rounded-[5px] bg-[#4DA528] px-6 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
+                >
+                  Browse Packages
+                </button>
+              </div>
+            </div>
+          )}
+
           {currentView === 'gallery' && (
             <GalleryView gallery={gallery} loading={loadingData} />
           )}
@@ -883,11 +924,12 @@ export default function App() {
             <AiCuratorView 
               onNavigateToHome={() => handleNavigate('home')} 
               onNavigate={handleNavigate}
+              websiteCMS={websiteCMS}
             />
           )}
 
           {currentView === 'contact' && (
-            <ContactView onEnquirySuccess={fetchAllData} />
+            <ContactView onEnquirySuccess={fetchAllData} websiteCMS={websiteCMS} />
           )}
 
           {currentView === 'portal' && (
@@ -897,6 +939,8 @@ export default function App() {
               onNavigate={handleNavigate}
               onNavigateToPackages={() => handleNavigate('packages')}
               savedPackagesRefreshKey={savedPackagesRefreshKey}
+              packages={packages}
+              websiteCMS={websiteCMS}
             />
           )}
 
@@ -965,21 +1009,22 @@ export default function App() {
         isOpen={quoteModalOpen}
         onClose={handleCloseQuoteModal}
         onSuccess={fetchAllData}
+        packageContext={quotePackage}
       />
 
       {/* Hide footer on full-screen admin dashboard */}
-      {currentView !== 'admin-dashboard' && (
+      {currentView !== 'admin-dashboard' && !isImmersiveCustomLanding && (
         <Footer onNavigate={handleNavigate} websiteCMS={websiteCMS} gallery={gallery} loading={loadingData} />
       )}
 
       {/* Floating Action Buttons Vertical Stack */}
-      {currentView !== 'admin-dashboard' && (
+      {currentView !== 'admin-dashboard' && !isImmersiveCustomLanding && (
         <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3" id="floating-actions-stack">
           
           {/* Premium Enquiry Floating Button */}
           <button
             type="button"
-            onClick={handleOpenQuoteModal}
+            onClick={() => handleOpenQuoteModal()}
             className="flex items-center gap-2.5 rounded-full border border-[#4DA528]/40 bg-stone-900 px-4 py-3 text-white shadow-lg transition-all duration-300 ease-out hover:scale-105 hover:bg-[#4DA528] hover:shadow-xl sm:px-5 sm:py-3.5 cursor-pointer relative group"
           >
             {/* Ambient Pulse */}

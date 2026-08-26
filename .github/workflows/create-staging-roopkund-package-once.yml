@@ -1,0 +1,114 @@
+name: One-time staging Roopkund package seed
+
+on:
+  push:
+    branches:
+      - staging
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: one-time-staging-roopkund-package-seed
+  cancel-in-progress: false
+
+env:
+  AUTHORIZED_SEED_MESSAGE: 'chore(staging): create canonical Roopkund package [RUN-STAGING-ROOPKUND-SEED]'
+
+jobs:
+  seed_message_guard:
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      run_seed: ${{ steps.exact_message.outputs.run_seed }}
+    steps:
+      - name: Check exact authorized commit message
+        id: exact_message
+        shell: bash
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          if [ "$HEAD_COMMIT_MESSAGE" = "$AUTHORIZED_SEED_MESSAGE" ]; then
+            echo "run_seed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_seed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  create-staging-package:
+    needs: seed_message_guard
+    if: >-
+      github.ref == 'refs/heads/staging' &&
+      needs.seed_message_guard.outputs.run_seed == 'true'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 15
+
+    env:
+      TARGET_PROJECT_ID: pravaah-travels-test
+      TARGET_DATABASE_ID: (default)
+      TARGET_DOCUMENT_PATH: packages/roopkund-trek
+      EXPECTED_WIF_SERVICE_ACCOUNT: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+    steps:
+      - name: Checkout staging
+        uses: actions/checkout@v4
+
+      - name: Verify immutable workflow context
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/staging"
+          test "$HEAD_COMMIT_MESSAGE" = "$AUTHORIZED_SEED_MESSAGE"
+          test "$TARGET_PROJECT_ID" = "pravaah-travels-test"
+          test "$TARGET_PROJECT_ID" != "zealous-theory-q09p9"
+          test "$TARGET_DATABASE_ID" = "(default)"
+          test "$TARGET_DOCUMENT_PATH" = "packages/roopkund-trek"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Authenticate with staging WIF
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: pravaah-travels-test
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Setup Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: pravaah-travels-test
+
+      - name: Verify WIF identity and staging target
+        run: |
+          set -euo pipefail
+          test -n "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -s "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "${GOOGLE_CLOUD_PROJECT:-}" = "pravaah-travels-test"
+          test "$(gcloud config get-value project 2>/dev/null)" = "pravaah-travels-test"
+          active_account="$(gcloud auth list --filter=status:ACTIVE --format='value(account)')"
+          test -n "$EXPECTED_WIF_SERVICE_ACCOUNT"
+          test "$active_account" = "$EXPECTED_WIF_SERVICE_ACCOUNT"
+          test "$TARGET_PROJECT_ID" != "zealous-theory-q09p9"
+          echo "WIF identity and staging-only target guards passed."
+
+      - name: Dry-run canonical package creation
+        run: npm run create:staging:roopkund:dry-run
+
+      - name: Create and verify canonical package
+        env:
+          STAGING_ROOPKUND_PACKAGE_CONFIRMATION: 'CREATE_STAGING_ROOPKUND_PACKAGE:roopkund-trek:pravaah-travels-test'
+        run: npm run create:staging:roopkund

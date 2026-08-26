@@ -29,9 +29,10 @@ jobs:
         env:
           HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
           AUTHORIZED_MIGRATION_MESSAGE: 'chore(staging): run public content migration [RUN-STAGING-PUBLIC-MIGRATION]'
+          AUTHORIZED_ROOPKUND_SEED_MESSAGE: 'chore(staging): create canonical Roopkund package [RUN-STAGING-ROOPKUND-SEED]'
         run: |
           set -euo pipefail
-          if [ "$HEAD_COMMIT_MESSAGE" = "$AUTHORIZED_MIGRATION_MESSAGE" ]; then
+          if [ "$HEAD_COMMIT_MESSAGE" = "$AUTHORIZED_MIGRATION_MESSAGE" ] || [ "$HEAD_COMMIT_MESSAGE" = "$AUTHORIZED_ROOPKUND_SEED_MESSAGE" ]; then
             echo "skip_deploy=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip_deploy=false" >> "$GITHUB_OUTPUT"

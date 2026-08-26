@@ -5,7 +5,7 @@ import {
   X, GripVertical, ArrowUp, ArrowDown, Users, Clock, Check, Send,
   ChevronUp, ChevronDown
 } from 'lucide-react';
-import { TravelPackage, formatPrice, DestinationCategory, WebsiteCMSSettings, PACKAGE_LOCATIONS, PackageLocation, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem } from '../types';
+import { TravelPackage, formatPrice, formatPackagePrice, DestinationCategory, WebsiteCMSSettings, PACKAGE_LOCATIONS, PackageLocation, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem } from '../types';
 import InteractiveRouteMap from './InteractiveRouteMap';
 import { db, collection, addDoc } from '../lib/firebase';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
@@ -15,6 +15,8 @@ import aboutImageVideo from '../assets/about-section/about-us/image-video.png?ur
 import enjoyImage from '../assets/about-section/page/enjoy.png';
 import founderNameImage from '../assets/about-section/page/name.png';
 import avatar10 from '../assets/about-section/avatars/10.jpg';
+import { openPackage } from '../utils/packageRoute';
+import { resolveBusinessProfile } from '../utils/businessProfile';
 
 interface HomeViewProps {
   featuredPackages: TravelPackage[];
@@ -54,18 +56,6 @@ type PackageCardProps = {
   isAdminLoggedIn?: boolean;
 };
 
-const slugifyPackageTitle = (value: string) => String(value ?? '')
-  .toLowerCase()
-  .trim()
-  .replace(/&/g, 'and')
-  .replace(/[^a-z0-9]+/g, '-')
-  .replace(/^-+|-+$/g, '');
-
-const getPackageRouteSegment = (pkg: Pick<TravelPackage, 'id' | 'title'>) => {
-  const slug = slugifyPackageTitle(pkg.title);
-  return slug ? `${slug}-${pkg.id}` : String(pkg.id);
-};
-
 const PackageCard = React.memo(function PackageCard({
   pkg,
   index,
@@ -82,7 +72,7 @@ const PackageCard = React.memo(function PackageCard({
   const difficulty = pkg.category === 'Treks' ? 'Moderate' : pkg.category === 'Adventure' ? 'Thrilling' : 'Easy';
   const locationLabel = pkg.location || pkg.destination;
 
-  const handleOpen = () => onNavigate('package-detail', getPackageRouteSegment(pkg));
+  const handleOpen = () => openPackage(onNavigate, pkg);
 
   return (
     <article className="group wow fadeInUp animated h-full overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-[0_18px_42px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_24px_56px_rgba(15,23,42,0.12)]" data-wow-delay={`${(index + 1) / 10}s`}>
@@ -181,7 +171,7 @@ const PackageCard = React.memo(function PackageCard({
           <div>
             <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-stone-500">Starting from</p>
             <div className="mt-1 flex items-center gap-2">
-              <span className="text-[22px] font-extrabold text-[#4DA528]">{formatPrice(offerPrice)}</span>
+              <span className="text-[22px] font-extrabold text-[#4DA528]">{formatPackagePrice(offerPrice)}</span>
               {hasOffer ? <span className="text-sm text-stone-400 line-through">{formatPrice(pkg.price)}</span> : null}
             </div>
           </div>
@@ -230,7 +220,7 @@ const RecommendationCard = React.memo(function RecommendationCard({ recommendati
 
   const handleOpen = () => {
     if (linkedPackage) {
-      onNavigate('package-detail', getPackageRouteSegment(linkedPackage));
+      openPackage(onNavigate, linkedPackage);
       return;
     }
     onNavigate('packages');
@@ -310,6 +300,7 @@ export default function HomeView({
   featuredCategories = [],
   packages: packageList = [],
 }: HomeViewProps) {
+  const business = useMemo(() => resolveBusinessProfile(websiteCMS), [websiteCMS]);
   // Wizard Planner State
   const [plannerCategory, setPlannerCategory] = useState<DestinationCategory>('Pilgrimage');
   const [plannerStyle, setPlannerStyle] = useState<string>('Bespoke Luxury');
@@ -975,7 +966,7 @@ export default function HomeView({
                   Great opportunity for <span className="text-gray font-yes font-serif italic font-medium text-stone-400">adventure</span> & travels
                 </h2>
                 <p className="des-heading fadeInUp wow mt-6 max-w-xl text-[16px] leading-8 text-stone-600">
-                Adventure begins where ordinary ends. Explore hidden valleys, majestic mountains, sacred temples, thrilling bike expeditions, and unforgettable road trips with Pravaah Travels. Every itinerary is carefully planned to give you the perfect balance of comfort, excitement, and authentic local experiences.
+                Adventure begins where ordinary ends. Explore hidden valleys, majestic mountains, sacred temples, thrilling bike expeditions, and unforgettable road trips with {business.companyName}. Every itinerary is carefully planned to give you the perfect balance of comfort, excitement, and authentic local experiences.
                 </p>
                 <div className="fadeInUp wow mt-9 grid gap-5 sm:grid-cols-2">
                   <div>
@@ -1187,7 +1178,7 @@ export default function HomeView({
                 const imageUrl = item.thumbnailUrl || linkedPackage?.imageUrl || 'https://images.unsplash.com/photo-1516685304081-de7947d419d3?auto=format&fit=crop&w=800&q=80';
                 return (
                   <article key={item.id} className="tour-listing wow fadeInUp animated group flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-1" data-wow-delay={`${(idx + 1) / 10}s`}>
-                    <button type="button" onClick={() => linkedPackage ? onNavigate('package-detail', getPackageRouteSegment(linkedPackage)) : undefined} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
+                    <button type="button" onClick={() => linkedPackage ? openPackage(onNavigate, linkedPackage) : undefined} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
                       <img src={getTravelImage(imageUrl)} alt={item.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" loading="lazy" decoding="async" width="800" height="560" onError={handleTravelImageError} />
                     </button>
                     <div className="tour-listing-content flex flex-1 flex-col p-6">
@@ -1210,7 +1201,7 @@ export default function HomeView({
                         {item.subtitle || (linkedPackage?.destination ?? 'Explore')}
                       </span>
                       <h3 className="title-tour-list mt-3 text-[22px] font-bold leading-tight text-stone-950">
-                        <button onClick={() => linkedPackage ? onNavigate('package-detail', getPackageRouteSegment(linkedPackage)) : undefined} className="cursor-pointer text-left transition hover:text-[#4DA528]">
+                        <button onClick={() => linkedPackage ? openPackage(onNavigate, linkedPackage) : undefined} className="cursor-pointer text-left transition hover:text-[#4DA528]">
                           {item.title}
                         </button>
                       </h3>
@@ -1225,7 +1216,7 @@ export default function HomeView({
                         </div>
                         <button
                           type="button"
-                          onClick={() => linkedPackage ? onNavigate('package-detail', getPackageRouteSegment(linkedPackage)) : undefined}
+                          onClick={() => linkedPackage ? openPackage(onNavigate, linkedPackage) : undefined}
                           disabled={!linkedPackage}
                           className={`inline-flex items-center justify-center rounded-full px-5 py-3 text-sm font-bold text-white transition ${linkedPackage ? 'bg-[#4DA528] hover:bg-[#3a8d1f]' : 'bg-stone-300 cursor-not-allowed'}`}
                         >
@@ -1245,7 +1236,7 @@ export default function HomeView({
                 const isWishlisted = Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(pkg.id ?? '')) : false;
                 return (
                   <article key={pkg.id} className="tour-listing wow fadeInUp animated group flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-1" data-wow-delay={`${(idx + 1) / 10}s`}>
-                    <button type="button" onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
+                    <button type="button" onClick={() => openPackage(onNavigate, pkg)} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
                       <img src={getTravelImage(pkg.imageUrl)} alt={pkg.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" loading="lazy" decoding="async" width="800" height="560" onError={handleTravelImageError} />
                     </button>
                     <div className="tour-listing-content flex flex-1 flex-col p-6">
@@ -1268,7 +1259,7 @@ export default function HomeView({
                         {pkg.location || pkg.destination}
                       </span>
                       <h3 className="title-tour-list mt-3 text-[22px] font-bold leading-tight text-stone-950">
-                        <button onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="cursor-pointer text-left transition hover:text-[#4DA528]">
+                        <button onClick={() => openPackage(onNavigate, pkg)} className="cursor-pointer text-left transition hover:text-[#4DA528]">
                           {pkg.title}
                         </button>
                       </h3>
@@ -1279,11 +1270,11 @@ export default function HomeView({
                       <div className="mt-auto flex flex-col gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="text-sm text-stone-500">Starting</p>
-                          <p className="text-xl font-bold text-[#4DA528]">{formatPrice(pkg.offerPrice || pkg.price)}</p>
+                          <p className="text-xl font-bold text-[#4DA528]">{formatPackagePrice(pkg.offerPrice || pkg.price)}</p>
                         </div>
                         <button
                           type="button"
-                          onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))}
+                          onClick={() => openPackage(onNavigate, pkg)}
                           className="inline-flex items-center justify-center rounded-full bg-[#4DA528] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#3a8d1f]"
                         >
                           Book Now
@@ -1369,7 +1360,7 @@ export default function HomeView({
                     {offerPackages.slice(0, 2).map((pkg) => (
                       <div key={`offer-${pkg.id}`} className="swiper-slide h-full">
                         <article className="tour-listing flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)]">
-                          <button type="button" onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="tour-listing-image relative block h-[260px] w-full cursor-pointer overflow-hidden text-left">
+                          <button type="button" onClick={() => openPackage(onNavigate, pkg)} className="tour-listing-image relative block h-[260px] w-full cursor-pointer overflow-hidden text-left">
                             <img src={getTravelImage(pkg.imageUrl)} alt={pkg.title} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                             <span className="feature absolute left-4 top-4 rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">Featured</span>
                           </button>
@@ -1378,10 +1369,10 @@ export default function HomeView({
                             <h3 className="title-tour-list mt-4 text-[22px] font-bold leading-tight text-stone-950">{pkg.title}</h3>
                             <div className="flex-two mt-auto flex items-center justify-between pt-5">
                               <p className="text-[14px] text-stone-500">
-                                From <span className="price-sale text-[20px] font-extrabold text-[#4DA528]">{formatPrice(pkg.offerPrice || pkg.price)}</span>
+                                From <span className="price-sale text-[20px] font-extrabold text-[#4DA528]">{formatPackagePrice(pkg.offerPrice || pkg.price)}</span>
                                 {pkg.offerPrice && <span className="ml-2 text-xs font-semibold text-stone-400 line-through">{formatPrice(pkg.price)}</span>}
                               </p>
-                              <button onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-[#4DA528] hover:text-white">
+                              <button onClick={() => openPackage(onNavigate, pkg)} className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-[#4DA528] hover:text-white">
                                 <Heart className="h-4 w-4" />
                               </button>
                             </div>
@@ -1408,7 +1399,7 @@ export default function HomeView({
                 <Sparkles className="h-7 w-7" />
               </button>
               <address className="not-italic text-[17px] leading-8 text-white/78">
-                Contact us at <a href="mailto:pravaahtravels@gmail.com" className="text-[#4DA528]">pravaahtravels@gmail.com</a>
+                Contact us at <a href={`mailto:${business.email}`} className="text-[#4DA528]">{business.email}</a>
               </address>
             </div>
           </div>

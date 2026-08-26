@@ -16,12 +16,13 @@ import {
   X,
 } from 'lucide-react';
 import { db, collection, addDoc } from '../lib/firebase';
-import { Enquiry } from '../types';
+import { Enquiry, type TravelPackage } from '../types';
 
 interface PremiumEnquiryModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  packageContext?: TravelPackage | null;
 }
 
 const initialFormState = {
@@ -38,7 +39,7 @@ const initialFormState = {
   message: '',
 };
 
-export default function PremiumEnquiryModal({ isOpen, onClose, onSuccess }: PremiumEnquiryModalProps) {
+export default function PremiumEnquiryModal({ isOpen, onClose, onSuccess, packageContext }: PremiumEnquiryModalProps) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const firstFieldRef = useRef<HTMLInputElement | null>(null);
   const successTimeoutRef = useRef<number | null>(null);
@@ -46,6 +47,15 @@ export default function PremiumEnquiryModal({ isOpen, onClose, onSuccess }: Prem
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    if (!isOpen || !packageContext) return;
+    setFormData((previous) => ({
+      ...previous,
+      destination: packageContext.destination || previous.destination,
+      message: previous.message || `Hi, I would like to discuss the ${packageContext.title} package.`,
+    }));
+  }, [isOpen, packageContext]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -156,6 +166,7 @@ export default function PremiumEnquiryModal({ isOpen, onClose, onSuccess }: Prem
         travelers,
         budget: formData.budget,
         message: detailMessage,
+        ...(packageContext ? { packageId: packageContext.id, packageName: packageContext.title } : {}),
         status: 'New',
         createdAt: new Date().toISOString(),
       };
@@ -214,10 +225,10 @@ export default function PremiumEnquiryModal({ isOpen, onClose, onSuccess }: Prem
               <div>
                 <span className="inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/80 backdrop-blur">
                   <Compass className="h-3.5 w-3.5 text-[#4DA528]" />
-                  Free quote
+                  {packageContext ? 'Package enquiry' : 'Free quote'}
                 </span>
                 <h2 id="premium-enquiry-title" className="mt-5 text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
-                  Plan your next unforgettable journey.
+                  {packageContext ? `Plan your ${packageContext.title} journey.` : 'Plan your next unforgettable journey.'}
                 </h2>
                 <p id="premium-enquiry-description" className="mt-4 text-sm leading-7 text-white/72">
                   Share a few details and a Pravaah travel curator will prepare a tailored route, hotel, and transport plan.
