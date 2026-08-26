@@ -145,6 +145,12 @@ const ACTIVITY_ALLOWED_FIELDS = new Set([
   'title',
 ]);
 
+const ACTIVITY_OMITTED_FIELDS = new Set([
+  // The Firestore document ID is preserved separately. A stored legacy copy is
+  // omitted only after prepareDocument verifies that it matches exactly.
+  'id',
+]);
+
 const ACTIVITY_ITEM_ALLOWED_FIELDS = new Set([
   'activityId',
   'buttonLink',
@@ -798,6 +804,18 @@ const pickAllowedFields = (
   return result;
 };
 
+const assertLegacyActivityIdMatchesDocumentId = (document: SourceDocument, documentPath: string): void => {
+  if (!Object.prototype.hasOwnProperty.call(document.data, 'id')) return;
+
+  const storedId = document.data.id;
+  if (typeof storedId !== 'string') {
+    throw new Error(`${documentPath} contains a non-string legacy id; expected the exact Firestore document ID ${JSON.stringify(document.id)}.`);
+  }
+  if (storedId !== document.id) {
+    throw new Error(`${documentPath} contains a legacy id mismatch: stored ${JSON.stringify(storedId)}, Firestore document ID ${JSON.stringify(document.id)}.`);
+  }
+};
+
 const assertNoPrivateFields = (value: unknown, documentPath: string, path = ''): void => {
   if (Array.isArray(value)) {
     value.forEach((item, index) => assertNoPrivateFields(item, documentPath, `${path}[${index}]`));
@@ -1218,7 +1236,8 @@ const prepareDocument = async (
   if (document.collection === 'packages') {
     selected = pickAllowedFields(document.data, PACKAGE_ALLOWED_FIELDS, PACKAGE_OMITTED_FIELDS, documentPath);
   } else if (document.collection === 'activities') {
-    selected = pickAllowedFields(document.data, ACTIVITY_ALLOWED_FIELDS, new Set(), documentPath);
+    assertLegacyActivityIdMatchesDocumentId(document, documentPath);
+    selected = pickAllowedFields(document.data, ACTIVITY_ALLOWED_FIELDS, ACTIVITY_OMITTED_FIELDS, documentPath);
   } else if (document.collection === 'activityItems') {
     selected = pickAllowedFields(document.data, ACTIVITY_ITEM_ALLOWED_FIELDS, new Set(), documentPath);
   } else {
