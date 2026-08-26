@@ -168,6 +168,11 @@ const ACTIVITY_ITEM_ALLOWED_FIELDS = new Set([
   'title',
 ]);
 
+const ACTIVITY_ITEM_OMITTED_FIELDS = new Set([
+  // Apply the same verified legacy-ID handling used for activities.
+  'id',
+]);
+
 const SITE_SETTINGS_ALLOWED_FIELDS = new Set([
   'bookingEmail',
   'city',
@@ -804,7 +809,7 @@ const pickAllowedFields = (
   return result;
 };
 
-const assertLegacyActivityIdMatchesDocumentId = (document: SourceDocument, documentPath: string): void => {
+const assertLegacyIdMatchesDocumentId = (document: SourceDocument, documentPath: string): void => {
   if (!Object.prototype.hasOwnProperty.call(document.data, 'id')) return;
 
   const storedId = document.data.id;
@@ -1236,10 +1241,11 @@ const prepareDocument = async (
   if (document.collection === 'packages') {
     selected = pickAllowedFields(document.data, PACKAGE_ALLOWED_FIELDS, PACKAGE_OMITTED_FIELDS, documentPath);
   } else if (document.collection === 'activities') {
-    assertLegacyActivityIdMatchesDocumentId(document, documentPath);
+    assertLegacyIdMatchesDocumentId(document, documentPath);
     selected = pickAllowedFields(document.data, ACTIVITY_ALLOWED_FIELDS, ACTIVITY_OMITTED_FIELDS, documentPath);
   } else if (document.collection === 'activityItems') {
-    selected = pickAllowedFields(document.data, ACTIVITY_ITEM_ALLOWED_FIELDS, new Set(), documentPath);
+    assertLegacyIdMatchesDocumentId(document, documentPath);
+    selected = pickAllowedFields(document.data, ACTIVITY_ITEM_ALLOWED_FIELDS, ACTIVITY_ITEM_OMITTED_FIELDS, documentPath);
   } else {
     selected = pickAllowedFields(document.data, SITE_SETTINGS_ALLOWED_FIELDS, SITE_SETTINGS_OMITTED_FIELDS, documentPath);
   }
