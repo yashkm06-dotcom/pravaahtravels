@@ -16,6 +16,8 @@ const APPLY_CONFIRMATION = 'MIGRATE_PUBLIC_CONTENT:zealous-theory-q09p9:pravaah-
 const SOURCE_APP_NAME = 'public-content-migration-source-read-only';
 const DESTINATION_APP_NAME = 'public-content-migration-destination';
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const APPROVED_MISLABELED_PNG_OBJECT =
+  'packages/auli-snow-escape-skiing-and-himalayan-cable-car-views/1786257634580_9_pexels-33855219-group-of-women-practicing-yoga-outdoors-.jpg';
 const MAX_IMAGE_PIXELS = 100_000_000;
 const MAX_APPROXIMATE_FIRESTORE_TRANSACTION_BYTES = 4 * 1024 * 1024;
 const OVERSIZED_SOURCE_OBJECT = 'packages/1786261447134_xifyyu_Generated_Image_August_09__2026___1_13PM.jpg';
@@ -1045,16 +1047,30 @@ const createAssetPlanner = (sourceApp: App, destinationApp: App) => {
       byteRange: '0-31',
     }, () => pinnedSourceFile.download({ start: 0, end: 31, validation: false }));
     const magicType = mimeFromMagicBytes(prefixBytes);
-    if (magicType !== source.contentType) throw new Error(`Magic-byte MIME ${magicType ?? '(unknown)'} does not match metadata ${source.contentType} for ${sourceObjectPath}.`);
+    const effectiveContentType =
+      sourceObjectPath === APPROVED_MISLABELED_PNG_OBJECT
+      && source.contentType === 'image/jpeg'
+      && magicType === 'image/png'
+        ? 'image/png'
+        : source.contentType;
 
-    const transform = source.size > MAX_IMAGE_BYTES;
+    if (magicType !== effectiveContentType) {
+      throw new Error(`Magic-byte MIME ${magicType ?? '(unknown)'} does not match metadata ${source.contentType} for ${sourceObjectPath}.`);
+    }
+
+    const sourceForMigration: SourceObjectSnapshot = {
+      ...source,
+      contentType: effectiveContentType,
+    };
+
+    const transform = sourceForMigration.size > MAX_IMAGE_BYTES;
     if (transform && sourceObjectPath !== OVERSIZED_SOURCE_OBJECT) {
       throw new Error(`Unapproved oversized source object ${sourceObjectPath} (${source.size} bytes).`);
     }
     if (sourceObjectPath === OVERSIZED_SOURCE_OBJECT && source.size !== EXPECTED_OVERSIZED_SOURCE_BYTES) {
       throw new Error(`Approved oversized object changed from ${EXPECTED_OVERSIZED_SOURCE_BYTES} to ${source.size} bytes; re-approve before continuing.`);
     }
-    if (transform && source.contentType !== 'image/jpeg') throw new Error('The approved oversized transform is restricted to JPEG input.');
+    if (transform && sourceForMigration.contentType !== 'image/jpeg') throw new Error('The approved oversized transform is restricted to JPEG input.');
 
     let transformedOutput: Buffer | null = null;
     let transformedFinalBytes: number | null = null;
@@ -1133,7 +1149,7 @@ const createAssetPlanner = (sourceApp: App, destinationApp: App) => {
     }
 
     return {
-      ...source,
+      ...sourceForMigration,
       sourceObjectPath,
       destinationObjectPath,
       destinationUrl: destinationDownloadUrl(destinationObjectPath, token),
