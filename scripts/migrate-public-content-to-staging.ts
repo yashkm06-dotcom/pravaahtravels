@@ -365,6 +365,32 @@ interface WriteCounters {
   destinationDeletesAttempted: number;
 }
 
+type SourceService = 'Firestore' | 'Storage';
+
+interface SourceOperationContext {
+  service: SourceService;
+  operation: string;
+  path: string;
+  databaseId?: string;
+  bucket?: string;
+  generation?: string;
+  byteRange?: string;
+  destinationResource?: string;
+}
+
+interface OriginalGoogleError {
+  code: number | string | null;
+  message: string;
+}
+
+interface SourceOperationDiagnostic extends SourceOperationContext {
+  phase: string;
+  sourceProject: string;
+  resource: string;
+  authenticatedServiceAccount: string | null;
+  originalGoogleError: OriginalGoogleError;
+}
+
 const args = process.argv.slice(2);
 if (args.some((arg) => arg !== '--apply') || args.filter((arg) => arg === '--apply').length > 1) {
   throw new Error('The only supported argument is --apply. Project, database, bucket, collection, UID, and email arguments are forbidden.');
@@ -390,9 +416,29 @@ const preparedFieldPaths: Record<MigratedCollection, Set<string>> = {
 };
 let storageReferenceOccurrences = 0;
 let currentPhase = 'startup';
+let authenticatedServiceAccountIdentity: string | null = null;
 const completedStoragePlans: string[] = [];
 const attemptedStorageWrites: string[] = [];
 const createdStorageObjects: string[] = [];
+
+const safeServiceAccountEmail = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const candidate = value.trim();
+  if (!/^[a-z0-9][a-z0-9._-]*@[a-z0-9-]+\.iam\.gserviceaccount\.com$/i.test(candidate)) return null;
+  return candidate;
+};
+
+const serviceAccountFromImpersonationUrl = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.hostname !== 'iamcredentials.googleapis.com') return null;
+    const match = decodeURIComponent(url.pathname).match(/\/serviceAccounts\/([^/]+):generateAccessToken$/);
+    return safeServiceAccountEmail(match?.[1]);
+  } catch {
+    return null;
+  }
+};
 
 const assertImmutableEndpoints = () => {
   if (SOURCE_PROJECT_ID !== 'zealous-theory-q09p9') throw new Error('Source project invariant failed.');
@@ -444,10 +490,16 @@ const assertExecutionEnvironment = async () => {
   if (!credentialsPath) throw new Error('GOOGLE_APPLICATION_CREDENTIALS is required; authenticate with GitHub Actions WIF first.');
   const credentialsStat = await stat(credentialsPath);
   if (!credentialsStat.isFile() || credentialsStat.size === 0) throw new Error('The WIF application-default credentials file is missing or empty.');
-  const credentialConfiguration = JSON.parse(await readFile(credentialsPath, 'utf8')) as { type?: string; audience?: string };
+  const credentialConfiguration = JSON.parse(await readFile(credentialsPath, 'utf8')) as {
+    type?: string;
+    audience?: string;
+    service_account_impersonation_url?: string;
+  };
   if (credentialConfiguration.type !== 'external_account' || !credentialConfiguration.audience?.includes('workloadIdentityPools')) {
     throw new Error('Application Default Credentials must be a GitHub Actions Workload Identity Federation external-account configuration.');
   }
+  authenticatedServiceAccountIdentity = serviceAccountFromImpersonationUrl(credentialConfiguration.service_account_impersonation_url)
+    ?? safeServiceAccountEmail(process.env.EXPECTED_WIF_SERVICE_ACCOUNT);
 
   const firebaseConfig = process.env.FIREBASE_CONFIG?.trim();
   if (firebaseConfig) {
@@ -541,6 +593,68 @@ const isNotFound = (error: unknown) => {
   return status === 404 || status === '404' || status === 'NOT_FOUND' || status === 5;
 };
 
+const originalGoogleError = (error: unknown): OriginalGoogleError => ({
+  code: errorStatus(error) ?? null,
+  message: error instanceof Error ? error.message : String(error),
+});
+
+const sourceResource = (context: SourceOperationContext): string => {
+  if (context.service === 'Firestore') {
+    return `projects/${SOURCE_PROJECT_ID}/databases/${context.databaseId ?? SOURCE_DATABASE_ID}/documents/${context.path}`;
+  }
+  return `gs://${context.bucket ?? SOURCE_BUCKET}/${context.path}`;
+};
+
+const buildSourceOperationDiagnostic = (
+  context: SourceOperationContext,
+  error: unknown,
+): SourceOperationDiagnostic => ({
+  ...context,
+  phase: currentPhase,
+  sourceProject: SOURCE_PROJECT_ID,
+  resource: sourceResource(context),
+  authenticatedServiceAccount: authenticatedServiceAccountIdentity,
+  originalGoogleError: originalGoogleError(error),
+});
+
+const formatSourceOperationDiagnostic = (diagnostic: SourceOperationDiagnostic): string => [
+  `service=${diagnostic.service}`,
+  `operation=${diagnostic.operation}`,
+  `resource=${diagnostic.resource}`,
+  `sourceProject=${diagnostic.sourceProject}`,
+  `authenticatedServiceAccount=${diagnostic.authenticatedServiceAccount ?? 'unavailable'}`,
+  `originalGoogleCode=${diagnostic.originalGoogleError.code ?? 'unavailable'}`,
+  `originalGoogleMessage=${JSON.stringify(diagnostic.originalGoogleError.message)}`,
+].join('; ');
+
+class SourceOperationError extends Error {
+  readonly diagnostic: SourceOperationDiagnostic;
+
+  constructor(diagnostic: SourceOperationDiagnostic, cause: unknown) {
+    super(`Source operation failed: ${formatSourceOperationDiagnostic(diagnostic)}`, { cause });
+    this.name = 'SourceOperationError';
+    this.diagnostic = diagnostic;
+  }
+}
+
+const runSourceOperation = async <T>(
+  context: SourceOperationContext,
+  task: () => Promise<T>,
+  options: { passThroughNotFound?: boolean } = {},
+): Promise<T> => {
+  try {
+    return await task();
+  } catch (error) {
+    if (options.passThroughNotFound && isNotFound(error)) throw error;
+    if (error instanceof SourceOperationError) throw error;
+    throw new SourceOperationError(buildSourceOperationDiagnostic(context, error), error);
+  }
+};
+
+const sourceOperationDiagnostic = (error: unknown): SourceOperationDiagnostic | null => (
+  error instanceof SourceOperationError ? error.diagnostic : null
+);
+
 const increment = (record: Record<string, number>, key: string, amount = 1) => {
   record[key] = (record[key] ?? 0) + amount;
 };
@@ -593,7 +707,12 @@ const runWritesFailClosed = async <T>(
 const storageReadLimit = createLimiter(24);
 
 const fetchCollection = async (database: Firestore, collection: MigratedCollection): Promise<SourceDocument[]> => {
-  const snapshot = await database.collection(collection).get();
+  const snapshot = await runSourceOperation({
+    service: 'Firestore',
+    operation: `${collection} collection read`,
+    path: `${collection}/**`,
+    databaseId: SOURCE_DATABASE_ID,
+  }, () => database.collection(collection).get());
   return snapshot.docs
     .map((document) => ({
       collection,
@@ -605,7 +724,12 @@ const fetchCollection = async (database: Firestore, collection: MigratedCollecti
 };
 
 const fetchSiteSettingsMain = async (database: Firestore): Promise<SourceDocument> => {
-  const snapshot = await database.collection('siteSettings').doc('main').get();
+  const snapshot = await runSourceOperation({
+    service: 'Firestore',
+    operation: 'siteSettings/main document read',
+    path: 'siteSettings/main',
+    databaseId: SOURCE_DATABASE_ID,
+  }, () => database.collection('siteSettings').doc('main').get());
   if (!snapshot.exists) throw new Error('Required source document siteSettings/main does not exist.');
   return {
     collection: 'siteSettings',
@@ -617,7 +741,12 @@ const fetchSiteSettingsMain = async (database: Firestore): Promise<SourceDocumen
 
 const fetchNoOpCounts = async (database: Firestore) => {
   const names = ['gallery', 'activityRecommendations', 'featuredCategories', 'hotels', 'blogs'] as const;
-  const entries = await Promise.all(names.map(async (name) => [name, (await database.collection(name).get()).size] as const));
+  const entries = await Promise.all(names.map(async (name) => [name, (await runSourceOperation({
+    service: 'Firestore',
+    operation: `${name} collection read for count validation`,
+    path: `${name}/**`,
+    databaseId: SOURCE_DATABASE_ID,
+  }, () => database.collection(name).get())).size] as const));
   return Object.fromEntries(entries) as Record<(typeof names)[number], number>;
 };
 
@@ -846,7 +975,12 @@ const createAssetPlanner = (sourceApp: App, destinationApp: App) => {
     const sourceFile = sourceBucket.file(sourceObjectPath);
     let sourceMetadata: RecordData;
     try {
-      const [metadata] = await sourceFile.getMetadata();
+      const [metadata] = await runSourceOperation({
+        service: 'Storage',
+        operation: 'source object metadata read',
+        path: sourceObjectPath,
+        bucket: SOURCE_BUCKET,
+      }, () => sourceFile.getMetadata(), { passThroughNotFound: true });
       sourceMetadata = metadata as unknown as RecordData;
     } catch (error) {
       if (isNotFound(error)) {
@@ -865,7 +999,7 @@ const createAssetPlanner = (sourceApp: App, destinationApp: App) => {
           transformedOutput: null,
         };
       }
-      throw new Error(`Cannot read production Storage metadata for ${sourceObjectPath}. Required read permission may be missing. ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
     }
 
     const source = metadataSnapshot(sourceMetadata);
@@ -879,7 +1013,14 @@ const createAssetPlanner = (sourceApp: App, destinationApp: App) => {
     }
 
     const pinnedSourceFile = sourceBucket.file(sourceObjectPath, { generation: source.generation });
-    const [prefixBytes] = await pinnedSourceFile.download({ start: 0, end: 31, validation: false });
+    const [prefixBytes] = await runSourceOperation({
+      service: 'Storage',
+      operation: 'source object magic-byte prefix read',
+      path: sourceObjectPath,
+      bucket: SOURCE_BUCKET,
+      generation: source.generation,
+      byteRange: '0-31',
+    }, () => pinnedSourceFile.download({ start: 0, end: 31, validation: false }));
     const magicType = mimeFromMagicBytes(prefixBytes);
     if (magicType !== source.contentType) throw new Error(`Magic-byte MIME ${magicType ?? '(unknown)'} does not match metadata ${source.contentType} for ${sourceObjectPath}.`);
 
@@ -897,7 +1038,13 @@ const createAssetPlanner = (sourceApp: App, destinationApp: App) => {
     let transformedMd5Hash: string | null = null;
     let transformedSha256: string | null = null;
     if (transform) {
-      const [input] = await pinnedSourceFile.download({ validation: 'crc32c' });
+      const [input] = await runSourceOperation({
+        service: 'Storage',
+        operation: 'approved oversized source JPEG full-content read',
+        path: sourceObjectPath,
+        bucket: SOURCE_BUCKET,
+        generation: source.generation,
+      }, () => pinnedSourceFile.download({ validation: 'crc32c' }));
       if (input.length !== source.size) throw new Error(`Pinned oversized source size mismatch for ${sourceObjectPath}.`);
       if (createHash('md5').update(input).digest('base64') !== source.md5Hash) {
         throw new Error(`Pinned oversized source checksum mismatch for ${sourceObjectPath}.`);
@@ -1137,7 +1284,12 @@ const recheckSourceObjects = async (sourceApp: App, plans: AssetPlan[]) => {
   const sourceBucket = getStorage(sourceApp).bucket(SOURCE_BUCKET);
   const snapshots = await Promise.all(plans.map((plan) => storageReadLimit(async () => {
     try {
-      const [metadata] = await sourceBucket.file(plan.sourceObjectPath).getMetadata();
+      const [metadata] = await runSourceOperation({
+        service: 'Storage',
+        operation: 'source object metadata re-read for immutability verification',
+        path: plan.sourceObjectPath,
+        bucket: SOURCE_BUCKET,
+      }, () => sourceBucket.file(plan.sourceObjectPath).getMetadata(), { passThroughNotFound: true });
       return { sourceObjectPath: plan.sourceObjectPath, ...metadataSnapshot(metadata as unknown as RecordData) };
     } catch (error) {
       if (isNotFound(error)) return { sourceObjectPath: plan.sourceObjectPath, ...missingObjectSnapshot() };
@@ -1283,12 +1435,19 @@ const performStorageWrites = async (sourceApp: App, destinationApp: App, plans: 
       createdStorageObjects.push(plan.destinationObjectPath);
     } else {
       attemptedStorageWrites.push(plan.destinationObjectPath);
-      await sourceFile.copy(destinationFile, {
+      await runSourceOperation({
+        service: 'Storage',
+        operation: 'copy pinned source object to staging destination',
+        path: plan.sourceObjectPath,
+        bucket: SOURCE_BUCKET,
+        generation: plan.generation,
+        destinationResource: `gs://${DESTINATION_BUCKET}/${plan.destinationObjectPath}`,
+      }, () => sourceFile.copy(destinationFile, {
         contentType: plan.contentType ?? undefined,
         cacheControl: 'public, max-age=31536000, immutable',
         metadata: destinationMetadata(plan),
         preconditionOpts: { ifGenerationMatch: 0 },
-      });
+      }));
       createdStorageObjects.push(plan.destinationObjectPath);
     }
 
@@ -1562,6 +1721,7 @@ const writeReport = async (report: ReturnType<typeof buildReport>) => {
 const writeFailureReport = async (error: unknown) => {
   const reportPath = process.env.MIGRATION_REPORT_PATH?.trim();
   if (!reportPath) return;
+  const diagnostic = sourceOperationDiagnostic(error);
   const report = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
@@ -1569,6 +1729,7 @@ const writeFailureReport = async (error: unknown) => {
     result: 'FAILED_CLOSED',
     phase: currentPhase,
     error: error instanceof Error ? error.message : String(error),
+    sourceOperationFailure: diagnostic,
     identity: {
       source: { projectId: SOURCE_PROJECT_ID, databaseId: SOURCE_DATABASE_ID, bucket: SOURCE_BUCKET, access: 'read-only' },
       destination: { projectId: DESTINATION_PROJECT_ID, databaseId: DESTINATION_DATABASE_ID, bucket: DESTINATION_BUCKET },
@@ -1788,6 +1949,8 @@ main().catch(async (error: unknown) => {
   } catch (reportError) {
     console.error(`Could not write failure report: ${reportError instanceof Error ? reportError.message : String(reportError)}`);
   }
+  const diagnostic = sourceOperationDiagnostic(error);
+  if (diagnostic) console.error(`Source operation diagnostic:\n${JSON.stringify(diagnostic, null, 2)}`);
   console.error(`Migration ${apply ? 'apply' : 'dry-run'} failed safely: ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;
 });
