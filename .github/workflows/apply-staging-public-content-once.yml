@@ -14,7 +14,7 @@ concurrency:
 env:
   AUTHORIZED_MIGRATION_MESSAGE: 'chore(staging): run public content migration [RUN-STAGING-PUBLIC-MIGRATION]'
   MIGRATION_CONFIRMATION: 'MIGRATE_PUBLIC_CONTENT:zealous-theory-q09p9:pravaah-travels-test'
-  MIGRATION_APPROVED_PLAN_HASH: '3a3caf2b19a2a4628d286e78cd0d0987b567185ef426f6ba6e32c56e469d2e2'
+  MIGRATION_APPROVED_PLAN_HASH: '3a3caf2b19a2a4628d2866e78cd0d0987b567185ef426f6ba6e32c56e469d2e2'
 
 jobs:
   apply:
@@ -49,7 +49,7 @@ jobs:
           test "$SOURCE_DATABASE_ID" = "ai-studio-e139cba2-4b0b-4550-a190-1ca3520d6d45"
           test "$SOURCE_STORAGE_BUCKET" = "zealous-theory-q09p9.firebasestorage.app"
           test "$MIGRATION_CONFIRMATION" = "MIGRATE_PUBLIC_CONTENT:zealous-theory-q09p9:pravaah-travels-test"
-          test "$MIGRATION_APPROVED_PLAN_HASH" = "3a3caf2b19a2a4628d286e78cd0d0987b567185ef426f6ba6e32c56e469d2e2"
+          test "$MIGRATION_APPROVED_PLAN_HASH" = "3a3caf2b19a2a4628d2866e78cd0d0987b567185ef426f6ba6e32c56e469d2e2"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
