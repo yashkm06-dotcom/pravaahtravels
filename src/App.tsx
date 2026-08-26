@@ -661,6 +661,8 @@ export default function App() {
       ? getPackageCanonicalUrl(activeSelectedPackage)
       : `${baseUrl}${activeMeta.canonicalPath}`;
     const ogImage = activeSelectedPackage?.packageBannerUrl || activeSelectedPackage?.imageUrl || fallbackImage;
+    const packageOfferPrice = Number(activeSelectedPackage?.offerPrice ?? activeSelectedPackage?.price);
+    const hasPublishedPackageOffer = Number.isFinite(packageOfferPrice) && packageOfferPrice > 0;
 
     const schemaMarkup = activeSelectedPackage ? {
       '@context': 'https://schema.org',
@@ -687,12 +689,14 @@ export default function App() {
             name: `Day ${day.day}: ${day.title}`,
             description: day.description,
           })),
-          offers: {
-            '@type': 'Offer',
-            price: activeSelectedPackage.offerPrice || activeSelectedPackage.price,
-            priceCurrency: 'INR',
-            availability: activeSelectedPackage.active ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-          },
+          ...(hasPublishedPackageOffer ? {
+            offers: {
+              '@type': 'Offer',
+              price: packageOfferPrice,
+              priceCurrency: 'INR',
+              availability: activeSelectedPackage.active ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+            },
+          } : {}),
         },
       ],
     } : {
