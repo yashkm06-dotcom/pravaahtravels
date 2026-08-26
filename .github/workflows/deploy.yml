@@ -15,8 +15,33 @@ jobs:
   # ============================================================
   # STAGING
   # ============================================================
-  staging:
+  staging_message_guard:
     if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      skip_deploy: ${{ steps.exact_message.outputs.skip_deploy }}
+    steps:
+      - name: Check exact migration commit message
+        id: exact_message
+        shell: bash
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          AUTHORIZED_MIGRATION_MESSAGE: 'chore(staging): run public content migration [RUN-STAGING-PUBLIC-MIGRATION]'
+        run: |
+          set -euo pipefail
+          if [ "$HEAD_COMMIT_MESSAGE" = "$AUTHORIZED_MIGRATION_MESSAGE" ]; then
+            echo "skip_deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip_deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  staging:
+    needs: staging_message_guard
+    if: >-
+      github.ref == 'refs/heads/staging' &&
+      needs.staging_message_guard.outputs.skip_deploy == 'false'
     runs-on: ubuntu-latest
     environment: staging
 

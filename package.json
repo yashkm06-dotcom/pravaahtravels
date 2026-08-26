@@ -13,6 +13,8 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
+    "migrate:public-content:dry-run": "node --import tsx scripts/migrate-public-content-to-staging.ts",
+    "migrate:public-content": "node --import tsx scripts/migrate-public-content-to-staging.ts --apply",
     "set-staging-admin-claim": "node --import tsx scripts/set-admin-claim.ts",
     "preview": "vite preview"
   },
@@ -44,6 +46,7 @@
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
+    "sharp": "0.35.3",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
