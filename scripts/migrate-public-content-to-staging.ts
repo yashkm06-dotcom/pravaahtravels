@@ -16,10 +16,6 @@ const APPLY_CONFIRMATION = 'MIGRATE_PUBLIC_CONTENT:zealous-theory-q09p9:pravaah-
 const SOURCE_APP_NAME = 'public-content-migration-source-read-only';
 const DESTINATION_APP_NAME = 'public-content-migration-destination';
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const APPROVED_MISLABELED_PNG_OBJECTS = new Set([
-  'packages/auli-snow-escape-skiing-and-himalayan-cable-car-views/1786257634580_9_pexels-33855219-group-of-women-practicing-yoga-outdoors-.jpg',
-  'packages/dubai-family-vacation-theme-parks-aquariums-and-fun-for-all-ages/1786255823128_4_pexels-10967604-low-angle-view-of-the-ain-dubai-ferris-w.jpg',
-]);
 const MAX_IMAGE_PIXELS = 100_000_000;
 const MAX_APPROXIMATE_FIRESTORE_TRANSACTION_BYTES = 4 * 1024 * 1024;
 const OVERSIZED_SOURCE_OBJECT = 'packages/1786261447134_xifyyu_Generated_Image_August_09__2026___1_13PM.jpg';
@@ -1049,16 +1045,11 @@ const createAssetPlanner = (sourceApp: App, destinationApp: App) => {
       byteRange: '0-31',
     }, () => pinnedSourceFile.download({ start: 0, end: 31, validation: false }));
     const magicType = mimeFromMagicBytes(prefixBytes);
-    const effectiveContentType =
-      APPROVED_MISLABELED_PNG_OBJECTS.has(sourceObjectPath)
-      && source.contentType === 'image/jpeg'
-      && magicType === 'image/png'
-        ? 'image/png'
-        : source.contentType;
-
-    if (magicType !== effectiveContentType) {
-      throw new Error(`Magic-byte MIME ${magicType ?? '(unknown)'} does not match metadata ${source.contentType} for ${sourceObjectPath}.`);
+    if (!magicType || !ALLOWED_IMAGE_TYPES.has(magicType)) {
+      throw new Error(`Unsupported or unknown magic-byte MIME ${magicType ?? '(unknown)'} for ${sourceObjectPath}.`);
     }
+
+    const effectiveContentType = magicType;
 
     const sourceForMigration: SourceObjectSnapshot = {
       ...source,
