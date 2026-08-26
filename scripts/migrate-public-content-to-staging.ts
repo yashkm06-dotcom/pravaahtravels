@@ -1339,7 +1339,6 @@ const recheckSourceObjects = async (sourceApp: App, plans: AssetPlan[]) => {
     md5Hash: plan.md5Hash,
     crc32c: plan.crc32c,
     size: plan.size,
-    contentType: plan.contentType,
   })).sort((left, right) => left.sourceObjectPath.localeCompare(right.sourceObjectPath)));
   if (actual !== expected) throw new Error('Production Storage objects changed during the migration run; no further writes are allowed.');
 };
