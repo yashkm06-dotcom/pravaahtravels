@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { isStaging } from '../../../lib/environment';
-import type { CustomLandingPageProps } from '../registry';
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
-// 1. All Components (Named Imports from ./components/)
+import React, { useState } from 'react';
 import { ScrollProgressIndicator } from './components/ScrollProgressIndicator';
 import { Navbar } from './components/Navbar';
 import { RoopkundHero } from './components/RoopkundHero';
@@ -24,24 +25,11 @@ import { ExpeditionBookingModal } from './components/ExpeditionBookingModal';
 import { ShareExpeditionModal } from './components/ShareExpeditionModal';
 import { Footer } from './components/Footer';
 
-export default function RoopkundLandingPage({
-  pkg,
-  business,
-  onNavigate,
-}: CustomLandingPageProps) {
+export const App: React.FC = () => {
   const [selectedPlaceId, setSelectedPlaceId] = useState<string>('ali-bugyal');
   const [selectedItineraryDay, setSelectedItineraryDay] = useState<number>(1);
   const [isEnquiryModalOpen, setIsEnquiryModalOpen] = useState<boolean>(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    const previousScrollPaddingTop = root.style.scrollPaddingTop;
-    root.style.scrollPaddingTop = isStaging ? '104px' : '80px';
-    return () => {
-      root.style.scrollPaddingTop = previousScrollPaddingTop;
-    };
-  }, []);
 
   const handleSelectLocation = (locId: string) => {
     setSelectedPlaceId(locId);
@@ -67,10 +55,10 @@ export default function RoopkundLandingPage({
 
   return (
     <div className="min-h-screen bg-[#FAF8F3] text-[#1D2530] font-sans antialiased selection:bg-[#134E35] selection:text-white">
-      {/* Scroll Progress Bar */}
+      {/* Minimal Elegant Scroll Progress Indicator */}
       <ScrollProgressIndicator />
 
-      {/* Navigation Bar */}
+      {/* Dynamic Himalayan Navigation Bar */}
       <Navbar
         onOpenEnquiry={() => setIsEnquiryModalOpen(true)}
         onOpenBrochure={handleOpenBrochure}
@@ -78,78 +66,81 @@ export default function RoopkundLandingPage({
       />
 
       <main>
-        {/* Hero Section */}
+        {/* Section 1: Hero Experience & Quick Dossier */}
         <RoopkundHero
           onExploreTrail={handleExploreTrail}
           onOpenEnquiry={() => setIsEnquiryModalOpen(true)}
           onOpenShare={() => setIsShareModalOpen(true)}
         />
 
-        {/* Dark Mystery Section */}
+        {/* Section 2: Dark Archaeological Mystery Section */}
         <MysterySection />
 
-        {/* Why This Trail Pillars */}
+        {/* Section 3: Why This Trail (4 Editorial Pillars) */}
         <WhyRoopkund />
 
-        {/* 11-Stage Corridor */}
+        {/* Section 4: Not A Tour. An Expedition. (11-Stage Corridor) */}
         <ExpeditionJourneyPipeline onSelectLocation={handleSelectLocation} />
 
-        {/* Places Trail Dossier */}
+        {/* Section 5: Places That Define The Trail (Comprehensive Trail Sanctuary Dossier) */}
         <TrailPlacesDossier
           initialLocationId={selectedPlaceId}
           onExploreDay={handleExploreDayFromPlaces}
         />
 
-        {/* Itinerary Journal */}
+        {/* Section 6: The Expedition Journal (8-Day Itinerary Chapters) */}
         <ItineraryExplorer
           selectedDay={selectedItineraryDay}
           onSelectDay={(day) => setSelectedItineraryDay(day)}
         />
 
-        {/* Elevation Acclimatization Profile */}
+        {/* Section 7: Altitude Profile & High-Altitude Acclimatization */}
         <ElevationProfile />
 
-        {/* Sensory Highlights */}
+        {/* Section 8: More Than The Destination (Sensory Highlights with Popups) */}
         <ExperienceSection onOpenEnquiry={() => setIsEnquiryModalOpen(true)} />
 
-        {/* Gear Checklist */}
+        {/* Section 10: Pack For The Mountain (Interactive Gear Matrix) */}
         <PackingChecklist />
 
-        {/* Inclusions & Exclusions */}
+        {/* Section 11: Inclusions & Exclusions Charter */}
         <InclusionsExclusions />
 
-        {/* Safety & Medical Protocols */}
+        {/* Section 12: Respect The Altitude (Safety & Evacuation Protocols) */}
         <SafetySection />
 
-        {/* Accordion FAQs */}
+        {/* Section 13: Expedition Advisory & Accordion FAQs (AMS, Physical Fitness, Conservation) */}
         <ExpeditionFAQ
           onOpenEnquiry={() => setIsEnquiryModalOpen(true)}
           onOpenShare={() => setIsShareModalOpen(true)}
         />
 
-        {/* Suitability Matrix */}
+        {/* Section 14: Who Should Do This Trek (Suitability Matrix) */}
         <WhoIsThisFor />
 
-        {/* Why Pravaah */}
+        {/* Section 15: Why Pravaah (Small Group Expedition Difference with Popups) */}
         <WhyPravaah onOpenEnquiry={() => setIsEnquiryModalOpen(true)} />
 
-        {/* Enquiry Booking Form */}
+        {/* Section 16: Walk The Mystery Trail & Enquiry/Booking System */}
         <ExpeditionBookingEnquiry />
       </main>
 
-      {/* Footer */}
+      {/* Brand Footer with Environmental Conservation Statement */}
       <Footer onOpenShare={() => setIsShareModalOpen(true)} />
 
-      {/* Global Interactive Booking & Share Modals */}
+      {/* Global Interactive Expedition Enquiry Modal Popup */}
       <ExpeditionBookingModal
         isOpen={isEnquiryModalOpen}
         onClose={() => setIsEnquiryModalOpen(false)}
       />
 
+      {/* Global Share Expedition Modal Dialog */}
       <ShareExpeditionModal
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
       />
     </div>
   );
-}
+};
+
+export default App;
