@@ -239,7 +239,7 @@ export const ExpeditionBookingEnquiry: React.FC = () => {
                         maxLength={120}
                         value={formData.fullName}
                         onChange={handleChange}
-                        placeholder="e.g. Vikramaditya Sharma"
+                        placeholder="e.g. Yash Sharma"
                         className="w-full px-4 py-3 rounded-xl bg-black/40 border border-[#253D30] text-white placeholder-white/30 text-xs font-nunito focus:outline-none focus:border-[#E5C378] transition-colors"
                       />
                     </div>
@@ -256,7 +256,7 @@ export const ExpeditionBookingEnquiry: React.FC = () => {
                         maxLength={254}
                         value={formData.email}
                         onChange={handleChange}
-                        placeholder="vikram@domain.com"
+                        placeholder="Yash@domain.com"
                         className="w-full px-4 py-3 rounded-xl bg-black/40 border border-[#253D30] text-white placeholder-white/30 text-xs font-nunito focus:outline-none focus:border-[#E5C378] transition-colors"
                       />
                     </div>
