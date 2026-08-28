@@ -15,6 +15,7 @@ interface RoopkundHeroProps {
 
 export const RoopkundHero: React.FC<RoopkundHeroProps> = ({ onExploreTrail, onOpenEnquiry, onOpenShare }) => {
   const [scrollY, setScrollY] = useState(0);
+  const heroImageSrc = ROOPKUND_PACKAGE.heroImage || '/images/roopkund/mount-trishul.jpg';
 
   useEffect(() => {
     const handleScroll = () => {
@@ -30,14 +31,15 @@ export const RoopkundHero: React.FC<RoopkundHeroProps> = ({ onExploreTrail, onOp
       <div
         className="absolute inset-0 bg-cover bg-center will-change-transform scale-105 transition-transform duration-1000 ease-out"
         style={{
-          backgroundImage: `url('${ROOPKUND_PACKAGE.heroImage}')`,
+          backgroundImage: `url('${heroImageSrc}')`,
+          backgroundColor: '#0B131F',
           transform: `translateY(${scrollY * 0.25}px) scale(1.05)`,
         }}
       />
 
       {/* Atmospheric Mist, Gradient Vignette & Dark Overlay Layers */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#0B131F]/80 via-[#0B131F]/45 to-[#0B131F]" />
-      <div className="absolute inset-0 bg-radial-gradient from-transparent via-[#0B131F]/30 to-[#0B131F]/90" />
+      <div className="absolute inset-0 bg-gradient-to-b from-[#09110D]/85 via-[#0B131F]/55 to-[#0B131F]" />
+      <div className="absolute inset-0 bg-radial-gradient from-transparent via-[#09110D]/40 to-[#09110D]/90" />
 
       {/* Subtle Mist Particle / Topographic Grid Lines Overlay */}
       <div className="absolute inset-0 bg-dark-noise opacity-30 mix-blend-overlay pointer-events-none" />

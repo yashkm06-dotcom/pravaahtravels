@@ -35,7 +35,7 @@ export const ROOPKUND_PACKAGE: ExpeditionPackage = {
   bestSeason: 'May – June & September – October',
   startingPoint: 'Rishikesh',
   endingPoint: 'Rishikesh',
-  heroImage: 'https://upload.wikimedia.org/wikipedia/commons/8/89/Roopkund_-_The_Mystery_Lake.jpg',
+  heroImage: '/images/roopkund/mount-trishul.jpg',
   description: 'High in the Garhwal Himalayas lies Roopkund — a remote glacial lake surrounded by dramatic mountains and one of the Himalayas\' most intriguing archaeological mysteries. Starting from Rishikesh to Lohajung / Wan, the route traverses dense oak and rhododendron forests, the expansive alpine meadows of Ali Bugyal, rugged high-altitude staging at Bhagwabasa, and the defining Roopkund summit objective.'
 };
 
