@@ -18,7 +18,9 @@
     "set-staging-admin-claim": "node --import tsx scripts/set-admin-claim.ts",
     "create:staging:roopkund:dry-run": "node --import tsx scripts/create-staging-roopkund-package.ts",
     "create:staging:roopkund": "node --import tsx scripts/create-staging-roopkund-package.ts --apply",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -52,6 +54,7 @@
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "@playwright/test": "^1.62.1"
   }
 }

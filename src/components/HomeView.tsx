@@ -56,6 +56,20 @@ type PackageCardProps = {
   isAdminLoggedIn?: boolean;
 };
 
+type FeaturedCarouselItem =
+  | { type: 'package'; pkg: TravelPackage }
+  | { type: 'coming-soon'; id: string };
+
+const buildFeaturedCarouselItems = (packages: TravelPackage[]): FeaturedCarouselItem[] => {
+  const realItems: FeaturedCarouselItem[] = packages
+    .slice(0, 4)
+    .map((pkg) => ({ type: 'package', pkg }));
+  return [
+    ...realItems,
+    { type: 'coming-soon' as const, id: 'coming-soon' },
+  ];
+};
+
 const PackageCard = React.memo(function PackageCard({
   pkg,
   index,
@@ -303,6 +317,8 @@ export default function HomeView({
   const business = useMemo(() => resolveBusinessProfile(websiteCMS), [websiteCMS]);
   // Wizard Planner State
   const [plannerCategory, setPlannerCategory] = useState<DestinationCategory>('Pilgrimage');
+  const [primaryDestination, setPrimaryDestination] = useState('Uttarakhand');
+  const [secondaryDestination, setSecondaryDestination] = useState('');
   const [plannerStyle, setPlannerStyle] = useState<string>('Bespoke Luxury');
   const [plannerDuration, setPlannerDuration] = useState<string>('Medium (5-7 Days)');
   const [plannerLocation, setPlannerLocation] = useState<PackageLocation | string>('Uttarakhand');
@@ -710,24 +726,81 @@ export default function HomeView({
     }
   };
 
+  const primaryDestinations = ['Uttarakhand', 'Ladakh', 'Himachal', 'International'];
+  const featuredActivePackages = useMemo(() => packageList.filter((pkg) => Boolean(pkg.featured && pkg.active !== false)), [packageList]);
+  const activePackages = useMemo(() => packageList.filter((pkg) => pkg.active !== false), [packageList]);
+  const normalizeCountry = (value: unknown) => {
+    const country = String(value || '').trim();
+    if (!country) return '';
+    const normalized = country.toLowerCase().replace(/[._-]+/g, ' ').replace(/\s+/g, ' ');
+    if (normalized === 'united arab emirates' || normalized === 'uae') return 'United Arab Emirates';
+    return country;
+  };
+  const getPackageCountry = (pkg: TravelPackage) => normalizeCountry(pkg.country);
+  const isInternationalPackage = (pkg: TravelPackage) => {
+    const category = String(pkg.category || pkg.homepageCategory || '').trim().toLowerCase();
+    const country = getPackageCountry(pkg).toLowerCase();
+    return (category === 'international' || category === 'international trips') && Boolean(country) && country !== 'india';
+  };
+  const getPrimaryDestination = (pkg: TravelPackage) => {
+    // International classification is explicit: a package must be marked
+    // International and carry a non-India country. This prevents domestic
+    // packages from leaking into the International country filters.
+    if (isInternationalPackage(pkg)) return 'International';
+    const category = String(pkg.category || pkg.homepageCategory || '').trim().toLowerCase();
+    if (category === 'international' || category === 'international trips') return 'Unclassified';
+    const text = `${pkg.location || ''} ${pkg.destination || ''} ${pkg.country || ''}`.toLowerCase();
+    if (text.includes('uttarakhand') || text.includes('uttrakhand')) return 'Uttarakhand';
+    if (text.includes('ladakh')) return 'Ladakh';
+    if (text.includes('himachal')) return 'Himachal';
+    const country = getPackageCountry(pkg).toLowerCase();
+    if (country === 'india') return 'Domestic';
+    if (!country) return 'Unclassified';
+    return 'International';
+  };
+  const secondaryDestinations = useMemo(() => {
+    // Country filters represent the complete active International inventory;
+    // card visibility still follows the existing Featured Tours eligibility.
+    const source = primaryDestination === 'International' ? activePackages : featuredActivePackages;
+    const values = source
+      .filter((pkg) => primaryDestination === 'International' ? isInternationalPackage(pkg) : getPrimaryDestination(pkg) === primaryDestination)
+      .map((pkg) => primaryDestination === 'International' ? getPackageCountry(pkg) : (pkg.destination || pkg.city || pkg.location))
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+    return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+  }, [activePackages, featuredActivePackages, primaryDestination]);
+  useEffect(() => {
+    // Start each primary category with its complete featured collection. A
+    // secondary destination is an optional user-selected refinement.
+    if (secondaryDestination && !secondaryDestinations.includes(secondaryDestination)) setSecondaryDestination('');
+  }, [secondaryDestinations, secondaryDestination]);
+
   const filteredCategoryPackages = useMemo(() => {
-    const packagesSource = packageList || [];
     const linkedPackageIds = Array.isArray(activeFeaturedCategory?.packageIds) ? activeFeaturedCategory.packageIds : [];
 
-    if (linkedPackageIds.length > 0) {
-      return packagesSource.filter((pkg) => linkedPackageIds.includes(String(pkg.id ?? '')));
+    if (secondaryDestination) {
+      return featuredActivePackages.filter((pkg) => {
+        if (getPrimaryDestination(pkg) !== primaryDestination) return false;
+        const values = primaryDestination === 'International' ? [getPackageCountry(pkg)] : [pkg.destination, pkg.city, pkg.location];
+        return values.some((value) => String(value || '').trim().toLowerCase() === secondaryDestination.toLowerCase());
+      });
     }
 
-    return packagesSource.filter((pkg) => {
-      const matchesFeaturedCategory = activeFeaturedCategory
-        ? (activeFeaturedCategory.category && pkg.category === activeFeaturedCategory.category)
-          || (activeFeaturedCategory.location && (String(pkg.location ?? '').toLowerCase().includes(String(activeFeaturedCategory.location ?? '').toLowerCase()) || String(pkg.destination ?? '').toLowerCase().includes(String(activeFeaturedCategory.location ?? '').toLowerCase())))
-        : false;
+    if (linkedPackageIds.length > 0) {
+      // Keep explicitly linked records first, while ensuring every active CMS package
+      // marked Featured for this destination remains discoverable in the homepage carousel.
+      const linked = featuredActivePackages.filter((pkg) => (
+        linkedPackageIds.includes(String(pkg.id ?? '')) && getPrimaryDestination(pkg) === primaryDestination
+      ));
+      const categoryFeatured = featuredActivePackages.filter((pkg) => getPrimaryDestination(pkg) === primaryDestination);
+      const merged = [...linked, ...categoryFeatured];
+      return merged.filter((pkg, index, all) => (
+        all.findIndex((candidate) => String(candidate.id ?? '') === String(pkg.id ?? '')) === index
+      ));
+    }
 
-      const matchesPlannerCategory = plannerCategory ? pkg.category === plannerCategory : false;
-      return matchesFeaturedCategory || matchesPlannerCategory;
-    });
-  }, [packageList, activeFeaturedCategory, plannerCategory]);
+    return featuredActivePackages.filter((pkg) => getPrimaryDestination(pkg) === primaryDestination);
+  }, [packageList, activeFeaturedCategory, plannerCategory, featuredActivePackages, primaryDestination, secondaryDestination]);
 
   const activeOfferPackages = filteredCategoryPackages.filter((pkg) => {
     const price = Number(pkg.price);
@@ -736,18 +809,18 @@ export default function HomeView({
   });
   const offerPackages = activeOfferPackages.length > 0 ? activeOfferPackages : filteredCategoryPackages;
 
-  const featuredCarouselPackages = useMemo(() => {
-    const visible = filteredCategoryPackages.slice(0, 6);
-    if (visible.length === 0) return [];
-    return visible.slice(featuredIndex, featuredIndex + 3);
-  }, [featuredIndex, filteredCategoryPackages]);
+  const featuredCarouselItems = useMemo(() => buildFeaturedCarouselItems(filteredCategoryPackages), [filteredCategoryPackages]);
+  const featuredCarouselVisibleItems = useMemo(() => {
+    const start = Math.min(featuredIndex, Math.max(0, featuredCarouselItems.length - 3));
+    return featuredCarouselItems.slice(start, start + 3);
+  }, [featuredIndex, featuredCarouselItems]);
 
   const handlePrevFeatured = () => {
-    setFeaturedIndex((prev) => (prev === 0 ? Math.max(0, filteredCategoryPackages.length - 3) : prev - 1));
+    setFeaturedIndex((prev) => (prev === 0 ? Math.max(0, featuredCarouselItems.length - 3) : prev - 1));
   };
 
   const handleNextFeatured = () => {
-    setFeaturedIndex((prev) => (prev + 1 >= filteredCategoryPackages.length - 2 ? 0 : prev + 1));
+    setFeaturedIndex((prev) => (prev + 1 >= featuredCarouselItems.length - 2 ? 0 : prev + 1));
   };
   const bestOfferDiscount = activeOfferPackages.length > 0
     ? Math.max(
@@ -1043,39 +1116,39 @@ export default function HomeView({
           </div>
           <div className="tab-tour-list">
                 <ul className="tab-list mb-6 flex flex-wrap justify-center gap-3" id="myTab" role="tablist">
-                  {(['Pilgrimage', 'Treks', 'Adventure', 'Himachal', 'Ladakh'] as DestinationCategory[]).map((category) => (
-                    <li key={category} className="nav-item" role="presentation">
+                  {primaryDestinations.map((destination) => (
+                    <li key={destination} className="nav-item" role="presentation">
                       <button
                         className={`nav-link cursor-pointer rounded-full border px-6 py-3 text-[14px] font-bold transition ${
-                          plannerCategory === category
+                          primaryDestination === destination
                             ? 'active border-[#4DA528] bg-[#4DA528] text-white shadow-lg'
                             : 'border-stone-200 bg-white text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'
                         }`}
                         type="button"
                         role="tab"
-                        aria-selected={plannerCategory === category}
-                        onClick={() => handlePlannerCategorySelect(category)}
+                        aria-selected={primaryDestination === destination}
+                        onClick={() => { setPrimaryDestination(destination); setSecondaryDestination(''); }}
                       >
-                        {category}
+                        {destination}
                       </button>
                     </li>
                   ))}
                 </ul>
                 <ul className="tab-list mb-10 flex flex-wrap justify-center gap-3">
-                  {featuredCategoryCards.map((item) => (
-                    <li key={item.slug} className="nav-item" role="presentation">
+                  {secondaryDestinations.map((destination) => (
+                    <li key={destination} className="nav-item" role="presentation">
                       <button
                         type="button"
                         role="tab"
-                        aria-selected={activeFeaturedSlug === item.slug}
-                        onClick={() => handleFeaturedCategoryClick(item.slug)}
+                        aria-selected={secondaryDestination === destination}
+                        onClick={() => { setSecondaryDestination(destination); scrollToFeaturedPackages(); }}
                         className={`nav-link cursor-pointer rounded-full border px-6 py-3 text-[14px] font-bold transition ${
-                          activeFeaturedSlug === item.slug
+                          secondaryDestination === destination
                             ? 'active border-[#4DA528] bg-[#4DA528] text-white shadow-lg'
                             : 'border-stone-200 bg-white text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'
                         }`}
                       >
-                        {item.title}
+                        {destination}
                       </button>
                     </li>
                   ))}
@@ -1088,44 +1161,32 @@ export default function HomeView({
                           <SkeletonCard key={idx} />
                         ))}
                       </div>
-                    ) : filteredCategoryPackages.length === 0 ? (
-                      <div className="mx-auto max-w-2xl border border-dashed border-stone-300 bg-white p-12 text-center">
-                        <AlertCircle className="mx-auto mb-4 h-8 w-8 text-stone-300" />
-                        <p className="text-sm text-stone-500">No packages available for the selected category or featured collection.</p>
-                      </div>
                     ) : (
-                      <div className="grid grid-cols-1 items-stretch gap-7 sm:grid-cols-2 xl:grid-cols-4">
-                        {featuredCarouselPackages.length > 0 ? featuredCarouselPackages.map((pkg, idx) => {
-                          const isWishlisted = Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(pkg.id ?? '')) : false;
-                          return (
-                            <div key={pkg.id} className="h-full">
-                              <PackageCard
-                                pkg={pkg}
-                                index={idx}
-                                isWishlisted={isWishlisted}
-                                onNavigate={onNavigate}
-                                onToggleWishlist={onToggleWishlist}
-                                onDeletePackage={onDeletePackage}
-                                isAdminLoggedIn={isAdminLoggedIn}
-                              />
-                            </div>
-                          );
-                        }) : filteredCategoryPackages.slice(0, 4).map((pkg, idx) => {
-                          const isWishlisted = Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(pkg.id ?? '')) : false;
-                          return (
-                            <div key={pkg.id} className="h-full">
-                              <PackageCard
-                                pkg={pkg}
-                                index={idx}
-                                isWishlisted={isWishlisted}
-                                onNavigate={onNavigate}
-                                onToggleWishlist={onToggleWishlist}
-                                onDeletePackage={onDeletePackage}
-                                isAdminLoggedIn={isAdminLoggedIn}
-                              />
-                            </div>
-                          );
-                        })}
+                      <div
+                        className="grid grid-cols-1 items-stretch gap-7 sm:grid-cols-2 xl:grid-cols-4"
+                        data-featured-real-count={featuredCarouselItems.filter((item) => item.type === 'package').length}
+                        data-featured-placeholder-count={featuredCarouselItems.filter((item) => item.type === 'coming-soon').length}
+                        data-featured-total-count={featuredCarouselItems.length}
+                      >
+                        {featuredCarouselVisibleItems.map((item, idx) => item.type === 'package' ? (
+                          <div key={item.pkg.id} className="h-full">
+                            <PackageCard
+                              pkg={item.pkg}
+                              index={idx}
+                              isWishlisted={Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(item.pkg.id ?? '')) : false}
+                              onNavigate={onNavigate}
+                              onToggleWishlist={onToggleWishlist}
+                              onDeletePackage={onDeletePackage}
+                              isAdminLoggedIn={isAdminLoggedIn}
+                            />
+                          </div>
+                        ) : (
+                          <article key={item.id} className="flex h-full min-h-[520px] flex-col items-center justify-center rounded-[24px] border border-dashed border-[#4DA528]/40 bg-gradient-to-br from-[#f7fbf3] to-white p-8 text-center shadow-[0_18px_42px_rgba(15,23,42,0.04)]">
+                            <Compass className="mb-6 h-12 w-12 text-[#4DA528]" aria-hidden="true" />
+                            <h3 className="text-2xl font-bold text-stone-900">More Coming Soon</h3>
+                            <p className="mt-3 max-w-[220px] text-sm leading-6 text-stone-500">New experiences are being added soon.</p>
+                          </article>
+                        ))}
                       </div>
                     )}
                   </div>
