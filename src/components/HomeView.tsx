@@ -181,22 +181,22 @@ const PackageCard = React.memo(function PackageCard({
         <p className="mt-4 line-clamp-3 text-sm leading-6 text-stone-600">
           {pkg.shortDescription || pkg.destination}
         </p>
-        <div className="mt-6 flex flex-col gap-4 border-t border-stone-100 pt-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
+        <div className="mt-6 grid min-w-0 grid-cols-1 gap-4 border-t border-stone-100 pt-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)] sm:items-end">
+          <div className="min-w-0 flex-1">
             <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-stone-500">Starting from</p>
-            <div className="mt-1 flex items-center gap-2">
-              <span className="text-[22px] font-extrabold text-[#4DA528]">{formatPackagePrice(offerPrice)}</span>
-              {hasOffer ? <span className="text-sm text-stone-400 line-through">{formatPrice(pkg.price)}</span> : null}
+            <div className="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="max-w-full truncate text-[22px] font-extrabold text-[#4DA528]">{formatPackagePrice(offerPrice)}</span>
+              {hasOffer ? <span className="max-w-full truncate text-sm text-stone-400 line-through">{formatPrice(pkg.price)}</span> : null}
             </div>
           </div>
-          <div className="flex flex-col gap-2 sm:min-w-[144px]">
+          <div className="grid w-full min-w-0 gap-2">
             <button
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
                 handleOpen();
               }}
-              className="inline-flex items-center justify-center rounded-full bg-[#4DA528] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3a8d1f]"
+              className="inline-flex w-full min-w-0 items-center justify-center whitespace-nowrap rounded-full bg-[#4DA528] px-3 py-3 text-sm font-semibold text-white transition hover:bg-[#3a8d1f]"
             >
               Book Now
             </button>
@@ -206,7 +206,7 @@ const PackageCard = React.memo(function PackageCard({
                 event.stopPropagation();
                 handleOpen();
               }}
-              className="inline-flex items-center justify-center rounded-full border border-stone-200 bg-white px-4 py-3 text-sm font-semibold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
+              className="inline-flex w-full min-w-0 items-center justify-center whitespace-nowrap rounded-full border border-stone-200 bg-white px-3 py-3 text-sm font-semibold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
             >
               View Details
             </button>
