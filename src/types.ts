@@ -273,6 +273,12 @@ export interface FeaturedCategoryItem {
 }
 
 export interface WebsiteCMSSettings {
+  googleBusinessPlaceId?: string;
+  googleReviewsAutoSync?: boolean;
+  googleReviewsSyncIntervalHours?: number;
+  googleReviewsLastSynced?: string;
+  googleReviewsApiStatus?: 'ok' | 'error' | 'not_configured' | string;
+  googleReviewsUrl?: string;
   companyName?: string;
   companyTagline?: string;
   primaryEmail?: string;

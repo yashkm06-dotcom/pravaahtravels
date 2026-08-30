@@ -82,6 +82,7 @@ service cloud.firestore {
     match /activityRecommendations/{id} { allow read: if true; allow write: if isAdmin(); }
     match /featuredCategories/{id} { allow read: if true; allow write: if isAdmin(); }
     match /blogs/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /googleReviews/{id} { allow read: if true; allow write: if false; }
     match /settings/{id} { allow read, write: if isAdmin(); }
     match /sent_emails/{id} { allow read, write: if isAdmin(); }
     match /{document=**} { allow read, write: if false; }

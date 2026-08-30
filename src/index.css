@@ -1,10 +1,33 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..700;1,400..700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Nunito:ital,wght@0,300..900;1,300..900&family=Oswald:wght@300..700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Playfair Display", Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Roopkund Luxury Trek Typography in Tailwind v4 */
+  --font-playfair: "Playfair Display", Georgia, serif;
+  --font-garamond: "EB Garamond", Garamond, serif;
+  --font-oswald: "Oswald", sans-serif;
+  --font-nunito: "Nunito", sans-serif;
+}
+
+/* Explicit Utility Classes to guarantee 100% font rendering */
+.font-playfair {
+  font-family: 'Playfair Display', Georgia, serif !important;
+}
+
+.font-garamond {
+  font-family: 'EB Garamond', Garamond, serif !important;
+}
+
+.font-oswald {
+  font-family: 'Oswald', sans-serif !important;
+}
+
+.font-nunito {
+  font-family: 'Nunito', sans-serif !important;
 }
 
 @layer base {

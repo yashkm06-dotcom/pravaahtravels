@@ -12,6 +12,7 @@ export interface CustomLandingPageProps {
 export interface CustomLandingRegistration {
   path: string;
   shell: 'immersive' | 'standard';
+  seoImagePath?: string;
   component: LazyExoticComponent<ComponentType<CustomLandingPageProps>>;
 }
 
@@ -21,6 +22,7 @@ export const CUSTOM_LANDING_REGISTRY = {
   '/roopkund-trek': {
     path: '/roopkund-trek',
     shell: 'immersive',
+    seoImagePath: '/images/roopkund/hero-roopkund-mystery-lake.jpg',
     component: RoopkundLandingPage,
   },
 } as const satisfies Record<string, CustomLandingRegistration>;

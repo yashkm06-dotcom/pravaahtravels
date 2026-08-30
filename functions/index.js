@@ -1,5 +1,12 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { defineSecret } = require('firebase-functions/params');
+const { getFirestore } = require('firebase-admin/firestore');
+const { initializeApp } = require('firebase-admin/app');
 const logger = require('firebase-functions/logger');
+const adminApp = initializeApp();
+const adminDb = getFirestore(adminApp);
+const googlePlacesApiKey = defineSecret('GOOGLE_PLACES_API_KEY');
 const cheerio = require('cheerio');
 const dns = require('node:dns').promises;
 const net = require('node:net');
@@ -2166,5 +2173,85 @@ exports.analyzePackageUrl = onCall({
       stack: err?.stack
     });
     throw err;
+  }
+});
+
+const syncGoogleReviewsImpl = async () => {
+  const settings = (await adminDb.collection('siteSettings').doc('main').get()).data() || {};
+  const placeId = String(settings.googleBusinessPlaceId || '').trim();
+  if (!placeId) throw new Error('Google Business Place ID is not configured in siteSettings/main.');
+  const apiKey = googlePlacesApiKey.value();
+  if (!apiKey) throw new Error('GOOGLE_PLACES_API_KEY secret is not configured.');
+
+  const endpoint = new URL('https://maps.googleapis.com/maps/api/place/details/json');
+  endpoint.searchParams.set('place_id', placeId);
+  endpoint.searchParams.set('fields', 'name,rating,user_ratings_total,reviews,url');
+  endpoint.searchParams.set('key', apiKey);
+  const response = await fetch(endpoint);
+  if (!response.ok) {
+    const error = new Error(`Google Places request failed with HTTP ${response.status}.`);
+    error.httpStatus = response.status;
+    throw error;
+  }
+  const payload = await response.json();
+  if (payload.status !== 'OK' || !payload.result) {
+    const googleStatus = payload.status || 'UNKNOWN_ERROR';
+    const googleErrorMessage = typeof payload.error_message === 'string' ? payload.error_message : undefined;
+    const detail = googleErrorMessage ? `: ${googleErrorMessage}` : '';
+    const error = new Error(`Google Places API returned ${googleStatus}${detail}.`);
+    error.googleStatus = googleStatus;
+    error.googleErrorMessage = googleErrorMessage;
+    throw error;
+  }
+
+  const result = payload.result;
+  const reviews = Array.isArray(result.reviews) ? result.reviews.map((review) => ({
+    authorName: review.author_name || null,
+    authorPhoto: review.profile_photo_url || null,
+    rating: Number(review.rating) || null,
+    text: review.text || null,
+    publishTime: review.publish_time || null,
+    relativeTime: review.relative_time_description || null,
+    authorUrl: review.author_url || null,
+  })) : [];
+  const cached = {
+    businessName: result.name || null,
+    rating: Number(result.rating) || null,
+    totalReviews: Number(result.user_ratings_total) || 0,
+    lastSynced: new Date().toISOString(),
+    googleUrl: result.url || `https://www.google.com/maps/search/?api=1&query=Google&query_place_id=${encodeURIComponent(placeId)}`,
+    reviews,
+  };
+  await adminDb.collection('googleReviews').doc('main').set(cached, { merge: true });
+  await adminDb.collection('siteSettings').doc('main').set({ googleReviewsLastSynced: cached.lastSynced, googleReviewsApiStatus: 'ok' }, { merge: true });
+  return { businessName: cached.businessName, rating: cached.rating, totalReviews: cached.totalReviews, lastSynced: cached.lastSynced, reviewCount: reviews.length };
+};
+
+const getGoogleReviewsErrorDiagnostics = (error) => ({
+  message: error?.message,
+  code: error?.code,
+  httpStatus: error?.httpStatus,
+  googleStatus: error?.googleStatus,
+  googleErrorMessage: error?.googleErrorMessage,
+  stack: error?.stack,
+});
+
+exports.syncGoogleReviews = onSchedule({ schedule: 'every 12 hours', secrets: [googlePlacesApiKey] }, async () => {
+  try {
+    return await syncGoogleReviewsImpl();
+  } catch (error) {
+    await adminDb.collection('siteSettings').doc('main').set({ googleReviewsApiStatus: 'error' }, { merge: true });
+    logger.error('Google review sync failed', getGoogleReviewsErrorDiagnostics(error));
+    throw error;
+  }
+});
+
+exports.refreshGoogleReviews = onCall({ secrets: [googlePlacesApiKey] }, async (request) => {
+  if (!hasAdminClaim(request.auth)) throw new HttpsError('permission-denied', 'Only Pravaah Travels admins can refresh Google reviews.');
+  try {
+    return await syncGoogleReviewsImpl();
+  } catch (error) {
+    logger.error('Manual Google review refresh failed', getGoogleReviewsErrorDiagnostics(error));
+    throw new HttpsError('internal', 'Google review refresh failed.');
   }
 });

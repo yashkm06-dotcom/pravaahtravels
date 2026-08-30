@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { CalendarDays, Compass, Mail, Menu, Phone, Search, ShieldAlert, UserCircle, X } from 'lucide-react';
-import { WebsiteCMSSettings } from '../types';
+import { TravelPackage, WebsiteCMSSettings } from '../types';
 import { handleTravelImageError } from '../utils/imageFallback';
 import { resolveBusinessProfile } from '../utils/businessProfile';
+import GlobalSearch from './GlobalSearch';
 
 interface HeaderProps {
   currentView: string;
@@ -11,6 +12,7 @@ interface HeaderProps {
   currentUser: any;
   onAdminLogout: () => void;
   websiteCMS: WebsiteCMSSettings;
+  packages?: TravelPackage[];
 }
 
 export default function Header({
@@ -20,8 +22,10 @@ export default function Header({
   currentUser,
   onAdminLogout,
   websiteCMS,
+  packages = [],
 }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const business = resolveBusinessProfile(websiteCMS);
 
   const isValidSocialUrl = (url?: string) => {
@@ -39,6 +43,7 @@ export default function Header({
     { label: 'Destinations', view: 'destinations' },
     { label: 'Packages', view: 'packages' },
     { label: 'Gallery', view: 'gallery' },
+    { label: 'Blog', view: 'blogs' },
     { label: 'About Us', view: 'about' },
   ];
 
@@ -176,13 +181,26 @@ export default function Header({
           </nav>
 
           <div className="hidden items-center gap-5 lg:flex">
-            <button className="flex h-11 w-11 items-center justify-center rounded-full border border-stone-200 text-stone-900 transition hover:border-[#4DA528] hover:text-[#4DA528]" type="button">
+            <button
+              onClick={() => setIsSearchOpen(true)}
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-stone-200 text-stone-900 transition hover:border-[#4DA528] hover:text-[#4DA528]"
+              type="button"
+              aria-label="Search packages and destinations"
+            >
               <Search className="h-4 w-4" />
             </button>
             <div className="flex items-center gap-3">{dashboardButton}</div>
           </div>
 
           <div className="flex items-center gap-2 lg:hidden">
+            <button
+              onClick={() => setIsSearchOpen(true)}
+              className="rounded-full border border-stone-200 bg-white p-2 text-stone-800 shadow-sm transition hover:border-[#4DA528] hover:text-[#4DA528]"
+              type="button"
+              aria-label="Search packages and destinations"
+            >
+              <Search className="h-5 w-5" />
+            </button>
             {(isAdminLoggedIn || currentUser) && (
               <button
                 onClick={() => handleNavClick(isAdminLoggedIn ? 'admin-dashboard' : 'portal')}
@@ -266,6 +284,17 @@ export default function Header({
             )}
           </div>
         </div>
+      )}
+
+      {isSearchOpen && (
+        <GlobalSearch
+          packages={packages}
+          onNavigate={(view, packageId) => {
+            setIsSearchOpen(false);
+            onNavigate(view, packageId);
+          }}
+          onClose={() => setIsSearchOpen(false)}
+        />
       )}
     </header>
   );

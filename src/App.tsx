@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { onAuthStateChanged, signOut, getIdTokenResult } from 'firebase/auth';
 import { auth, db, collection, getDocs, query, orderBy, deleteDoc, doc, getDoc, onSnapshot, where, addDoc } from './lib/firebase';
 import { MessageCircle, Sparkles, Compass } from 'lucide-react';
-import { TravelPackage, Enquiry, GalleryImage, WebsiteCMSSettings, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem, DEFAULT_WEBSITE_CMS } from './types';
+import { TravelPackage, Enquiry, GalleryImage, WebsiteCMSSettings, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem, BlogPost, DEFAULT_WEBSITE_CMS } from './types';
 
 // Component imports
 import Header from './components/Header';
@@ -10,6 +10,9 @@ import Footer from './components/Footer';
 import LoginModal from './components/LoginModal';
 import SEO from './components/SEO';
 import PremiumEnquiryModal from './components/PremiumEnquiryModal';
+import CookieConsent from './components/CookieConsent';
+import SkeletonLoader from './components/SkeletonLoader';
+import GoogleReviews, { GoogleReviewsCache } from './components/GoogleReviews';
 import { isStaging } from './lib/environment';
 import {
   getCustomLandingRegistration,
@@ -21,11 +24,13 @@ import {
   packageMatchesRouteSegment,
 } from './utils/packageRoute';
 import { resolveBusinessProfile } from './utils/businessProfile';
+import { getNameFromNearbyPlaceSlug } from './utils/nearbyPlaceDetails';
 
 const HomeView = lazy(() => import('./components/HomeView'));
 const AboutView = lazy(() => import('./components/AboutView'));
 const PackagesView = lazy(() => import('./components/PackagesView'));
 const PackageDetailView = lazy(() => import('./components/PackageDetailView'));
+const AttractionDetailView = lazy(() => import('./components/AttractionDetailView'));
 const DestinationsView = lazy(() => import('./components/DestinationsView'));
 const GalleryView = lazy(() => import('./components/GalleryView'));
 const ContactView = lazy(() => import('./components/ContactView'));
@@ -33,6 +38,8 @@ const AdminDashboardView = lazy(() => import('./components/AdminDashboardView'))
 const CustomerPortalView = lazy(() => import('./components/CustomerPortalView'));
 const AiCuratorView = lazy(() => import('./components/AiCuratorView'));
 const VerifiedReviews = lazy(() => import('./components/VerifiedReviews'));
+const BlogsView = lazy(() => import('./components/BlogsView'));
+const BlogDetailView = lazy(() => import('./components/BlogDetailView'));
 
 const RouteViewFallback = () => (
   <div className="flex min-h-[60vh] items-center justify-center bg-[#fffaf1] px-4 py-16">
@@ -83,6 +90,11 @@ const getRouteStateFromUrl = (): RouteState => {
   if (path === '/admin' || path.startsWith('/admin/')) {
     return { view: 'admin-dashboard', packageId: null };
   }
+  if (path.startsWith('/attraction/')) {
+    const parts = path.split('/');
+    const placeSlug = parts[2] ? decodeURIComponent(parts[2]) : null;
+    return { view: 'attraction-detail', packageId: placeSlug };
+  }
   if (path.startsWith('/package/')) {
     const parts = path.split('/');
     const packageId = parts[2] || null;
@@ -92,6 +104,11 @@ const getRouteStateFromUrl = (): RouteState => {
     const parts = path.split('/');
     const packageSlug = parts[2] ? decodeURIComponent(parts[2]) : null;
     return { view: 'package-detail', packageId: packageSlug };
+  }
+  if (path.startsWith('/blogs/')) {
+    const parts = path.split('/');
+    const blogSlug = parts[2] ? decodeURIComponent(parts[2]) : null;
+    return { view: 'blog-detail', packageId: blogSlug };
   }
   if (getCustomLandingRegistration(path)) {
     return { view: 'custom-landing', packageId: path };
@@ -104,6 +121,7 @@ const getRouteStateFromUrl = (): RouteState => {
     'destinations',
     'packages',
     'gallery',
+    'blogs',
     'about',
     'ai-curator',
     'contact',
@@ -120,6 +138,8 @@ const getRouteStateFromUrl = (): RouteState => {
 const getUrlFromRouteState = (view: string, packageId: string | null): string => {
   if (view === 'home') return '/';
   if (view === 'package-detail' && packageId) return `/packages/${packageId}`;
+  if (view === 'attraction-detail' && packageId) return `/attraction/${packageId}`;
+  if (view === 'blog-detail' && packageId) return `/blogs/${packageId}`;
   if (view === 'custom-landing' && getRegisteredCustomLandingPath(packageId)) return packageId as string;
   if (view === 'reviews') return '/review'; // as explicitly requested
   if (view === 'admin-dashboard' && (window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/'))) {
@@ -162,6 +182,9 @@ export default function App() {
   const [activityItems, setActivityItems] = useState<ActivityChildItem[]>([]);
   const [activityRecommendations, setActivityRecommendations] = useState<ActivityRecommendation[]>([]);
   const [featuredCategories, setFeaturedCategories] = useState<FeaturedCategoryItem[]>([]);
+  const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
+  const [googleReviews, setGoogleReviews] = useState<GoogleReviewsCache | null>(null);
+  const googleReviewsLoadedRef = useRef(false);
   const [websiteCMS, setWebsiteCMS] = useState<WebsiteCMSSettings>({} as WebsiteCMSSettings);
 
   // Loading states
@@ -278,6 +301,30 @@ export default function App() {
       }
     }
 
+    try {
+      const blogsSnapshot = await getDocs(query(collection(db, 'blogs'), orderBy('createdAt', 'desc')));
+      const fetchedBlogPosts = blogsSnapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      })) as BlogPost[];
+      setBlogPosts(fetchedBlogPosts);
+    } catch (err: any) {
+      console.warn('Error fetching blogs from Firestore:', err);
+      if (err.message?.includes('permission') || err.code === 'permission-denied') {
+        handleFirestoreError(err, OperationType.GET, 'blogs');
+      }
+    }
+
+    if (!googleReviewsLoadedRef.current) {
+      googleReviewsLoadedRef.current = true;
+      try {
+        const snapshot = await getDoc(doc(db, 'googleReviews', 'main'));
+        setGoogleReviews(snapshot.exists() ? snapshot.data() as GoogleReviewsCache : null);
+      } catch (err) {
+        console.warn('Error fetching cached Google reviews:', err);
+        setGoogleReviews(null);
+      }
+    }
 
     // 7. Fetch Enquiries (Only if admin is logged in, else security rules blocks it)
     const enquiriesColName = 'enquiries';
@@ -570,7 +617,7 @@ export default function App() {
   // COMPUTED PROPERTIES / SUB-STATES
   // ----------------------------------------------------
   const featuredPackages = useMemo(() => {
-    return packages.filter((p) => p.featured && p.active);
+    return packages.filter((p) => p.featured && p.active !== false);
   }, [packages]);
 
   const wishlistPackageIds = useMemo(() => {
@@ -591,6 +638,19 @@ export default function App() {
     const normalizedPackageId = decodeURIComponent(String(selectedPackageId));
     return packages.find((pkg) => packageMatchesRouteSegment(pkg, normalizedPackageId)) || null;
   }, [currentView, packages, selectedPackageId]);
+
+  const publishedBlogPosts = useMemo(
+    () => blogPosts.filter((post) => post.status === 'Publish'),
+    [blogPosts],
+  );
+
+  const activeSelectedBlogPost = useMemo(() => {
+    if (currentView !== 'blog-detail' || !selectedPackageId) return null;
+    const normalizedSlug = decodeURIComponent(String(selectedPackageId));
+    return publishedBlogPosts.find((post) => (
+      post.slug === normalizedSlug || String(post.id) === normalizedSlug
+    )) || null;
+  }, [currentView, publishedBlogPosts, selectedPackageId]);
 
   const businessProfile = useMemo(() => resolveBusinessProfile(websiteCMS), [websiteCMS]);
   const customLandingRegistration = currentView === 'custom-landing'
@@ -632,6 +692,16 @@ export default function App() {
         description: 'View Pravaah Travels destination photography, tour galleries, and real Himalayan journey moments.',
         canonicalPath: '/gallery',
       },
+      blogs: {
+        title: `Travel Blog | ${businessProfile.companyName}`,
+        description: `Read ${businessProfile.companyName} travel guides, destination tips, and Himalayan journey stories.`,
+        canonicalPath: '/blogs',
+      },
+      'blog-detail': {
+        title: activeSelectedBlogPost ? `${activeSelectedBlogPost.title} | ${businessProfile.companyName}` : `Travel Blog | ${businessProfile.companyName}`,
+        description: activeSelectedBlogPost?.seoDescription || `Read ${businessProfile.companyName} travel guides and destination stories.`,
+        canonicalPath: activeSelectedBlogPost ? `/blogs/${activeSelectedBlogPost.slug || activeSelectedBlogPost.id}` : '/blogs',
+      },
       about: {
         title: 'About Pravaah Travels',
         description: 'Learn about Pravaah Travels, our local travel expertise, and premium Himalayan journey planning.',
@@ -652,15 +722,25 @@ export default function App() {
         description: 'Access your Pravaah Travels bookings, saved packages, reviews, and travel dashboard.',
         canonicalPath: '/portal',
       },
+      'attraction-detail': {
+        title: `${getNameFromNearbyPlaceSlug(selectedPackageId || '') || 'Destination Place'} Travel Guide`,
+        description: `Explore location details, directions, and visitor information for ${getNameFromNearbyPlaceSlug(selectedPackageId || '') || 'this destination place'}.`,
+        canonicalPath: `/attraction/${selectedPackageId || ''}`,
+      },
     };
 
     const activeMeta = viewMeta[currentView] || viewMeta.home;
-    const title = activeSelectedPackage?.seoTitle || activeSelectedPackage?.title || activeMeta.title;
-    const description = activeSelectedPackage?.seoDescription || activeSelectedPackage?.shortDescription || activeMeta.description;
+    const title = activeSelectedBlogPost
+      ? `${activeSelectedBlogPost.title} | ${businessProfile.companyName}`
+      : activeSelectedPackage?.seoTitle || activeSelectedPackage?.title || activeMeta.title;
+    const description = activeSelectedBlogPost?.seoDescription || activeSelectedPackage?.seoDescription || activeSelectedPackage?.shortDescription || activeMeta.description;
     const canonicalUrl = activeSelectedPackage
       ? getPackageCanonicalUrl(activeSelectedPackage)
       : `${baseUrl}${activeMeta.canonicalPath}`;
-    const ogImage = activeSelectedPackage?.packageBannerUrl || activeSelectedPackage?.imageUrl || fallbackImage;
+    const customLandingOgImage = customLandingRegistration?.seoImagePath
+      ? new URL(customLandingRegistration.seoImagePath, `${structuredDataBaseUrl}/`).href
+      : '';
+    const ogImage = customLandingOgImage || activeSelectedBlogPost?.featuredImageUrl || activeSelectedPackage?.packageBannerUrl || activeSelectedPackage?.imageUrl || fallbackImage;
     const packageOfferPrice = Number(activeSelectedPackage?.offerPrice ?? activeSelectedPackage?.price);
     const hasPublishedPackageOffer = Number.isFinite(packageOfferPrice) && packageOfferPrice > 0;
 
@@ -699,6 +779,39 @@ export default function App() {
           } : {}),
         },
       ],
+    } : currentView === 'blog-detail' && activeSelectedBlogPost ? {
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'TravelAgency',
+          name: businessProfile.companyName,
+          url: structuredDataBaseUrl,
+          image: ogImage,
+          telephone: phone,
+          email: businessProfile.email,
+          address,
+        },
+        {
+          '@type': 'BlogPosting',
+          headline: activeSelectedBlogPost.title,
+          description,
+          image: ogImage,
+          url: canonicalUrl,
+          datePublished: activeSelectedBlogPost.createdAt,
+          dateModified: activeSelectedBlogPost.updatedAt || activeSelectedBlogPost.createdAt,
+          author: { '@type': 'Person', name: activeSelectedBlogPost.author || businessProfile.companyName },
+          publisher: {
+            '@type': 'Organization',
+            name: businessProfile.companyName,
+            logo: {
+              '@type': 'ImageObject',
+              url: businessProfile.logoUrl || DEFAULT_WEBSITE_CMS.logoUrl,
+            },
+          },
+          articleSection: activeSelectedBlogPost.category,
+          keywords: (activeSelectedBlogPost.tags || []).join(', '),
+        },
+      ],
     } : {
       '@context': 'https://schema.org',
       '@type': 'TravelAgency',
@@ -716,12 +829,14 @@ export default function App() {
       description,
       keywords: activeSelectedPackage
         ? `${activeSelectedPackage.title}, ${activeSelectedPackage.destination}, ${activeSelectedPackage.category}, ${fallbackKeywords}`
-        : fallbackKeywords,
+        : activeSelectedBlogPost
+          ? `${activeSelectedBlogPost.title}, ${activeSelectedBlogPost.category}, ${(activeSelectedBlogPost.tags || []).join(', ')}, ${activeSelectedBlogPost.seoKeywords || fallbackKeywords}`
+          : fallbackKeywords,
       canonicalUrl,
       ogImage,
       schemaMarkup,
     };
-  }, [activeSelectedPackage, businessProfile, currentView, websiteCMS]);
+  }, [activeSelectedBlogPost, activeSelectedPackage, businessProfile, currentView, customLandingRegistration, selectedPackageId, websiteCMS]);
 
   const showLoginModal = loginModalOpen || currentView === 'admin-login';
 
@@ -746,6 +861,9 @@ export default function App() {
         } else {
           text += "I am viewing tour package details and would like custom guidance on your high-altitude routes.";
         }
+        break;
+      case 'attraction-detail':
+        text += `I am viewing the destination guide for "${getNameFromNearbyPlaceSlug(selectedPackageId || '') || 'this nearby place'}". I would like help including this place in my trip.`;
         break;
       case 'ai-curator':
         text += "I am currently using your 'Pravaah AI Curator Engine' and would like to speak to a Senior Himalayan Sherpa/Logistics Coordinator directly!";
@@ -786,10 +904,11 @@ export default function App() {
         keywords={pageSeo.keywords}
         canonicalUrl={pageSeo.canonicalUrl}
         ogImage={pageSeo.ogImage}
-        ogType={activeSelectedPackage ? 'travel' : 'website'}
+        ogType={activeSelectedPackage ? 'travel' : currentView === 'attraction-detail' || currentView === 'blog-detail' ? 'article' : 'website'}
         schemaMarkup={pageSeo.schemaMarkup}
         siteName={businessProfile.companyName}
       />
+      {currentView !== 'admin-dashboard' && !isImmersiveCustomLanding && <CookieConsent />}
       
       {/* Hide header on full-screen admin dashboard */}
       {currentView !== 'admin-dashboard' && !isImmersiveCustomLanding && (
@@ -800,6 +919,7 @@ export default function App() {
           currentUser={currentUser}
           onAdminLogout={handleAdminLogout}
           websiteCMS={websiteCMS}
+          packages={packages}
         />
       )}
 
@@ -823,6 +943,8 @@ export default function App() {
               packages={packages}
               wishlistPackageIds={wishlistPackageIds}
               onToggleWishlist={handleToggleWishlist}
+              blogPosts={publishedBlogPosts}
+              googleReviews={googleReviews}
             />
           )}
 
@@ -866,6 +988,7 @@ export default function App() {
               onNavigate={handleNavigate}
               packages={packages}
               websiteCMS={websiteCMS}
+              googleReviews={googleReviews}
             />
           )}
 
@@ -916,6 +1039,39 @@ export default function App() {
 
           {currentView === 'gallery' && (
             <GalleryView gallery={gallery} loading={loadingData} />
+          )}
+
+          {currentView === 'attraction-detail' && (
+            <AttractionDetailView placeSlug={selectedPackageId} />
+          )}
+
+          {currentView === 'blogs' && (
+            <BlogsView blogPosts={blogPosts} onNavigate={handleNavigate} loading={loadingData} />
+          )}
+
+          {currentView === 'blog-detail' && activeSelectedBlogPost && (
+            <BlogDetailView post={activeSelectedBlogPost} allPosts={publishedBlogPosts} onNavigate={handleNavigate} />
+          )}
+
+          {currentView === 'blog-detail' && loadingData && !activeSelectedBlogPost && (
+            <SkeletonLoader />
+          )}
+
+          {currentView === 'blog-detail' && !loadingData && !activeSelectedBlogPost && (
+            <div className="flex min-h-[520px] items-center justify-center bg-white px-4 py-20 text-center">
+              <div className="max-w-md">
+                <Compass className="mx-auto h-12 w-12 text-[#4DA528]" />
+                <h1 className="mt-5 text-3xl font-extrabold text-stone-950">Article not found</h1>
+                <p className="mt-3 text-sm leading-7 text-stone-500">This article may have been removed or unpublished.</p>
+                <button
+                  type="button"
+                  onClick={() => handleNavigate('blogs')}
+                  className="mt-6 rounded-[5px] bg-[#4DA528] px-6 py-3 text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
+                >
+                  Browse Articles
+                </button>
+              </div>
+            </div>
           )}
 
           {currentView === 'reviews' && (
