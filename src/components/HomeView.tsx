@@ -5,7 +5,7 @@ import {
   X, GripVertical, ArrowUp, ArrowDown, Users, Clock, Check, Send,
   ChevronUp, ChevronDown
 } from 'lucide-react';
-import { TravelPackage, formatPrice, formatPackagePrice, DestinationCategory, WebsiteCMSSettings, PACKAGE_LOCATIONS, PackageLocation, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem } from '../types';
+import { TravelPackage, formatPrice, formatPackagePrice, DestinationCategory, WebsiteCMSSettings, PACKAGE_LOCATIONS, PackageLocation, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem, BlogPost } from '../types';
 import InteractiveRouteMap from './InteractiveRouteMap';
 import { db, collection, addDoc } from '../lib/firebase';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
@@ -17,6 +17,7 @@ import founderNameImage from '../assets/about-section/page/name.png';
 import avatar10 from '../assets/about-section/avatars/10.jpg';
 import { openPackage } from '../utils/packageRoute';
 import { resolveBusinessProfile } from '../utils/businessProfile';
+import GoogleReviews, { GoogleReviewsCache } from './GoogleReviews';
 
 interface HomeViewProps {
   featuredPackages: TravelPackage[];
@@ -34,6 +35,8 @@ interface HomeViewProps {
   activityRecommendations?: ActivityRecommendation[];
   featuredCategories?: FeaturedCategoryItem[];
   packages?: TravelPackage[];
+  blogPosts?: BlogPost[];
+  googleReviews?: GoogleReviewsCache | null;
 }
 
 type ActivityDestination = {
@@ -105,7 +108,7 @@ const PackageCard = React.memo(function PackageCard({
         <img
           src={getTravelImage(pkg.imageUrl)}
           alt={pkg.title}
-          className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+          className="h-full w-full object-cover bg-stone-100 object-center transition duration-500 group-hover:scale-105"
           referrerPolicy="no-referrer"
           loading="lazy"
           decoding="async"
@@ -313,6 +316,7 @@ export default function HomeView({
   activityRecommendations = [],
   featuredCategories = [],
   packages: packageList = [],
+  googleReviews = null,
 }: HomeViewProps) {
   const business = useMemo(() => resolveBusinessProfile(websiteCMS), [websiteCMS]);
   // Wizard Planner State
@@ -1114,6 +1118,8 @@ export default function HomeView({
           </div>
         </div>
       </section>
+
+      <GoogleReviews data={googleReviews} />
 
       <section className="tour-package bg-white pb-20 pt-10 sm:pt-12" id="featured-packages">
         <div className="tf-container mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">

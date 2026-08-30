@@ -1416,6 +1416,7 @@ interface WebsiteTabProps {
   handleSaveWebsiteCMS: (e?: React.FormEvent) => Promise<void>;
   handleCmsImageUpload: (e: React.ChangeEvent<HTMLInputElement>, field: 'heroBackgroundImageUrl' | 'logoUrl') => Promise<void>;
   onRefreshData: () => Promise<void>;
+  onRefreshGoogleReviews?: () => Promise<void>;
   packages: TravelPackage[];
 }
 
@@ -1429,6 +1430,7 @@ export function WebsiteTab(props: WebsiteTabProps) {
     handleCmsImageUpload,
     onRefreshData,
     packages,
+    onRefreshGoogleReviews,
   } = props;
 
   const websiteCards = [
@@ -1469,6 +1471,14 @@ export function WebsiteTab(props: WebsiteTabProps) {
             </div>
           );
         })}
+      </section>
+
+      <section className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div><span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Google Business</span><h3 className="mt-2 text-xl font-extrabold text-stone-950">Cached review sync</h3><p className="mt-2 text-sm text-stone-500">Place ID: {cmsFormData.googleBusinessPlaceId || 'Not configured'} · Status: {cmsFormData.googleReviewsApiStatus || 'Not configured'} · Last synced: {cmsFormData.googleReviewsLastSynced || 'Never'}</p></div>
+          <button type="button" onClick={() => void onRefreshGoogleReviews?.()} disabled={!onRefreshGoogleReviews} className="inline-flex items-center gap-2 rounded-[5px] bg-[#4DA528] px-4 py-2 text-[10px] font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D] disabled:opacity-50"><RefreshCw className="h-3.5 w-3.5" />Refresh reviews</button>
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="text-[10px] font-extrabold uppercase tracking-wider text-stone-500">Business Place ID<input value={cmsFormData.googleBusinessPlaceId || ''} onChange={(e) => setCmsFormData(prev => ({ ...prev, googleBusinessPlaceId: e.target.value }))} className="mt-2 w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm font-normal normal-case tracking-normal outline-none focus:border-[#4DA528] focus:bg-white" /></label><label className="flex items-center gap-3 text-[10px] font-extrabold uppercase tracking-wider text-stone-500"><input type="checkbox" checked={cmsFormData.googleReviewsAutoSync !== false} onChange={(e) => setCmsFormData(prev => ({ ...prev, googleReviewsAutoSync: e.target.checked }))} />Auto sync every 12 hours</label></div>
       </section>
 
       <form id="website-cms-form" onSubmit={handleSaveWebsiteCMS} className="grid grid-cols-1 gap-6 xl:grid-cols-2">

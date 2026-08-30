@@ -15,7 +15,10 @@ interface RoopkundHeroProps {
 
 export const RoopkundHero: React.FC<RoopkundHeroProps> = ({ onExploreTrail, onOpenEnquiry, onOpenShare }) => {
   const [scrollY, setScrollY] = useState(0);
-  const heroImageSrc = ROOPKUND_PACKAGE.heroImage || '/images/roopkund/mount-trishul.jpg';
+  const [heroImageFailed, setHeroImageFailed] = useState(false);
+  const heroImageSrc = heroImageFailed
+    ? '/images/roopkund/mount-trishul.jpg'
+    : ROOPKUND_PACKAGE.heroImage || '/images/roopkund/hero-roopkund-mystery-lake.jpg';
 
   useEffect(() => {
     const handleScroll = () => {
@@ -28,18 +31,20 @@ export const RoopkundHero: React.FC<RoopkundHeroProps> = ({ onExploreTrail, onOp
   return (
     <section className="relative min-h-screen w-full flex flex-col justify-between overflow-hidden bg-[#0B131F] text-white">
       {/* Cinematic High-Altitude Mountain Environment with Layered Atmospheric Depth */}
-      <div
-        className="absolute inset-0 bg-cover bg-center will-change-transform scale-105 transition-transform duration-1000 ease-out"
+      <img
+        src={heroImageSrc}
+        alt="Roopkund Garhwal Himalayan mountain landscape"
+        className="absolute inset-0 h-full w-full object-cover opacity-80 will-change-transform transition-transform duration-1000 ease-out"
+        onError={() => setHeroImageFailed(true)}
         style={{
-          backgroundImage: `url('${heroImageSrc}')`,
-          backgroundColor: '#0B131F',
+          objectPosition: 'center 58%',
           transform: `translateY(${scrollY * 0.25}px) scale(1.05)`,
         }}
       />
 
       {/* Atmospheric Mist, Gradient Vignette & Dark Overlay Layers */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#09110D]/85 via-[#0B131F]/55 to-[#0B131F]" />
-      <div className="absolute inset-0 bg-radial-gradient from-transparent via-[#09110D]/40 to-[#09110D]/90" />
+      <div className="absolute inset-0 bg-gradient-to-b from-[#09110D]/70 via-[#0B131F]/35 to-[#0B131F]/85" />
+      <div className="absolute inset-0 bg-radial-gradient from-transparent via-[#09110D]/15 to-[#09110D]/70" />
 
       {/* Subtle Mist Particle / Topographic Grid Lines Overlay */}
       <div className="absolute inset-0 bg-dark-noise opacity-30 mix-blend-overlay pointer-events-none" />

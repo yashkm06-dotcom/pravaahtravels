@@ -10,8 +10,10 @@ import { triggerSystemEmail } from '../lib/emailClient';
 import InteractiveRouteMap from './InteractiveRouteMap';
 import { DEFAULT_TRAVEL_IMAGE, getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 import { SkeletonCard } from './SkeletonLoader';
+import NearbyPlacesSection from './NearbyPlacesSection';
 import { openPackage } from '../utils/packageRoute';
 import { resolveBusinessProfile } from '../utils/businessProfile';
+import GoogleReviews, { GoogleReviewsCache } from './GoogleReviews';
 
 interface PackageDetailViewProps {
   pkg: TravelPackage;
@@ -25,6 +27,7 @@ interface PackageDetailViewProps {
   onNavigate?: (view: string, packageId?: string | null) => void;
   packages?: TravelPackage[];
   websiteCMS?: WebsiteCMSSettings;
+  googleReviews?: GoogleReviewsCache | null;
 }
 
 const getMatchingListItems = (items: string[] | undefined, terms: string[]) => {
@@ -46,6 +49,7 @@ export default function PackageDetailView({
   onNavigate,
   packages = [],
   websiteCMS = DEFAULT_WEBSITE_CMS,
+  googleReviews = null,
 }: PackageDetailViewProps) {
   const business = useMemo(() => resolveBusinessProfile(websiteCMS), [websiteCMS]);
   // Accordion state for itinerary days
@@ -1412,6 +1416,13 @@ export default function PackageDetailView({
           </div>
 
         </div>
+
+        <NearbyPlacesSection
+          destination={pkg.destination}
+          packageTitle={pkg.title}
+        />
+
+        <GoogleReviews data={googleReviews} />
 
         <section className="review-content-tour rounded-[24px] border border-stone-200/80 bg-gradient-to-br from-white via-[#fffdf8] to-[#fcf6e8] p-6 shadow-[0_24px_70px_rgba(18,38,32,0.08)] md:p-8" id="package-reviews">
           <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

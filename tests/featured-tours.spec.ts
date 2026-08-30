@@ -22,6 +22,23 @@ async function inspectCards(section: Locator) {
   const count = await cards.count();
   expect(count).toBeGreaterThan(0);
   const texts = await cards.allTextContents();
+  for (const card of await cards.all()) {
+    const bookNow = card.getByRole('button', { name: 'Book Now', exact: true });
+    const viewDetails = card.getByRole('button', { name: 'View Details', exact: true });
+    if (await bookNow.count() === 0) continue;
+    const cardBox = await card.boundingBox();
+    const bookBox = await bookNow.boundingBox();
+    const detailsBox = await viewDetails.boundingBox();
+    expect(cardBox).not.toBeNull();
+    expect(bookBox).not.toBeNull();
+    expect(detailsBox).not.toBeNull();
+    if (!cardBox || !bookBox || !detailsBox) continue;
+    for (const buttonBox of [bookBox, detailsBox]) {
+      expect(buttonBox.x).toBeGreaterThanOrEqual(cardBox.x);
+      expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
+    }
+    expect(bookBox.y + bookBox.height).toBeLessThanOrEqual(detailsBox.y + 0.5);
+  }
   const placeholderCount = texts.filter((text) => text.includes('More Coming Soon')).length;
   const realCount = count - placeholderCount;
   expect(realCount + placeholderCount).toBe(count);

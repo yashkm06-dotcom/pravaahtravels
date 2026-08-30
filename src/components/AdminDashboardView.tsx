@@ -11,6 +11,8 @@ import { CUSTOM_LANDING_REGISTRY } from '../features/customLandings/registry';
 import { auth, db, storage, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, setDoc, writeBatch, getDoc } from '../lib/firebase';
 import { getIdTokenResult } from 'firebase/auth';
 import { collectionGroup } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { app } from '../lib/firebase';
 import { triggerSystemEmail } from '../lib/emailClient';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as XLSX from 'xlsx';
@@ -176,6 +178,20 @@ function AdminDashboardView({
   const [cmsSaving, setCmsSaving] = useState(false);
   const [cmsUploadingField, setCmsUploadingField] = useState<'heroBackgroundImageUrl' | 'logoUrl' | null>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
+  const [googleReviewsRefreshing, setGoogleReviewsRefreshing] = useState(false);
+
+  const refreshGoogleReviews = async () => {
+    setGoogleReviewsRefreshing(true);
+    try {
+      await httpsCallable(getFunctions(app), 'refreshGoogleReviews')({});
+      await onRefreshData();
+    } catch (error) {
+      console.error('Failed to refresh Google reviews:', error);
+      alert('Google review refresh failed. Check Functions configuration and API status.');
+    } finally {
+      setGoogleReviewsRefreshing(false);
+    }
+  };
 
   const handleAdminTabChange = useCallback((tab: AdminTab) => {
     setActiveTab(tab);
@@ -1056,6 +1072,7 @@ function AdminDashboardView({
   const [pkgFormData, setPkgFormData] = useState({
     title: '',
     destination: '',
+    country: '',
     location: 'Uttarakhand',
     bookingType: 'Family Comfort',
     maxGuests: 8,
@@ -1856,6 +1873,7 @@ function AdminDashboardView({
     setPkgFormData({
       title: '',
       destination: '',
+      country: '',
       location: 'Uttarakhand',
       bookingType: 'Family Comfort',
       maxGuests: 8,
@@ -1895,6 +1913,7 @@ function AdminDashboardView({
     setPkgFormData({
       title: pkg.title,
       destination: pkg.destination,
+      country: pkg.country || '',
       location: pkg.location || 'Uttarakhand',
       bookingType: pkg.bookingType || 'Family Comfort',
       maxGuests: pkg.maxGuests || 8,
@@ -3104,6 +3123,7 @@ function AdminDashboardView({
                 handleCmsImageUpload={handleCmsImageUpload}
                 onRefreshData={onRefreshData}
                 packages={packages}
+                onRefreshGoogleReviews={refreshGoogleReviews}
               />
             </Suspense>
           )}
@@ -3618,6 +3638,10 @@ function AdminDashboardView({
                     <div className="space-y-1">
                       <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Destination *</label>
                       <input type="text" required placeholder="E.g. South Goa, India" value={pkgFormData.destination} onChange={(e) => setPkgFormData((prev) => ({ ...prev, destination: e.target.value }))} className="w-full px-3 py-2 border border-stone-200 rounded-sm text-sm text-stone-850 focus:outline-none focus:border-[#008080] font-medium" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Country (International)</label>
+                      <input type="text" placeholder="E.g. Thailand" value={pkgFormData.country} onChange={(e) => setPkgFormData((prev) => ({ ...prev, country: e.target.value }))} className="w-full px-3 py-2 border border-stone-200 rounded-sm text-sm text-stone-850 focus:outline-none focus:border-[#008080] font-medium" />
                     </div>
                   </div>
 
