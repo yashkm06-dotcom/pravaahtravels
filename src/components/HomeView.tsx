@@ -10,7 +10,6 @@ import InteractiveRouteMap from './InteractiveRouteMap';
 import { db, collection, addDoc } from '../lib/firebase';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 import { authenticatedFetch } from '../lib/apiClient';
-import { SkeletonCard } from './SkeletonLoader';
 import aboutImageVideo from '../assets/about-section/about-us/image-video.png?url';
 import enjoyImage from '../assets/about-section/page/enjoy.png';
 import founderNameImage from '../assets/about-section/page/name.png';
@@ -18,6 +17,7 @@ import avatar10 from '../assets/about-section/avatars/10.jpg';
 import { openPackage } from '../utils/packageRoute';
 import { resolveBusinessProfile } from '../utils/businessProfile';
 import GoogleReviews, { GoogleReviewsCache } from './GoogleReviews';
+import FeaturedPackageShowcase from './FeaturedPackageShowcase';
 
 interface HomeViewProps {
   featuredPackages: TravelPackage[];
@@ -88,11 +88,12 @@ const PackageCard = React.memo(function PackageCard({
   const rating = pkg.category === 'Treks' ? 4.8 : pkg.category === 'Adventure' ? 4.7 : 4.9;
   const difficulty = pkg.category === 'Treks' ? 'Moderate' : pkg.category === 'Adventure' ? 'Thrilling' : 'Easy';
   const locationLabel = pkg.location || pkg.destination;
+  const imageUrl = getTravelImage(pkg.imageUrl || pkg.packageBannerUrl || pkg.heroImage);
 
   const handleOpen = () => openPackage(onNavigate, pkg);
 
   return (
-    <article className="group wow fadeInUp animated h-full overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-[0_18px_42px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_24px_56px_rgba(15,23,42,0.12)]" data-wow-delay={`${(index + 1) / 10}s`}>
+    <article className="group flex h-full flex-col overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-[0_18px_42px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_24px_56px_rgba(15,23,42,0.12)]" data-wow-delay={`${(index + 1) / 10}s`}>
       <div
         role="button"
         tabIndex={0}
@@ -103,12 +104,12 @@ const PackageCard = React.memo(function PackageCard({
             handleOpen();
           }
         }}
-        className="relative block h-[270px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left"
+        className="relative block aspect-[1.12/1] w-full cursor-pointer overflow-hidden bg-stone-100 text-left"
       >
         <img
-          src={getTravelImage(pkg.imageUrl)}
+          src={imageUrl}
           alt={pkg.title}
-          className="h-full w-full object-cover bg-stone-100 object-center transition duration-500 group-hover:scale-105"
+          className="block h-full w-full object-cover object-center transition duration-500 group-hover:scale-105"
           referrerPolicy="no-referrer"
           loading="lazy"
           decoding="async"
@@ -116,9 +117,11 @@ const PackageCard = React.memo(function PackageCard({
         />
         <div className="absolute inset-0 bg-linear-to-t from-stone-950/35 via-transparent to-transparent" />
         <div className="absolute left-4 top-4 flex flex-wrap gap-2">
-          <span className="rounded-full bg-[#4DA528] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-white">
-            {hasOffer ? 'Limited Offer' : 'Featured'}
-          </span>
+          {hasOffer ? (
+            <span className="rounded-full bg-[#FF970D] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-white">Limited Offer</span>
+          ) : (
+            <span className="rounded-full bg-white/90 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-stone-800">Featured</span>
+          )}
           {hasOffer ? (
             <span className="rounded-full bg-white/90 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-stone-700">
               -{discountPercent}%
@@ -152,9 +155,9 @@ const PackageCard = React.memo(function PackageCard({
           </button>
         )}
       </div>
-      <div className="flex flex-1 flex-col p-6">
-        <div className="flex items-start justify-between gap-3">
-          <span className="rounded-full bg-[#FF970D]/12 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#D57400]">
+      <div className="flex flex-1 flex-col p-5 sm:p-6">
+        <div className="flex items-center justify-between gap-3">
+          <span className="rounded-full bg-[#4DA528]/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[#4DA528]">
             {pkg.category}
           </span>
           <div className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-semibold text-amber-700">
@@ -162,33 +165,31 @@ const PackageCard = React.memo(function PackageCard({
             {rating.toFixed(1)}
           </div>
         </div>
-        <div className="mt-4 flex items-center gap-2 text-[14px] font-medium text-stone-500">
+        <div className="mt-3 flex items-center gap-2 text-[13px] font-medium text-stone-500">
           <Map className="h-4 w-4 text-[#4DA528]" />
           <span className="truncate">{locationLabel}</span>
         </div>
-        <h3 className="mt-4 text-[20px] font-bold leading-tight text-stone-950">
+        <h3 className="mt-3 text-[18px] font-bold leading-snug text-stone-950">
           <button onClick={handleOpen} className="text-left transition hover:text-[#4DA528]">
             {pkg.title}
           </button>
         </h3>
-        <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-stone-600">
-          <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1">
-            <Clock className="h-4 w-4 text-[#4DA528]" />
+        <p className="mt-2 line-clamp-2 text-sm leading-6 text-stone-600">{pkg.shortDescription || pkg.destination}</p>
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-stone-600">
+          <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1.5">
+            <Clock className="h-3.5 w-3.5 text-[#4DA528]" />
             {pkg.duration}
           </span>
-          <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1">
-            <Users className="h-4 w-4 text-[#4DA528]" />
+          <span className="inline-flex items-center gap-2 rounded-full bg-stone-100 px-3 py-1.5">
+            <Users className="h-3.5 w-3.5 text-[#4DA528]" />
             {difficulty}
           </span>
         </div>
-        <p className="mt-4 line-clamp-3 text-sm leading-6 text-stone-600">
-          {pkg.shortDescription || pkg.destination}
-        </p>
-        <div className="mt-6 grid min-w-0 grid-cols-1 gap-4 border-t border-stone-100 pt-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)] sm:items-end">
-          <div className="min-w-0 flex-1">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-stone-500">Starting from</p>
+        <div className="mt-auto grid min-w-0 grid-cols-1 gap-3 border-t border-stone-100 pt-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] sm:items-end">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">Starting from</p>
             <div className="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-              <span className="max-w-full truncate text-[22px] font-extrabold text-[#4DA528]">{formatPackagePrice(offerPrice)}</span>
+              <span className="max-w-full truncate text-[20px] font-extrabold text-[#4DA528]">{formatPackagePrice(offerPrice)}</span>
               {hasOffer ? <span className="max-w-full truncate text-sm text-stone-400 line-through">{formatPrice(pkg.price)}</span> : null}
             </div>
           </div>
@@ -365,7 +366,6 @@ export default function HomeView({
   });
   const [aiEnquirySubmitting, setAiEnquirySubmitting] = useState(false);
   const [aiEnquirySuccess, setAiEnquirySuccess] = useState(false);
-  const [featuredIndex, setFeaturedIndex] = useState(0);
   const [packagesVisible, setPackagesVisible] = useState(true);
 
   const whyChooseUs = [
@@ -811,36 +811,6 @@ export default function HomeView({
     return featuredActivePackages.filter((pkg) => getPrimaryDestination(pkg) === primaryDestination);
   }, [packageList, activeFeaturedCategory, plannerCategory, featuredActivePackages, primaryDestination, secondaryDestination]);
 
-  const activeOfferPackages = filteredCategoryPackages.filter((pkg) => {
-    const price = Number(pkg.price);
-    const offerPrice = Number(pkg.offerPrice);
-    return Number.isFinite(price) && Number.isFinite(offerPrice) && offerPrice > 0 && offerPrice < price;
-  });
-  const offerPackages = activeOfferPackages.length > 0 ? activeOfferPackages : filteredCategoryPackages;
-
-  const featuredCarouselItems = useMemo(() => buildFeaturedCarouselItems(filteredCategoryPackages), [filteredCategoryPackages]);
-  const featuredCarouselVisibleItems = useMemo(() => {
-    const start = Math.min(featuredIndex, Math.max(0, featuredCarouselItems.length - 3));
-    return featuredCarouselItems.slice(start, start + 3);
-  }, [featuredIndex, featuredCarouselItems]);
-
-  const handlePrevFeatured = () => {
-    setFeaturedIndex((prev) => (prev === 0 ? Math.max(0, featuredCarouselItems.length - 3) : prev - 1));
-  };
-
-  const handleNextFeatured = () => {
-    setFeaturedIndex((prev) => (prev + 1 >= featuredCarouselItems.length - 2 ? 0 : prev + 1));
-  };
-  const bestOfferDiscount = activeOfferPackages.length > 0
-    ? Math.max(
-        ...activeOfferPackages.map((pkg) => {
-          const price = Number(pkg.price);
-          const offerPrice = Number(pkg.offerPrice);
-          return Math.round(((price - offerPrice) / price) * 100);
-        })
-      )
-    : 0;
-
   return (
     <div id="home-view" className="animate-fade-in overflow-hidden bg-white font-sans">
       <section className="relative min-h-[760px] overflow-hidden bg-[#081E2A] text-white lg:min-h-[820px]" id="home-hero">
@@ -1037,7 +1007,7 @@ export default function HomeView({
       </section>
 
       <section className="about-us pb-24 pt-10 sm:pb-28 sm:pt-12 lg:pb-36" id="vitour-about">
-        <div className="tf-container mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
+        <div className="tf-container mx-auto max-w-[1760px] px-4 sm:px-6 lg:px-8">
           <div className="mt-0 grid gap-12 lg:grid-cols-2 lg:items-center lg:pt-8">
             <div>
               <div className="travel-video relative">
@@ -1121,22 +1091,26 @@ export default function HomeView({
 
       <GoogleReviews data={googleReviews} />
 
-      <section className="tour-package bg-white pb-20 pt-10 sm:pt-12" id="featured-packages">
+      <section className="tour-package bg-white pb-20 pt-14 sm:pt-16" id="featured-packages">
         <div className="tf-container mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
-          <div className="center m0-auto w-text-heading mx-auto mb-12 max-w-3xl text-center">
-            <span className="sub-title-heading text-main mb-4 fadeInUp wow font-serif text-[30px] italic text-[#4DA528] sm:text-[32px]">Explore the world</span>
-            <h2 className="title-heading fadeInUp wow mt-3 text-[34px] font-extrabold leading-tight text-stone-950 sm:text-[46px] lg:text-[50px]">
-              Amazing Featured Tour <span className="text-gray font-yes font-serif italic font-medium text-stone-400">Package</span> the world
+          <div className="center m0-auto w-text-heading mx-auto mb-10 max-w-3xl text-center">
+            <span className="sub-title-heading text-main mb-4 fadeInUp wow font-serif text-[28px] italic text-[#4DA528] sm:text-[32px]">Explore the world</span>
+            <h2 className="title-heading fadeInUp wow mt-3 text-[34px] font-black leading-tight tracking-[-0.03em] text-[#062116] sm:text-[50px] lg:text-[62px]">
+              Amazing Featured Tour <span className="font-serif italic font-medium text-stone-400">Package</span>
+              <span className="block">the world</span>
             </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-[15px] leading-7 text-stone-600">
+              Hand-picked destinations across India and beyond, designed for travellers who value experience over everything else.
+            </p>
           </div>
           <div className="tab-tour-list">
-                <ul className="tab-list mb-6 flex flex-wrap justify-center gap-3" id="myTab" role="tablist">
+                <ul className="tab-list mb-8 flex flex-wrap justify-center gap-2 sm:gap-3" id="myTab" role="tablist">
                   {primaryDestinations.map((destination) => (
                     <li key={destination} className="nav-item" role="presentation">
                       <button
-                        className={`nav-link cursor-pointer rounded-full border px-6 py-3 text-[14px] font-bold transition ${
+                        className={`nav-link cursor-pointer rounded-full border px-5 py-2.5 text-[13px] font-semibold transition sm:px-8 sm:py-3.5 sm:text-[15px] sm:font-bold ${
                           primaryDestination === destination
-                            ? 'active border-[#4DA528] bg-[#4DA528] text-white shadow-lg'
+                            ? 'active border-[#4DA528] bg-[#4DA528] text-white shadow-[0_12px_28px_rgba(77,165,40,0.22)]'
                             : 'border-stone-200 bg-white text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'
                         }`}
                         type="button"
@@ -1149,65 +1123,30 @@ export default function HomeView({
                     </li>
                   ))}
                 </ul>
-                <ul className="tab-list mb-10 flex flex-wrap justify-center gap-3">
-                  {secondaryDestinations.map((destination) => (
-                    <li key={destination} className="nav-item" role="presentation">
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={secondaryDestination === destination}
-                        onClick={() => { setSecondaryDestination(destination); scrollToFeaturedPackages(); }}
-                        className={`nav-link cursor-pointer rounded-full border px-6 py-3 text-[14px] font-bold transition ${
-                          secondaryDestination === destination
-                            ? 'active border-[#4DA528] bg-[#4DA528] text-white shadow-lg'
-                            : 'border-stone-200 bg-white text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'
-                        }`}
-                      >
-                        {destination}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <div className="tab-content" id="myTabContent">
-                  <div className="tab-pane fade show active" role="tabpanel" tabIndex={0}>
-                    {loading ? (
-                      <div className="grid grid-cols-1 gap-7 sm:grid-cols-2 xl:grid-cols-4">
-                        {Array.from({ length: 4 }).map((_, idx) => (
-                          <SkeletonCard key={idx} />
-                        ))}
-                      </div>
-                    ) : (
-                      <div
-                        className="grid grid-cols-1 items-stretch gap-7 sm:grid-cols-2 xl:grid-cols-4"
-                        data-featured-real-count={featuredCarouselItems.filter((item) => item.type === 'package').length}
-                        data-featured-placeholder-count={featuredCarouselItems.filter((item) => item.type === 'coming-soon').length}
-                        data-featured-total-count={featuredCarouselItems.length}
-                      >
-                        {featuredCarouselVisibleItems.map((item, idx) => item.type === 'package' ? (
-                          <div key={item.pkg.id} className="h-full">
-                            <PackageCard
-                              pkg={item.pkg}
-                              index={idx}
-                              isWishlisted={Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(item.pkg.id ?? '')) : false}
-                              onNavigate={onNavigate}
-                              onToggleWishlist={onToggleWishlist}
-                              onDeletePackage={onDeletePackage}
-                              isAdminLoggedIn={isAdminLoggedIn}
-                            />
-                          </div>
-                        ) : (
-                          <article key={item.id} className="flex h-full min-h-[520px] flex-col items-center justify-center rounded-[24px] border border-dashed border-[#4DA528]/40 bg-gradient-to-br from-[#f7fbf3] to-white p-8 text-center shadow-[0_18px_42px_rgba(15,23,42,0.04)]">
-                            <Compass className="mb-6 h-12 w-12 text-[#4DA528]" aria-hidden="true" />
-                            <h3 className="text-2xl font-bold text-stone-900">More Coming Soon</h3>
-                            <p className="mt-3 max-w-[220px] text-sm leading-6 text-stone-500">New experiences are being added soon.</p>
-                          </article>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                {secondaryDestinations.length > 0 && (
+                  <ul className="tab-list mb-10 flex flex-wrap justify-center gap-2 sm:gap-3">
+                    {secondaryDestinations.map((destination) => (
+                      <li key={destination} className="nav-item" role="presentation">
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={secondaryDestination === destination}
+                          onClick={() => { setSecondaryDestination(destination); scrollToFeaturedPackages(); }}
+                          className={`nav-link cursor-pointer rounded-full border px-5 py-2.5 text-[13px] font-semibold transition sm:px-7 sm:py-3.5 sm:text-[14px] sm:font-bold ${
+                            secondaryDestination === destination
+                              ? 'active border-[#4DA528] bg-[#4DA528] text-white shadow-[0_12px_28px_rgba(77,165,40,0.22)]'
+                              : 'border-stone-200 bg-white text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'
+                          }`}
+                        >
+                          {destination}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <FeaturedPackageShowcase packages={filteredCategoryPackages} onNavigate={onNavigate} />
                 <div className="mt-12 text-center">
-                  <button onClick={() => onNavigate('packages')} className="inline-flex cursor-pointer items-center justify-center gap-3 rounded-full bg-[#4DA528] px-8 py-[16px] text-[14px] font-semibold uppercase tracking-[0.16em] text-white transition hover:bg-[#FF970D]">
+                  <button onClick={() => onNavigate('packages')} className="btn-main inline-flex cursor-pointer items-center justify-center gap-3 rounded-full bg-[#4DA528] px-8 py-[16px] text-[14px] font-semibold uppercase tracking-[0.16em] text-white transition hover:bg-[#FF970D]">
                     <span>View all tours</span>
                     <ArrowRight className="h-4 w-4" />
                   </button>
@@ -1219,11 +1158,11 @@ export default function HomeView({
       <section className="relative tf-widget-activities overflow-hidden bg-[#F4F6F8] py-20">
         <div className="mask-top absolute left-0 top-0 h-24 w-24 rounded-br-full bg-[#4DA528]/10" />
         <div className="mask-bottom absolute bottom-0 right-0 h-28 w-28 rounded-tl-full bg-[#FF970D]/10" />
-        <div className="tf-container relative z-index3 mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
+        <div className="tf-container relative z-index3 mx-auto max-w-[1500px] px-4 sm:px-6 lg:px-8">
           <div className="center m0-auto w-text-heading mx-auto mb-10 max-w-3xl text-center">
             <span className="sub-title-heading text-main mb-5 font-serif text-[32px] italic text-[#4DA528]">Explore the world</span>
-            <h2 className="title-heading mt-4 text-[42px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">Amazing Activities</h2>
-            <p className="mt-4 text-lg leading-8 text-stone-600">Experience Adventure</p>
+            <h2 className="title-heading mt-4 whitespace-nowrap text-[32px] font-extrabold leading-tight text-stone-950 sm:text-[46px]">Amazing Activities</h2>
+            <p className="mt-3 text-base leading-7 text-stone-600">Experience Adventure</p>
           </div>
 
           <div className="mb-10 overflow-x-auto pb-3">
@@ -1247,17 +1186,17 @@ export default function HomeView({
             </div>
           </div>
 
-          <div className={`grid gap-6 ${packagesVisible ? 'opacity-100' : 'opacity-0'} transition-opacity duration-300 sm:grid-cols-2 lg:grid-cols-3`}>
+          <div className={`grid gap-5 ${packagesVisible ? 'opacity-100' : 'opacity-0'} transition-opacity duration-300 sm:grid-cols-2 lg:grid-cols-5`}>
             {filteredActivityItems.length > 0 ? (
               filteredActivityItems.map((item, idx) => {
                 const linkedPackage = packageList.find((pkg) => pkg.id === item.linkedPackageId);
                 const imageUrl = item.thumbnailUrl || linkedPackage?.imageUrl || 'https://images.unsplash.com/photo-1516685304081-de7947d419d3?auto=format&fit=crop&w=800&q=80';
                 return (
                   <article key={item.id} className="tour-listing wow fadeInUp animated group flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-1" data-wow-delay={`${(idx + 1) / 10}s`}>
-                    <button type="button" onClick={() => linkedPackage ? openPackage(onNavigate, linkedPackage) : undefined} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
+                    <button type="button" onClick={() => linkedPackage ? openPackage(onNavigate, linkedPackage) : undefined} className="tour-listing-image relative block h-[165px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
                       <img src={getTravelImage(imageUrl)} alt={item.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" loading="lazy" decoding="async" width="800" height="560" onError={handleTravelImageError} />
                     </button>
-                    <div className="tour-listing-content flex flex-1 flex-col p-6">
+                    <div className="tour-listing-content flex flex-1 flex-col p-4">
                       <div className="flex items-center justify-between gap-3">
                         <span className="tag-listing inline-block rounded bg-[#FF970D]/12 px-3 py-1 text-[12px] font-bold text-[#D57400]">{linkedPackage?.category || 'Activity'}</span>
                         <button
@@ -1276,7 +1215,7 @@ export default function HomeView({
                         <Map className="h-4 w-4 text-[#4DA528]" />
                         {item.subtitle || (linkedPackage?.destination ?? 'Explore')}
                       </span>
-                      <h3 className="title-tour-list mt-3 text-[22px] font-bold leading-tight text-stone-950">
+                      <h3 className="title-tour-list mt-3 text-[19px] font-bold leading-tight text-stone-950">
                         <button onClick={() => linkedPackage ? openPackage(onNavigate, linkedPackage) : undefined} className="cursor-pointer text-left transition hover:text-[#4DA528]">
                           {item.title}
                         </button>
@@ -1284,8 +1223,8 @@ export default function HomeView({
                       <div className="mt-3 text-sm text-stone-600">
                         <span className="font-semibold text-stone-900">From {formatPrice(item.startingPrice)}</span>
                       </div>
-                      <p className="mt-4 line-clamp-3 text-sm leading-6 text-stone-600">{item.description}</p>
-                      <div className="mt-auto flex flex-col gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="mt-3 line-clamp-2 text-[13px] leading-5 text-stone-600">{item.description}</p>
+                      <div className="mt-auto flex flex-col gap-3 pt-5 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="text-sm text-stone-500">Activity</p>
                           <p className="text-sm font-semibold text-stone-900">{itemActivityTitle(item.activityId)}</p>
@@ -1312,10 +1251,10 @@ export default function HomeView({
                 const isWishlisted = Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(pkg.id ?? '')) : false;
                 return (
                   <article key={pkg.id} className="tour-listing wow fadeInUp animated group flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-1" data-wow-delay={`${(idx + 1) / 10}s`}>
-                    <button type="button" onClick={() => openPackage(onNavigate, pkg)} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
+                    <button type="button" onClick={() => openPackage(onNavigate, pkg)} className="tour-listing-image relative block h-[165px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
                       <img src={getTravelImage(pkg.imageUrl)} alt={pkg.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" loading="lazy" decoding="async" width="800" height="560" onError={handleTravelImageError} />
                     </button>
-                    <div className="tour-listing-content flex flex-1 flex-col p-6">
+                    <div className="tour-listing-content flex flex-1 flex-col p-4">
                       <div className="flex items-center justify-between gap-3">
                         <span className="tag-listing inline-block rounded bg-[#FF970D]/12 px-3 py-1 text-[12px] font-bold text-[#D57400]">{pkg.category}</span>
                         <button
@@ -1334,7 +1273,7 @@ export default function HomeView({
                         <Map className="h-4 w-4 text-[#4DA528]" />
                         {pkg.location || pkg.destination}
                       </span>
-                      <h3 className="title-tour-list mt-3 text-[22px] font-bold leading-tight text-stone-950">
+                      <h3 className="title-tour-list mt-3 text-[19px] font-bold leading-tight text-stone-950">
                         <button onClick={() => openPackage(onNavigate, pkg)} className="cursor-pointer text-left transition hover:text-[#4DA528]">
                           {pkg.title}
                         </button>
@@ -1342,8 +1281,8 @@ export default function HomeView({
                       <div className="mt-3 text-sm text-stone-600">
                         <span className="font-semibold text-stone-900">{pkg.duration}</span>
                       </div>
-                      <p className="mt-4 line-clamp-3 text-sm leading-6 text-stone-600">{pkg.shortDescription || pkg.destination}</p>
-                      <div className="mt-auto flex flex-col gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="mt-3 line-clamp-2 text-[13px] leading-5 text-stone-600">{pkg.shortDescription || pkg.destination}</p>
+                      <div className="mt-auto flex flex-col gap-3 pt-5 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="text-sm text-stone-500">Starting</p>
                           <p className="text-xl font-bold text-[#4DA528]">{formatPackagePrice(pkg.offerPrice || pkg.price)}</p>
@@ -1390,79 +1329,6 @@ export default function HomeView({
           </div>
         </section>
       )}
-
-      {featuredPackages.length > 0 && <section className="offer-package bg-1 relative overflow-hidden bg-white py-20">
-        <img src={getTravelImage(popularDestinations[3].image)} alt={popularDestinations[3].name} className="feature-ofer absolute inset-y-0 right-0 hidden h-full w-[34%] object-cover opacity-20 lg:block" referrerPolicy="no-referrer" onError={handleTravelImageError} />
-        <div className="tf-container relative z-index3 mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
-          <div className="grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
-            <div>
-              <div className="content">
-                <div className="mb-10">
-                  <span className="sub-title-heading text-main mb-15 fadeInUp wow font-serif text-[32px] italic text-[#4DA528]">Explore the world</span>
-                  <h2 className="title-heading fadeInUp wow mt-4 text-[42px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">Amazing Featured Tour<span className="text-gray font-yes font-serif italic font-medium text-stone-400"> Package</span> the world</h2>
-                  <p className="des-heading fadeInUp wow text-[16px] leading-8 text-stone-600">
-                    {activeOfferPackages.length > 0
-                      ? 'Limited-time offers from the live Pravaah package collection, shown in the Vitour offer package layout.'
-                      : 'Featured Pravaah journeys from the live package collection, shown in the Vitour offer package layout.'}
-                  </p>
-                </div>
-                {activeOfferPackages.length > 0 ? (
-                  <div className="inner-content flex-three flex items-center gap-5">
-                    <div className="offer fadeInUp wow flex h-24 w-24 items-center justify-center rounded-full bg-[#4DA528] text-center text-white">
-                      <span className="number text-[28px] font-extrabold leading-none">{bestOfferDiscount} <span className="block text-[13px]">% off</span></span>
-                    </div>
-                    <p className="font-italic font-serif text-[26px] italic text-stone-950">Discover Great <span className="text-main text-[#4DA528]">Discount</span> Deals Around the World</p>
-                  </div>
-                ) : (
-                  <div className="inner-content flex-three flex items-center gap-5 rounded-[14px] border border-stone-200 bg-[#F7F8F4] p-5">
-                    <div className="offer fadeInUp wow flex h-16 w-16 items-center justify-center rounded-full bg-[#4DA528]/12 text-[#4DA528]">
-                      <Sparkles className="h-7 w-7" />
-                    </div>
-                    <p className="font-italic font-serif text-[24px] italic text-stone-950">Explore hand-picked <span className="text-main text-[#4DA528]">featured</span> journeys</p>
-                  </div>
-                )}
-                <div className="btn-wap fadeInUp wow mt-8">
-                  <button onClick={() => onNavigate('packages')} className="btn-main inline-flex cursor-pointer items-center justify-center gap-3 rounded-[5px] bg-[#4DA528] px-8 py-[18px] text-[15px] font-bold uppercase tracking-[0.05em] text-white transition hover:bg-[#FF970D]">
-                    <span className="btn-main-text">Explore More</span>
-                    <span className="iconer"><ArrowRight className="h-4 w-4" /></span>
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div>
-              <div className="on-week-swipper-wrap relative">
-                <div className="swiper offer-package-swipper overflow-hidden relative">
-                  <div className="swiper-wrapper grid items-stretch gap-7 md:grid-cols-2">
-                    {offerPackages.slice(0, 2).map((pkg) => (
-                      <div key={`offer-${pkg.id}`} className="swiper-slide h-full">
-                        <article className="tour-listing flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)]">
-                          <button type="button" onClick={() => openPackage(onNavigate, pkg)} className="tour-listing-image relative block h-[260px] w-full cursor-pointer overflow-hidden text-left">
-                            <img src={getTravelImage(pkg.imageUrl)} alt={pkg.title} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
-                            <span className="feature absolute left-4 top-4 rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">Featured</span>
-                          </button>
-                          <div className="tour-listing-content flex flex-1 flex-col p-6">
-                            <span className="tag-listing inline-block rounded bg-[#FF970D]/12 px-3 py-1 text-[12px] font-bold text-[#D57400]">{pkg.category}</span>
-                            <h3 className="title-tour-list mt-4 text-[22px] font-bold leading-tight text-stone-950">{pkg.title}</h3>
-                            <div className="flex-two mt-auto flex items-center justify-between pt-5">
-                              <p className="text-[14px] text-stone-500">
-                                From <span className="price-sale text-[20px] font-extrabold text-[#4DA528]">{formatPackagePrice(pkg.offerPrice || pkg.price)}</span>
-                                {pkg.offerPrice && <span className="ml-2 text-xs font-semibold text-stone-400 line-through">{formatPrice(pkg.price)}</span>}
-                              </p>
-                              <button onClick={() => openPackage(onNavigate, pkg)} className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-[#4DA528] hover:text-white">
-                                <Heart className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </div>
-                        </article>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>}
 
       <section className="relative overflow-hidden bg-[#081E2A] py-20 text-white" id="home-banner-contact">
         <img src={getTravelImage('https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=1800&q=80')} alt="Adventure route" className="absolute inset-0 h-full w-full object-cover opacity-30" referrerPolicy="no-referrer" onError={handleTravelImageError} />
