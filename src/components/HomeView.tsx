@@ -507,9 +507,14 @@ export default function HomeView({
     onNavigate(normalized);
   };
 
-  const heroBackgroundImage = getTravelImage(
-    websiteCMS.heroBackgroundImageUrl || 'https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&q=80&w=1700'
-  );
+  // Keep the hero surface neutral while CMS data is loading. Rendering the
+  // fallback URL before Firestore resolves causes a visible default-image
+  // flash before the current CMS image replaces it.
+  const heroBackgroundImage = loading
+    ? null
+    : getTravelImage(
+      websiteCMS.heroBackgroundImageUrl || 'https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&q=80&w=1700'
+    );
 
   // AI Generation API Caller
   const handleGenerateAiItinerary = async () => {
@@ -838,15 +843,17 @@ export default function HomeView({
         <div className="absolute inset-0 bg-[#081E2A]" />
         <div className="absolute inset-0 bg-linear-to-r from-[#081E2A] via-[#081E2A]/92 to-[#081E2A]/10" />
         <div className="absolute inset-y-0 right-0 hidden w-[57%] overflow-hidden lg:block">
-          <img
-            src={heroBackgroundImage}
-            alt="Himalayan mountain backdrop"
-            className="absolute inset-0 h-full w-full object-cover object-center opacity-88"
-            referrerPolicy="no-referrer"
-            loading="lazy"
-            decoding="async"
-            onError={handleTravelImageError}
-          />
+          {heroBackgroundImage && (
+            <img
+              src={heroBackgroundImage}
+              alt="Himalayan mountain backdrop"
+              className="absolute inset-0 h-full w-full object-cover object-center opacity-88"
+              referrerPolicy="no-referrer"
+              loading="lazy"
+              decoding="async"
+              onError={handleTravelImageError}
+            />
+          )}
           <div className="absolute inset-0 bg-linear-to-r from-[#081E2A]/74 via-[#081E2A]/16 to-[#081E2A]/4" />
           <div className="absolute inset-0 bg-linear-to-t from-[#081E2A]/48 via-transparent to-white/8" />
           <div className="absolute -left-[18%] top-0 h-full w-[50%] bg-[#081E2A] [clip-path:ellipse(72%_68%_at_0%_50%)]" />
@@ -884,13 +891,15 @@ export default function HomeView({
           <div className="absolute bottom-0 right-0 h-48 w-full bg-linear-to-t from-[#081E2A]/55 to-transparent" />
         </div>
 
-        <img
-          src={heroBackgroundImage}
-          alt="Himalayan mobile tour"
-          className="absolute inset-0 h-full w-full object-cover opacity-45 lg:hidden"
-          referrerPolicy="no-referrer"
-          onError={handleTravelImageError}
-        />
+        {heroBackgroundImage && (
+          <img
+            src={heroBackgroundImage}
+            alt="Himalayan mobile tour"
+            className="absolute inset-0 h-full w-full object-cover opacity-45 lg:hidden"
+            referrerPolicy="no-referrer"
+            onError={handleTravelImageError}
+          />
+        )}
         <div className="absolute inset-0 bg-linear-to-r from-[#081E2A] via-[#081E2A]/88 to-[#081E2A]/32 lg:hidden" />
         <div className="absolute inset-x-0 bottom-0 h-56 bg-linear-to-t from-white via-white/50 to-transparent" />
 
