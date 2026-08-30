@@ -2176,10 +2176,6 @@ exports.analyzePackageUrl = onCall({
   }
 });
 
-const adminApp = initializeApp();
-const adminDb = getFirestore(adminApp);
-const googlePlacesApiKey = defineSecret('GOOGLE_PLACES_API_KEY');
-
 const syncGoogleReviewsImpl = async () => {
   const settings = (await adminDb.collection('siteSettings').doc('main').get()).data() || {};
   const placeId = String(settings.googleBusinessPlaceId || '').trim();
