@@ -20,11 +20,13 @@ import {
 } from 'firebase/auth';
 import { auth, db, storage, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, getDoc, setDoc, serverTimestamp, onSnapshot } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { formatPrice, type BookingDocumentStatus, type BookingDocumentType, type TripCustomerStatus, type TripOperationDocument } from '../types';
+import { formatPrice, type BookingDocumentStatus, type BookingDocumentType, type TripCustomerStatus, type TripOperationDocument, type TravelPackage, type WebsiteCMSSettings } from '../types';
 import { triggerSystemEmail } from '../lib/emailClient';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 import { authenticatedFetch } from '../lib/apiClient';
 import { SkeletonBookingCard } from './SkeletonLoader';
+import { openPackage } from '../utils/packageRoute';
+import { resolveBusinessProfile, type BusinessProfile } from '../utils/businessProfile';
 
 interface CustomerPortalViewProps {
   onLogout: () => void;
@@ -32,6 +34,8 @@ interface CustomerPortalViewProps {
   onNavigate?: (view: string, packageId?: string | null) => void;
   onNavigateToPackages?: () => void;
   savedPackagesRefreshKey?: number;
+  packages?: TravelPackage[];
+  websiteCMS?: WebsiteCMSSettings;
 }
 
 // Client side image optimization helper
@@ -190,11 +194,11 @@ const getBookingStatusBadgeClasses = (bookingStatus: string) => {
   }
 };
 
-const getBookingWhatsAppUrl = (booking: any) => {
+const getBookingWhatsAppUrl = (booking: any, business: BusinessProfile) => {
   const bookingId = booking?.bookingId || 'PRV-2026-0001';
   const packageTitle = booking?.packageTitle || 'your package';
-  const message = `Hello Pravaah Travels,%0AI have submitted my booking.%0ABooking ID: ${bookingId}%0APackage: ${packageTitle}%0APlease confirm my booking.`;
-  return `https://wa.me/919999999999?text=${message}`;
+  const message = `Hello ${business.companyName},\nI have submitted my booking.\nBooking ID: ${bookingId}\nPackage: ${packageTitle}\nPlease confirm my booking.`;
+  return business.whatsappUrl(message);
 };
 
 type PopularRouteRegion = 'Uttarakhand' | 'Himachal' | 'Kashmir' | 'Ladakh' | 'Sikkim';
@@ -857,7 +861,16 @@ const RouteDetailModal = ({
   );
 };
 
-export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavigate, onNavigateToPackages, savedPackagesRefreshKey = 0 }: CustomerPortalViewProps) {
+export default function CustomerPortalView({
+  onLogout,
+  onNavigateToHome,
+  onNavigate,
+  onNavigateToPackages,
+  savedPackagesRefreshKey = 0,
+  packages: catalogPackages = [],
+  websiteCMS,
+}: CustomerPortalViewProps) {
+  const business = useMemo(() => resolveBusinessProfile(websiteCMS), [websiteCMS]);
   // Auth state
   const [user, setUser] = useState(auth.currentUser);
   const [authTab, setAuthTab] = useState<'login' | 'register' | 'emailLink'>('login');
@@ -1653,7 +1666,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
       // Payment status is security-sensitive and may only be changed by a trusted
       // backend after payment-provider verification.
       setPaymentSuccess(false);
-      alert('Online payment verification is pending. Please contact Pravaah Travels to complete payment securely.');
+      alert(`Online payment verification is pending. Please contact ${business.companyName} to complete payment securely.`);
       if (paymentResetTimeoutRef.current) {
         clearTimeout(paymentResetTimeoutRef.current);
       }
@@ -1871,7 +1884,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
 
   const handleDownloadItinerary = (booking: any) => {
     const itineraryText = [
-      'Pravaah Travels Itinerary',
+      `${business.companyName} Itinerary`,
       `Booking ID: ${booking.bookingId || booking.id}`,
       `Package: ${booking.packageTitle || 'Custom Package'}`,
       `Destination: ${booking.destination || 'Flexible'}`,
@@ -2588,7 +2601,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
               </div>
 
               <a
-                href="https://wa.me/919999999999?text=Hi%20Pravaah%20Travels,%20I%20am%20registered%20on%20the%20Customer%20Portal%20and%20need%20immediate%20trip%20assistance."
+                href={business.whatsappUrl(`Hi ${business.companyName}, I am registered on the Customer Portal and need trip assistance.`)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-[5px] bg-emerald-600 px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-white shadow-md transition hover:bg-emerald-700 sm:w-auto"
@@ -2673,7 +2686,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
                   const remainingBalance = Number(booking.remainingBalance ?? 0);
                   const managerContact = tripManager.phone
                     ? `https://wa.me/${String(tripManager.phone).replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hi ${tripManager.name || 'Pravaah Trip Desk'}, I need assistance with booking ${booking.bookingId || booking.id}.`)}`
-                    : getBookingWhatsAppUrl(booking);
+                    : getBookingWhatsAppUrl(booking, business);
 
                   return (
                     <article
@@ -3150,7 +3163,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
                       <Download className="h-3.5 w-3.5" />
                       Download Itinerary
                     </button>
-                    <a href={getBookingWhatsAppUrl(selectedBookingDetails)} target="_blank" rel="noopener noreferrer" className="rounded-[8px] bg-emerald-600 px-3 py-3 text-center text-[10px] font-bold uppercase tracking-[0.16em] text-white transition hover:bg-emerald-700">
+                    <a href={getBookingWhatsAppUrl(selectedBookingDetails, business)} target="_blank" rel="noopener noreferrer" className="rounded-[8px] bg-emerald-600 px-3 py-3 text-center text-[10px] font-bold uppercase tracking-[0.16em] text-white transition hover:bg-emerald-700">
                       Contact Support
                     </a>
                   </div>
@@ -3430,7 +3443,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
                 <h4 className="mt-1 text-xl font-extrabold text-stone-950">Zero-Knowledge Private Travel Vault</h4>
                 <p className="mt-2 max-w-3xl text-sm leading-7 text-amber-900/75">
                   Save confidential travel insurance policies, credit card emergency limits, flight coordinates, and passport copies safely. 
-                  Protected strictly by Firestore rules; <strong>Not even Pravaah Travels operators can view this information</strong>.
+                  Protected strictly by Firestore rules; <strong>only authorized access permitted by {business.companyName} can view this information</strong>.
                 </p>
               </div>
             </div>
@@ -3594,7 +3607,16 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
                       </button>
                       <button
                         type="button"
-                        onClick={() => onNavigate?.('package-detail', saved.packageId || saved.id)}
+                        onClick={() => {
+                          if (!onNavigate) return;
+                          const packageId = String(saved.packageId || saved.id || '');
+                          const catalogPackage = catalogPackages.find((pkg) => String(pkg.id) === packageId);
+                          if (catalogPackage) {
+                            openPackage(onNavigate, catalogPackage);
+                          } else if (packageId) {
+                            onNavigate('package-detail', packageId);
+                          }
+                        }}
                         className="rounded-[5px] border border-stone-200 bg-white px-3 py-2 text-[10px] font-extrabold uppercase tracking-wider text-stone-600 transition hover:border-[#4DA528] hover:text-[#4DA528]"
                       >
                         View Details
@@ -3625,7 +3647,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
               <Briefcase className="w-5 h-5 text-[#008080]" />
               <span>Your Himalayan Travel History</span>
             </h3>
-            <p className="mt-1 text-sm text-stone-500">Relive and browse your verified, completed expeditions with Pravaah Travels.</p>
+            <p className="mt-1 text-sm text-stone-500">Relive and browse your verified, completed expeditions with {business.companyName}.</p>
           </div>
 
           {bookings.filter(b => b.status === 'Confirmed').length === 0 ? (
@@ -3680,7 +3702,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
                         type="button"
                         onClick={() => {
                           setReviewDestination(trip.destination || '');
-                          setReviewComment(`My trip to ${trip.destination} with Pravaah Travels was fantastic. Everything was organized perfectly.`);
+                          setReviewComment(`My trip to ${trip.destination} with ${business.companyName} was fantastic. Everything was organized perfectly.`);
                           setActiveTab('reviews');
                         }}
                         className="rounded-[5px] bg-[#4DA528]/10 px-4 py-3 text-[10px] font-extrabold uppercase tracking-wider text-[#4DA528] transition-colors hover:bg-[#4DA528] hover:text-white"
@@ -3844,7 +3866,7 @@ export default function CustomerPortalView({ onLogout, onNavigateToHome, onNavig
                   </div>
                   <h4 className="text-xl font-extrabold text-stone-900">Review Published Successfully!</h4>
                   <p className="mx-auto max-w-sm text-sm font-light leading-7 text-stone-600">
-                    Your direct customer experience has been published to the homepage reviews section. Thank you for choosing Pravaah Travels!
+                    Your direct customer experience has been published to the homepage reviews section. Thank you for choosing {business.companyName}!
                   </p>
                   <button 
                     type="button"

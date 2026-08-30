@@ -7,13 +7,17 @@ import {
 import { db, collection, addDoc } from '../lib/firebase';
 import { authenticatedFetch } from '../lib/apiClient';
 import InteractiveRouteMap from './InteractiveRouteMap';
+import type { WebsiteCMSSettings } from '../types';
+import { resolveBusinessProfile } from '../utils/businessProfile';
 
 interface AiCuratorViewProps {
   onNavigateToHome: () => void;
   onNavigate: (view: string, packageId?: string | null) => void;
+  websiteCMS?: WebsiteCMSSettings;
 }
 
-export default function AiCuratorView({ onNavigateToHome }: AiCuratorViewProps) {
+export default function AiCuratorView({ onNavigateToHome, websiteCMS }: AiCuratorViewProps) {
+  const business = resolveBusinessProfile(websiteCMS);
   // Wizard flow states
   const [step, setStep] = useState(1);
   const [destination, setDestination] = useState('');
@@ -256,14 +260,14 @@ export default function AiCuratorView({ onNavigateToHome }: AiCuratorViewProps) 
   };
 
   const getWhatsAppFallbackUrl = () => {
-    const text = `Hello Pravaah Travels! I am interested in custom-designing a trip to ${destination || 'the Himalayas'}.\n\n` +
+    const text = `Hello ${business.companyName}! I am interested in custom-designing a trip to ${destination || 'the Himalayas'}.\n\n` +
                  `• Duration: ${duration} Days\n` +
                  `• Vibe/Mood: ${vibe}\n` +
                  `• Companions: ${companions}\n` +
                  `• Target Budget: INR ${Number(budget).toLocaleString('en-IN')}\n` +
                  `• Special requests: ${specialRequests || 'None'}\n\n` +
                  `Could you please help me plan this itinerary manually? Thank you!`;
-    return `https://wa.me/919999999999?text=${encodeURIComponent(text)}`;
+    return business.whatsappUrl(text);
   };
 
   const startOver = () => {

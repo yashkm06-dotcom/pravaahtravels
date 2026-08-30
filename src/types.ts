@@ -30,6 +30,8 @@ export interface TravelPackage {
   id: string;
   title: string;
   slug?: string;
+  /** Optional registered in-app landing route. Unknown values fall back to the standard package page. */
+  customLandingPage?: string | null;
   destination: string;
   destinations?: string[];
   location: PackageLocation | string;
@@ -271,6 +273,22 @@ export interface FeaturedCategoryItem {
 }
 
 export interface WebsiteCMSSettings {
+  companyName?: string;
+  companyTagline?: string;
+  primaryEmail?: string;
+  supportEmail?: string;
+  primaryPhone?: string;
+  whatsappNumber?: string;
+  officeName?: string;
+  officeAddress?: string;
+  officeWorkingHours?: string;
+  weekendHours?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  postalCode?: string;
+  websiteUrl?: string;
+  socialYoutube?: string;
   heroBackgroundImageUrl?: string;
   logoUrl?: string;
   heroTitle: string;
@@ -293,6 +311,11 @@ export interface WebsiteCMSSettings {
 }
 
 export const DEFAULT_WEBSITE_CMS: WebsiteCMSSettings = {
+  companyName: 'Pravaah Travels',
+  primaryEmail: 'pravaahtravels@gmail.com',
+  supportEmail: 'pravaahtravels@gmail.com',
+  primaryPhone: '+91 91231 36692',
+  whatsappNumber: '+91 91231 36692',
   heroTitle: 'Tour Travel & adventure',
   heroTitleAccent: 'Camping',
   heroSubtitle: 'Explore Uttarakhand with guides who respect the mountains.',
@@ -301,7 +324,7 @@ export const DEFAULT_WEBSITE_CMS: WebsiteCMSSettings = {
   footerContactInfo: 'Premium Himalayan journeys, slow travel, sacred valleys, adventure routes, and tailor-made comfort handled by local curators.',
   footerEmail: 'pravaahtravels@gmail.com',
   footerPhone: '+91 91231 36692',
-  footerAddress: '402, Signature Towers, Sector 30, Gurugram, HR - 122001, India',
+  footerAddress: 'Rishikesh, Uttarakhand, India - 249102',
   socialFacebook: '#',
   socialX: '#',
   socialLinkedIn: '#',
@@ -506,4 +529,9 @@ export const formatPrice = (price: number | undefined | null) => {
     currency: 'INR',
     maximumFractionDigits: 0,
   }).format(price);
+};
+
+export const formatPackagePrice = (price: number | undefined | null) => {
+  const normalized = Number(price);
+  return Number.isFinite(normalized) && normalized > 0 ? formatPrice(normalized) : 'Price on request';
 };

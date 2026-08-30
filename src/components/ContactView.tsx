@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { Send, Mail, Phone, MapPin, Check, Compass, Clock, AlertCircle } from 'lucide-react';
 import { db, collection, addDoc } from '../lib/firebase';
-import { Enquiry } from '../types';
+import { Enquiry, type WebsiteCMSSettings } from '../types';
+import { resolveBusinessProfile } from '../utils/businessProfile';
 
 interface ContactViewProps {
   onEnquirySuccess: () => void;
+  websiteCMS?: WebsiteCMSSettings;
 }
 
-export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
+export default function ContactView({ onEnquirySuccess, websiteCMS }: ContactViewProps) {
+  const business = resolveBusinessProfile(websiteCMS);
   // Form State
   const [formData, setFormData] = useState({
     name: '',
@@ -68,11 +71,9 @@ export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
     }
   };
 
-  const officeHours = [
-    { days: 'Monday - Friday', hours: '09:00 AM - 07:00 PM' },
-    { days: 'Saturday', hours: '10:00 AM - 04:00 PM' },
-    { days: 'Sunday', hours: 'Emergency Support Only' }
-  ];
+  const officeHours = business.workingHours
+    ? [{ days: 'Office hours', hours: business.workingHours }]
+    : [{ days: 'Availability', hours: 'Please contact us for current hours' }];
 
   return (
     <div id="contact-view" className="animate-fade-in bg-[#F7F8F4] py-20">
@@ -102,7 +103,7 @@ export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
                 </div>
                 <h3 className="text-2xl font-extrabold text-stone-950">Enquiry Received!</h3>
                 <p className="text-stone-600 text-xs sm:text-sm max-w-md mx-auto leading-relaxed font-light">
-                  Thank you for submitting your custom holiday plan. A holiday curator from Pravaah Travels will review your dates and destination, draft a preliminary itinerary, and connect with you shortly.
+                  Thank you for submitting your custom holiday plan. A holiday curator from {business.companyName} will review your dates and destination and connect with you shortly.
                 </p>
                 <button
                   onClick={() => {
@@ -280,7 +281,7 @@ export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
             {/* Quick Contacts Card */}
             <div className="bg-stone-900 text-white rounded-[12px] p-6 sm:p-8 space-y-6 shadow-md" id="contact-details-card">
               <h3 className="text-xl font-extrabold border-b border-stone-800 pb-4 text-[#FF970D]">
-                Pravaah Headquarters
+                {business.companyName}
               </h3>
               
               <ul className="space-y-6 text-sm">
@@ -289,7 +290,7 @@ export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
                   <div className="space-y-1">
                     <strong className="block text-white font-bold text-sm">Office Address</strong>
                     <span className="text-stone-300 font-light leading-relaxed block text-xs">
-                      402, Signature Towers, Sector 30, Gurugram, Haryana - 122001, India
+                      {business.address}
                     </span>
                   </div>
                 </li>
@@ -297,12 +298,9 @@ export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
                 <li className="flex items-start gap-4">
                   <Phone className="w-6 h-6 text-[#4DA528] shrink-0 mt-1" />
                   <div className="space-y-1">
-                    <strong className="block text-white font-bold text-sm">Direct Hotlines</strong>
-                    <a href="tel:+919876543210" className="hover:text-[#F4C430] transition text-stone-300 font-light block text-xs">
-                      +91 98765 43210
-                    </a>
-                    <a href="tel:+911244098765" className="hover:text-[#F4C430] transition text-stone-300 font-light block text-xs">
-                      +91 124 4098765 (Office desk)
+                    <strong className="block text-white font-bold text-sm">Direct contact</strong>
+                    <a href={business.phoneHref} className="hover:text-[#F4C430] transition text-stone-300 font-light block text-xs">
+                      {business.phone}
                     </a>
                   </div>
                 </li>
@@ -310,13 +308,15 @@ export default function ContactView({ onEnquirySuccess }: ContactViewProps) {
                 <li className="flex items-start gap-4">
                   <Mail className="w-6 h-6 text-[#4DA528] shrink-0 mt-1" />
                   <div className="space-y-1">
-                    <strong className="block text-white font-bold text-sm">Email Addresses</strong>
-                    <a href="mailto:info@pravaahtravels.com" className="hover:text-[#F4C430] transition text-stone-300 font-light block text-xs">
-                      info@pravaahtravels.com
+                    <strong className="block text-white font-bold text-sm">Email</strong>
+                    <a href={`mailto:${business.email}`} className="hover:text-[#F4C430] transition text-stone-300 font-light block text-xs">
+                      {business.email}
                     </a>
-                    <a href="mailto:bookings@pravaahtravels.com" className="hover:text-[#F4C430] transition text-stone-300 font-light block text-xs">
-                      bookings@pravaahtravels.com
-                    </a>
+                    {business.supportEmail !== business.email && (
+                      <a href={`mailto:${business.supportEmail}`} className="hover:text-[#F4C430] transition text-stone-300 font-light block text-xs">
+                        {business.supportEmail}
+                      </a>
+                    )}
                   </div>
                 </li>
               </ul>

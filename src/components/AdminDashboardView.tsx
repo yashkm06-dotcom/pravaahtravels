@@ -7,6 +7,7 @@ import {
   Menu, Bell, Settings, Palette, Home, Megaphone, Images, PanelLeftClose, PanelLeftOpen, Heart, Sparkles, ChevronRight
 } from 'lucide-react';
 import { TravelPackage, Enquiry, GalleryImage, ActivityItem, DestinationCategory, EnquiryStatus, EnquiryPriority, EnquiryPaymentStatus, Review, formatPrice, WebsiteCMSSettings, PACKAGE_LOCATIONS, type BookingDocumentStatus, type CustomerProfile, type Hotel, type PackageDeparture, type TripChecklistKey, type TripCustomerStatus, type TripDocument, type TripOperationDocument, type TripOperationDocumentType, type TripOperations } from '../types';
+import { CUSTOM_LANDING_REGISTRY } from '../features/customLandings/registry';
 import { auth, db, storage, collection, addDoc, updateDoc, deleteDoc, doc, getDocs, setDoc, writeBatch, getDoc } from '../lib/firebase';
 import { getIdTokenResult } from 'firebase/auth';
 import { collectionGroup } from 'firebase/firestore';
@@ -1077,6 +1078,7 @@ function AdminDashboardView({
     activityId: '',
     seoTitle: '',
     seoDescription: '',
+    customLandingPage: '',
     featured: false,
     active: true,
     status: 'Draft' as 'Publish' | 'Draft',
@@ -1876,6 +1878,7 @@ function AdminDashboardView({
       activityId: '',
       seoTitle: '',
       seoDescription: '',
+      customLandingPage: '',
       featured: false,
       active: true,
       status: 'Draft',
@@ -1914,6 +1917,7 @@ function AdminDashboardView({
       activityId: pkg.activityId || '',
       seoTitle: pkg.seoTitle || '',
       seoDescription: pkg.seoDescription || '',
+      customLandingPage: pkg.customLandingPage || '',
       featured: pkg.featured || false,
       active: pkg.active ?? true,
       status: pkg.status || (pkg.active ? 'Publish' : 'Draft'),
@@ -1969,6 +1973,7 @@ function AdminDashboardView({
         pickup: pkgFormData.pickup?.trim() || '',
         seoTitle: pkgFormData.seoTitle?.trim() || '',
         seoDescription: pkgFormData.seoDescription?.trim() || '',
+        customLandingPage: pkgFormData.customLandingPage || null,
         offerPrice: Number(pkgFormData.offerPrice) || undefined,
         packageBannerUrl: pkgFormData.packageBannerUrl?.trim() || '',
         galleryImages: parseListField(galleryImagesInput),
@@ -3614,6 +3619,21 @@ function AdminDashboardView({
                       <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Destination *</label>
                       <input type="text" required placeholder="E.g. South Goa, India" value={pkgFormData.destination} onChange={(e) => setPkgFormData((prev) => ({ ...prev, destination: e.target.value }))} className="w-full px-3 py-2 border border-stone-200 rounded-sm text-sm text-stone-850 focus:outline-none focus:border-[#008080] font-medium" />
                     </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider">Custom landing page</label>
+                    <select
+                      value={pkgFormData.customLandingPage}
+                      onChange={(e) => setPkgFormData((prev) => ({ ...prev, customLandingPage: e.target.value }))}
+                      className="w-full px-3 py-2 bg-white border border-stone-200 rounded-sm text-sm text-stone-700 focus:outline-none focus:border-[#008080] font-medium cursor-pointer"
+                    >
+                      <option value="">Use standard package details</option>
+                      {Object.keys(CUSTOM_LANDING_REGISTRY).map((path) => (
+                        <option key={path} value={path}>{path}</option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] leading-5 text-stone-400">Only registered internal routes are available; arbitrary or external URLs are not accepted.</p>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

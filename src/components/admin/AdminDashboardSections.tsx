@@ -1525,8 +1525,21 @@ export function WebsiteTab(props: WebsiteTabProps) {
         </section>
 
         <section className="rounded-[22px] border border-stone-200 bg-white p-6 shadow-[0_14px_38px_rgba(18,38,32,0.08)]">
-          <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Footer & SEO</span>
+          <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Business profile, footer & SEO</span>
           <div className="mt-5 space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <input value={cmsFormData.companyName || ''} onChange={(e) => setCmsFormData(prev => ({ ...prev, companyName: e.target.value }))} placeholder="Company name" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+              <input value={cmsFormData.companyTagline || ''} onChange={(e) => setCmsFormData(prev => ({ ...prev, companyTagline: e.target.value }))} placeholder="Company tagline" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+              <input value={cmsFormData.primaryEmail || ''} onChange={(e) => setCmsFormData(prev => ({ ...prev, primaryEmail: e.target.value }))} placeholder="Primary email" type="email" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+              <input value={cmsFormData.supportEmail || ''} onChange={(e) => setCmsFormData(prev => ({ ...prev, supportEmail: e.target.value }))} placeholder="Support email" type="email" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+              <input value={cmsFormData.primaryPhone || ''} onChange={(e) => setCmsFormData(prev => ({ ...prev, primaryPhone: e.target.value }))} placeholder="Primary phone" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+              <input value={cmsFormData.whatsappNumber || ''} onChange={(e) => setCmsFormData(prev => ({ ...prev, whatsappNumber: e.target.value }))} placeholder="WhatsApp number" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+            </div>
+            <input value={cmsFormData.officeAddress || ''} onChange={(e) => setCmsFormData(prev => ({ ...prev, officeAddress: e.target.value }))} placeholder="Public office address" className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <input value={cmsFormData.officeWorkingHours || ''} onChange={(e) => setCmsFormData(prev => ({ ...prev, officeWorkingHours: e.target.value }))} placeholder="Office working hours" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+              <input value={cmsFormData.websiteUrl || ''} onChange={(e) => setCmsFormData(prev => ({ ...prev, websiteUrl: e.target.value }))} placeholder="Website URL" type="url" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+            </div>
             <textarea value={cmsFormData.footerContactInfo} onChange={(e) => setCmsFormData(prev => ({ ...prev, footerContactInfo: e.target.value }))} rows={3} placeholder="Footer description" className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
             <div className="grid gap-4 sm:grid-cols-2">
               <input value={cmsFormData.footerEmail} onChange={(e) => setCmsFormData(prev => ({ ...prev, footerEmail: e.target.value }))} placeholder="Email" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
@@ -1538,6 +1551,7 @@ export function WebsiteTab(props: WebsiteTabProps) {
               <input value={cmsFormData.socialX} onChange={(e) => setCmsFormData(prev => ({ ...prev, socialX: e.target.value }))} placeholder="X URL" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
               <input value={cmsFormData.socialLinkedIn} onChange={(e) => setCmsFormData(prev => ({ ...prev, socialLinkedIn: e.target.value }))} placeholder="LinkedIn URL" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
               <input value={cmsFormData.socialInstagram} onChange={(e) => setCmsFormData(prev => ({ ...prev, socialInstagram: e.target.value }))} placeholder="Instagram URL" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
+              <input value={cmsFormData.socialYoutube || ''} onChange={(e) => setCmsFormData(prev => ({ ...prev, socialYoutube: e.target.value }))} placeholder="YouTube URL" className="rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
             </div>
             <input value={cmsFormData.seoTitle} onChange={(e) => setCmsFormData(prev => ({ ...prev, seoTitle: e.target.value }))} placeholder="Meta title" className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />
             <textarea value={cmsFormData.seoDescription} onChange={(e) => setCmsFormData(prev => ({ ...prev, seoDescription: e.target.value }))} rows={2} placeholder="Meta description" className="w-full rounded-[12px] border border-stone-200 bg-[#f7f8f3] px-4 py-3 text-sm outline-none focus:border-[#4DA528] focus:bg-white" />

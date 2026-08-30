@@ -5,7 +5,7 @@ import {
   X, GripVertical, ArrowUp, ArrowDown, Users, Clock, Check, Send,
   ChevronUp, ChevronDown
 } from 'lucide-react';
-import { TravelPackage, formatPrice, DestinationCategory, WebsiteCMSSettings, PACKAGE_LOCATIONS, PackageLocation, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem } from '../types';
+import { TravelPackage, formatPrice, formatPackagePrice, DestinationCategory, WebsiteCMSSettings, PACKAGE_LOCATIONS, PackageLocation, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem } from '../types';
 import InteractiveRouteMap from './InteractiveRouteMap';
 import { db, collection, addDoc } from '../lib/firebase';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
@@ -15,6 +15,8 @@ import aboutImageVideo from '../assets/about-section/about-us/image-video.png?ur
 import enjoyImage from '../assets/about-section/page/enjoy.png';
 import founderNameImage from '../assets/about-section/page/name.png';
 import avatar10 from '../assets/about-section/avatars/10.jpg';
+import { openPackage } from '../utils/packageRoute';
+import { resolveBusinessProfile } from '../utils/businessProfile';
 
 interface HomeViewProps {
   featuredPackages: TravelPackage[];
@@ -54,16 +56,18 @@ type PackageCardProps = {
   isAdminLoggedIn?: boolean;
 };
 
-const slugifyPackageTitle = (value: string) => String(value ?? '')
-  .toLowerCase()
-  .trim()
-  .replace(/&/g, 'and')
-  .replace(/[^a-z0-9]+/g, '-')
-  .replace(/^-+|-+$/g, '');
+type FeaturedCarouselItem =
+  | { type: 'package'; pkg: TravelPackage }
+  | { type: 'coming-soon'; id: string };
 
-const getPackageRouteSegment = (pkg: Pick<TravelPackage, 'id' | 'title'>) => {
-  const slug = slugifyPackageTitle(pkg.title);
-  return slug ? `${slug}-${pkg.id}` : String(pkg.id);
+const buildFeaturedCarouselItems = (packages: TravelPackage[]): FeaturedCarouselItem[] => {
+  const realItems: FeaturedCarouselItem[] = packages
+    .slice(0, 4)
+    .map((pkg) => ({ type: 'package', pkg }));
+  return [
+    ...realItems,
+    { type: 'coming-soon' as const, id: 'coming-soon' },
+  ];
 };
 
 const PackageCard = React.memo(function PackageCard({
@@ -82,7 +86,7 @@ const PackageCard = React.memo(function PackageCard({
   const difficulty = pkg.category === 'Treks' ? 'Moderate' : pkg.category === 'Adventure' ? 'Thrilling' : 'Easy';
   const locationLabel = pkg.location || pkg.destination;
 
-  const handleOpen = () => onNavigate('package-detail', getPackageRouteSegment(pkg));
+  const handleOpen = () => openPackage(onNavigate, pkg);
 
   return (
     <article className="group wow fadeInUp animated h-full overflow-hidden rounded-[24px] border border-stone-200 bg-white shadow-[0_18px_42px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_24px_56px_rgba(15,23,42,0.12)]" data-wow-delay={`${(index + 1) / 10}s`}>
@@ -177,22 +181,22 @@ const PackageCard = React.memo(function PackageCard({
         <p className="mt-4 line-clamp-3 text-sm leading-6 text-stone-600">
           {pkg.shortDescription || pkg.destination}
         </p>
-        <div className="mt-6 flex flex-col gap-4 border-t border-stone-100 pt-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
+        <div className="mt-6 grid min-w-0 grid-cols-1 gap-4 border-t border-stone-100 pt-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)] sm:items-end">
+          <div className="min-w-0 flex-1">
             <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-stone-500">Starting from</p>
-            <div className="mt-1 flex items-center gap-2">
-              <span className="text-[22px] font-extrabold text-[#4DA528]">{formatPrice(offerPrice)}</span>
-              {hasOffer ? <span className="text-sm text-stone-400 line-through">{formatPrice(pkg.price)}</span> : null}
+            <div className="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="max-w-full truncate text-[22px] font-extrabold text-[#4DA528]">{formatPackagePrice(offerPrice)}</span>
+              {hasOffer ? <span className="max-w-full truncate text-sm text-stone-400 line-through">{formatPrice(pkg.price)}</span> : null}
             </div>
           </div>
-          <div className="flex flex-col gap-2 sm:min-w-[144px]">
+          <div className="grid w-full min-w-0 gap-2">
             <button
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
                 handleOpen();
               }}
-              className="inline-flex items-center justify-center rounded-full bg-[#4DA528] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3a8d1f]"
+              className="inline-flex w-full min-w-0 items-center justify-center whitespace-nowrap rounded-full bg-[#4DA528] px-3 py-3 text-sm font-semibold text-white transition hover:bg-[#3a8d1f]"
             >
               Book Now
             </button>
@@ -202,7 +206,7 @@ const PackageCard = React.memo(function PackageCard({
                 event.stopPropagation();
                 handleOpen();
               }}
-              className="inline-flex items-center justify-center rounded-full border border-stone-200 bg-white px-4 py-3 text-sm font-semibold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
+              className="inline-flex w-full min-w-0 items-center justify-center whitespace-nowrap rounded-full border border-stone-200 bg-white px-3 py-3 text-sm font-semibold text-stone-700 transition hover:border-[#4DA528] hover:text-[#4DA528]"
             >
               View Details
             </button>
@@ -230,7 +234,7 @@ const RecommendationCard = React.memo(function RecommendationCard({ recommendati
 
   const handleOpen = () => {
     if (linkedPackage) {
-      onNavigate('package-detail', getPackageRouteSegment(linkedPackage));
+      openPackage(onNavigate, linkedPackage);
       return;
     }
     onNavigate('packages');
@@ -310,8 +314,11 @@ export default function HomeView({
   featuredCategories = [],
   packages: packageList = [],
 }: HomeViewProps) {
+  const business = useMemo(() => resolveBusinessProfile(websiteCMS), [websiteCMS]);
   // Wizard Planner State
   const [plannerCategory, setPlannerCategory] = useState<DestinationCategory>('Pilgrimage');
+  const [primaryDestination, setPrimaryDestination] = useState('Uttarakhand');
+  const [secondaryDestination, setSecondaryDestination] = useState('');
   const [plannerStyle, setPlannerStyle] = useState<string>('Bespoke Luxury');
   const [plannerDuration, setPlannerDuration] = useState<string>('Medium (5-7 Days)');
   const [plannerLocation, setPlannerLocation] = useState<PackageLocation | string>('Uttarakhand');
@@ -724,24 +731,81 @@ export default function HomeView({
     }
   };
 
+  const primaryDestinations = ['Uttarakhand', 'Ladakh', 'Himachal', 'International'];
+  const featuredActivePackages = useMemo(() => packageList.filter((pkg) => Boolean(pkg.featured && pkg.active !== false)), [packageList]);
+  const activePackages = useMemo(() => packageList.filter((pkg) => pkg.active !== false), [packageList]);
+  const normalizeCountry = (value: unknown) => {
+    const country = String(value || '').trim();
+    if (!country) return '';
+    const normalized = country.toLowerCase().replace(/[._-]+/g, ' ').replace(/\s+/g, ' ');
+    if (normalized === 'united arab emirates' || normalized === 'uae') return 'United Arab Emirates';
+    return country;
+  };
+  const getPackageCountry = (pkg: TravelPackage) => normalizeCountry(pkg.country);
+  const isInternationalPackage = (pkg: TravelPackage) => {
+    const category = String(pkg.category || pkg.homepageCategory || '').trim().toLowerCase();
+    const country = getPackageCountry(pkg).toLowerCase();
+    return (category === 'international' || category === 'international trips') && Boolean(country) && country !== 'india';
+  };
+  const getPrimaryDestination = (pkg: TravelPackage) => {
+    // International classification is explicit: a package must be marked
+    // International and carry a non-India country. This prevents domestic
+    // packages from leaking into the International country filters.
+    if (isInternationalPackage(pkg)) return 'International';
+    const category = String(pkg.category || pkg.homepageCategory || '').trim().toLowerCase();
+    if (category === 'international' || category === 'international trips') return 'Unclassified';
+    const text = `${pkg.location || ''} ${pkg.destination || ''} ${pkg.country || ''}`.toLowerCase();
+    if (text.includes('uttarakhand') || text.includes('uttrakhand')) return 'Uttarakhand';
+    if (text.includes('ladakh')) return 'Ladakh';
+    if (text.includes('himachal')) return 'Himachal';
+    const country = getPackageCountry(pkg).toLowerCase();
+    if (country === 'india') return 'Domestic';
+    if (!country) return 'Unclassified';
+    return 'International';
+  };
+  const secondaryDestinations = useMemo(() => {
+    // Country filters represent the complete active International inventory;
+    // card visibility still follows the existing Featured Tours eligibility.
+    const source = primaryDestination === 'International' ? activePackages : featuredActivePackages;
+    const values = source
+      .filter((pkg) => primaryDestination === 'International' ? isInternationalPackage(pkg) : getPrimaryDestination(pkg) === primaryDestination)
+      .map((pkg) => primaryDestination === 'International' ? getPackageCountry(pkg) : (pkg.destination || pkg.city || pkg.location))
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+    return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+  }, [activePackages, featuredActivePackages, primaryDestination]);
+  useEffect(() => {
+    // Start each primary category with its complete featured collection. A
+    // secondary destination is an optional user-selected refinement.
+    if (secondaryDestination && !secondaryDestinations.includes(secondaryDestination)) setSecondaryDestination('');
+  }, [secondaryDestinations, secondaryDestination]);
+
   const filteredCategoryPackages = useMemo(() => {
-    const packagesSource = packageList || [];
     const linkedPackageIds = Array.isArray(activeFeaturedCategory?.packageIds) ? activeFeaturedCategory.packageIds : [];
 
-    if (linkedPackageIds.length > 0) {
-      return packagesSource.filter((pkg) => linkedPackageIds.includes(String(pkg.id ?? '')));
+    if (secondaryDestination) {
+      return featuredActivePackages.filter((pkg) => {
+        if (getPrimaryDestination(pkg) !== primaryDestination) return false;
+        const values = primaryDestination === 'International' ? [getPackageCountry(pkg)] : [pkg.destination, pkg.city, pkg.location];
+        return values.some((value) => String(value || '').trim().toLowerCase() === secondaryDestination.toLowerCase());
+      });
     }
 
-    return packagesSource.filter((pkg) => {
-      const matchesFeaturedCategory = activeFeaturedCategory
-        ? (activeFeaturedCategory.category && pkg.category === activeFeaturedCategory.category)
-          || (activeFeaturedCategory.location && (String(pkg.location ?? '').toLowerCase().includes(String(activeFeaturedCategory.location ?? '').toLowerCase()) || String(pkg.destination ?? '').toLowerCase().includes(String(activeFeaturedCategory.location ?? '').toLowerCase())))
-        : false;
+    if (linkedPackageIds.length > 0) {
+      // Keep explicitly linked records first, while ensuring every active CMS package
+      // marked Featured for this destination remains discoverable in the homepage carousel.
+      const linked = featuredActivePackages.filter((pkg) => (
+        linkedPackageIds.includes(String(pkg.id ?? '')) && getPrimaryDestination(pkg) === primaryDestination
+      ));
+      const categoryFeatured = featuredActivePackages.filter((pkg) => getPrimaryDestination(pkg) === primaryDestination);
+      const merged = [...linked, ...categoryFeatured];
+      return merged.filter((pkg, index, all) => (
+        all.findIndex((candidate) => String(candidate.id ?? '') === String(pkg.id ?? '')) === index
+      ));
+    }
 
-      const matchesPlannerCategory = plannerCategory ? pkg.category === plannerCategory : false;
-      return matchesFeaturedCategory || matchesPlannerCategory;
-    });
-  }, [packageList, activeFeaturedCategory, plannerCategory]);
+    return featuredActivePackages.filter((pkg) => getPrimaryDestination(pkg) === primaryDestination);
+  }, [packageList, activeFeaturedCategory, plannerCategory, featuredActivePackages, primaryDestination, secondaryDestination]);
 
   const activeOfferPackages = filteredCategoryPackages.filter((pkg) => {
     const price = Number(pkg.price);
@@ -750,18 +814,18 @@ export default function HomeView({
   });
   const offerPackages = activeOfferPackages.length > 0 ? activeOfferPackages : filteredCategoryPackages;
 
-  const featuredCarouselPackages = useMemo(() => {
-    const visible = filteredCategoryPackages.slice(0, 6);
-    if (visible.length === 0) return [];
-    return visible.slice(featuredIndex, featuredIndex + 3);
-  }, [featuredIndex, filteredCategoryPackages]);
+  const featuredCarouselItems = useMemo(() => buildFeaturedCarouselItems(filteredCategoryPackages), [filteredCategoryPackages]);
+  const featuredCarouselVisibleItems = useMemo(() => {
+    const start = Math.min(featuredIndex, Math.max(0, featuredCarouselItems.length - 3));
+    return featuredCarouselItems.slice(start, start + 3);
+  }, [featuredIndex, featuredCarouselItems]);
 
   const handlePrevFeatured = () => {
-    setFeaturedIndex((prev) => (prev === 0 ? Math.max(0, filteredCategoryPackages.length - 3) : prev - 1));
+    setFeaturedIndex((prev) => (prev === 0 ? Math.max(0, featuredCarouselItems.length - 3) : prev - 1));
   };
 
   const handleNextFeatured = () => {
-    setFeaturedIndex((prev) => (prev + 1 >= filteredCategoryPackages.length - 2 ? 0 : prev + 1));
+    setFeaturedIndex((prev) => (prev + 1 >= featuredCarouselItems.length - 2 ? 0 : prev + 1));
   };
   const bestOfferDiscount = activeOfferPackages.length > 0
     ? Math.max(
@@ -984,7 +1048,7 @@ export default function HomeView({
                   Great opportunity for <span className="text-gray font-yes font-serif italic font-medium text-stone-400">adventure</span> & travels
                 </h2>
                 <p className="des-heading fadeInUp wow mt-6 max-w-xl text-[16px] leading-8 text-stone-600">
-                Adventure begins where ordinary ends. Explore hidden valleys, majestic mountains, sacred temples, thrilling bike expeditions, and unforgettable road trips with Pravaah Travels. Every itinerary is carefully planned to give you the perfect balance of comfort, excitement, and authentic local experiences.
+                Adventure begins where ordinary ends. Explore hidden valleys, majestic mountains, sacred temples, thrilling bike expeditions, and unforgettable road trips with {business.companyName}. Every itinerary is carefully planned to give you the perfect balance of comfort, excitement, and authentic local experiences.
                 </p>
                 <div className="fadeInUp wow mt-9 grid gap-5 sm:grid-cols-2">
                   <div>
@@ -1061,39 +1125,39 @@ export default function HomeView({
           </div>
           <div className="tab-tour-list">
                 <ul className="tab-list mb-6 flex flex-wrap justify-center gap-3" id="myTab" role="tablist">
-                  {(['Pilgrimage', 'Treks', 'Adventure', 'Himachal', 'Ladakh'] as DestinationCategory[]).map((category) => (
-                    <li key={category} className="nav-item" role="presentation">
+                  {primaryDestinations.map((destination) => (
+                    <li key={destination} className="nav-item" role="presentation">
                       <button
                         className={`nav-link cursor-pointer rounded-full border px-6 py-3 text-[14px] font-bold transition ${
-                          plannerCategory === category
+                          primaryDestination === destination
                             ? 'active border-[#4DA528] bg-[#4DA528] text-white shadow-lg'
                             : 'border-stone-200 bg-white text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'
                         }`}
                         type="button"
                         role="tab"
-                        aria-selected={plannerCategory === category}
-                        onClick={() => handlePlannerCategorySelect(category)}
+                        aria-selected={primaryDestination === destination}
+                        onClick={() => { setPrimaryDestination(destination); setSecondaryDestination(''); }}
                       >
-                        {category}
+                        {destination}
                       </button>
                     </li>
                   ))}
                 </ul>
                 <ul className="tab-list mb-10 flex flex-wrap justify-center gap-3">
-                  {featuredCategoryCards.map((item) => (
-                    <li key={item.slug} className="nav-item" role="presentation">
+                  {secondaryDestinations.map((destination) => (
+                    <li key={destination} className="nav-item" role="presentation">
                       <button
                         type="button"
                         role="tab"
-                        aria-selected={activeFeaturedSlug === item.slug}
-                        onClick={() => handleFeaturedCategoryClick(item.slug)}
+                        aria-selected={secondaryDestination === destination}
+                        onClick={() => { setSecondaryDestination(destination); scrollToFeaturedPackages(); }}
                         className={`nav-link cursor-pointer rounded-full border px-6 py-3 text-[14px] font-bold transition ${
-                          activeFeaturedSlug === item.slug
+                          secondaryDestination === destination
                             ? 'active border-[#4DA528] bg-[#4DA528] text-white shadow-lg'
                             : 'border-stone-200 bg-white text-stone-700 hover:border-[#4DA528] hover:text-[#4DA528]'
                         }`}
                       >
-                        {item.title}
+                        {destination}
                       </button>
                     </li>
                   ))}
@@ -1106,44 +1170,32 @@ export default function HomeView({
                           <SkeletonCard key={idx} />
                         ))}
                       </div>
-                    ) : filteredCategoryPackages.length === 0 ? (
-                      <div className="mx-auto max-w-2xl border border-dashed border-stone-300 bg-white p-12 text-center">
-                        <AlertCircle className="mx-auto mb-4 h-8 w-8 text-stone-300" />
-                        <p className="text-sm text-stone-500">No packages available for the selected category or featured collection.</p>
-                      </div>
                     ) : (
-                      <div className="grid grid-cols-1 items-stretch gap-7 sm:grid-cols-2 xl:grid-cols-4">
-                        {featuredCarouselPackages.length > 0 ? featuredCarouselPackages.map((pkg, idx) => {
-                          const isWishlisted = Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(pkg.id ?? '')) : false;
-                          return (
-                            <div key={pkg.id} className="h-full">
-                              <PackageCard
-                                pkg={pkg}
-                                index={idx}
-                                isWishlisted={isWishlisted}
-                                onNavigate={onNavigate}
-                                onToggleWishlist={onToggleWishlist}
-                                onDeletePackage={onDeletePackage}
-                                isAdminLoggedIn={isAdminLoggedIn}
-                              />
-                            </div>
-                          );
-                        }) : filteredCategoryPackages.slice(0, 4).map((pkg, idx) => {
-                          const isWishlisted = Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(pkg.id ?? '')) : false;
-                          return (
-                            <div key={pkg.id} className="h-full">
-                              <PackageCard
-                                pkg={pkg}
-                                index={idx}
-                                isWishlisted={isWishlisted}
-                                onNavigate={onNavigate}
-                                onToggleWishlist={onToggleWishlist}
-                                onDeletePackage={onDeletePackage}
-                                isAdminLoggedIn={isAdminLoggedIn}
-                              />
-                            </div>
-                          );
-                        })}
+                      <div
+                        className="grid grid-cols-1 items-stretch gap-7 sm:grid-cols-2 xl:grid-cols-4"
+                        data-featured-real-count={featuredCarouselItems.filter((item) => item.type === 'package').length}
+                        data-featured-placeholder-count={featuredCarouselItems.filter((item) => item.type === 'coming-soon').length}
+                        data-featured-total-count={featuredCarouselItems.length}
+                      >
+                        {featuredCarouselVisibleItems.map((item, idx) => item.type === 'package' ? (
+                          <div key={item.pkg.id} className="h-full">
+                            <PackageCard
+                              pkg={item.pkg}
+                              index={idx}
+                              isWishlisted={Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(item.pkg.id ?? '')) : false}
+                              onNavigate={onNavigate}
+                              onToggleWishlist={onToggleWishlist}
+                              onDeletePackage={onDeletePackage}
+                              isAdminLoggedIn={isAdminLoggedIn}
+                            />
+                          </div>
+                        ) : (
+                          <article key={item.id} className="flex h-full min-h-[520px] flex-col items-center justify-center rounded-[24px] border border-dashed border-[#4DA528]/40 bg-gradient-to-br from-[#f7fbf3] to-white p-8 text-center shadow-[0_18px_42px_rgba(15,23,42,0.04)]">
+                            <Compass className="mb-6 h-12 w-12 text-[#4DA528]" aria-hidden="true" />
+                            <h3 className="text-2xl font-bold text-stone-900">More Coming Soon</h3>
+                            <p className="mt-3 max-w-[220px] text-sm leading-6 text-stone-500">New experiences are being added soon.</p>
+                          </article>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -1196,7 +1248,7 @@ export default function HomeView({
                 const imageUrl = item.thumbnailUrl || linkedPackage?.imageUrl || 'https://images.unsplash.com/photo-1516685304081-de7947d419d3?auto=format&fit=crop&w=800&q=80';
                 return (
                   <article key={item.id} className="tour-listing wow fadeInUp animated group flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-1" data-wow-delay={`${(idx + 1) / 10}s`}>
-                    <button type="button" onClick={() => linkedPackage ? onNavigate('package-detail', getPackageRouteSegment(linkedPackage)) : undefined} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
+                    <button type="button" onClick={() => linkedPackage ? openPackage(onNavigate, linkedPackage) : undefined} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
                       <img src={getTravelImage(imageUrl)} alt={item.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" loading="lazy" decoding="async" width="800" height="560" onError={handleTravelImageError} />
                     </button>
                     <div className="tour-listing-content flex flex-1 flex-col p-6">
@@ -1219,7 +1271,7 @@ export default function HomeView({
                         {item.subtitle || (linkedPackage?.destination ?? 'Explore')}
                       </span>
                       <h3 className="title-tour-list mt-3 text-[22px] font-bold leading-tight text-stone-950">
-                        <button onClick={() => linkedPackage ? onNavigate('package-detail', getPackageRouteSegment(linkedPackage)) : undefined} className="cursor-pointer text-left transition hover:text-[#4DA528]">
+                        <button onClick={() => linkedPackage ? openPackage(onNavigate, linkedPackage) : undefined} className="cursor-pointer text-left transition hover:text-[#4DA528]">
                           {item.title}
                         </button>
                       </h3>
@@ -1234,7 +1286,7 @@ export default function HomeView({
                         </div>
                         <button
                           type="button"
-                          onClick={() => linkedPackage ? onNavigate('package-detail', getPackageRouteSegment(linkedPackage)) : undefined}
+                          onClick={() => linkedPackage ? openPackage(onNavigate, linkedPackage) : undefined}
                           disabled={!linkedPackage}
                           className={`inline-flex items-center justify-center rounded-full px-5 py-3 text-sm font-bold text-white transition ${linkedPackage ? 'bg-[#4DA528] hover:bg-[#3a8d1f]' : 'bg-stone-300 cursor-not-allowed'}`}
                         >
@@ -1254,7 +1306,7 @@ export default function HomeView({
                 const isWishlisted = Array.isArray(wishlistPackageIds) ? wishlistPackageIds.includes(String(pkg.id ?? '')) : false;
                 return (
                   <article key={pkg.id} className="tour-listing wow fadeInUp animated group flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)] transition duration-300 hover:-translate-y-1" data-wow-delay={`${(idx + 1) / 10}s`}>
-                    <button type="button" onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
+                    <button type="button" onClick={() => openPackage(onNavigate, pkg)} className="tour-listing-image relative block h-[230px] w-full cursor-pointer overflow-hidden bg-stone-100 text-left">
                       <img src={getTravelImage(pkg.imageUrl)} alt={pkg.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" referrerPolicy="no-referrer" loading="lazy" decoding="async" width="800" height="560" onError={handleTravelImageError} />
                     </button>
                     <div className="tour-listing-content flex flex-1 flex-col p-6">
@@ -1277,7 +1329,7 @@ export default function HomeView({
                         {pkg.location || pkg.destination}
                       </span>
                       <h3 className="title-tour-list mt-3 text-[22px] font-bold leading-tight text-stone-950">
-                        <button onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="cursor-pointer text-left transition hover:text-[#4DA528]">
+                        <button onClick={() => openPackage(onNavigate, pkg)} className="cursor-pointer text-left transition hover:text-[#4DA528]">
                           {pkg.title}
                         </button>
                       </h3>
@@ -1288,11 +1340,11 @@ export default function HomeView({
                       <div className="mt-auto flex flex-col gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="text-sm text-stone-500">Starting</p>
-                          <p className="text-xl font-bold text-[#4DA528]">{formatPrice(pkg.offerPrice || pkg.price)}</p>
+                          <p className="text-xl font-bold text-[#4DA528]">{formatPackagePrice(pkg.offerPrice || pkg.price)}</p>
                         </div>
                         <button
                           type="button"
-                          onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))}
+                          onClick={() => openPackage(onNavigate, pkg)}
                           className="inline-flex items-center justify-center rounded-full bg-[#4DA528] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#3a8d1f]"
                         >
                           Book Now
@@ -1378,7 +1430,7 @@ export default function HomeView({
                     {offerPackages.slice(0, 2).map((pkg) => (
                       <div key={`offer-${pkg.id}`} className="swiper-slide h-full">
                         <article className="tour-listing flex h-full flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(0,0,0,0.08)]">
-                          <button type="button" onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="tour-listing-image relative block h-[260px] w-full cursor-pointer overflow-hidden text-left">
+                          <button type="button" onClick={() => openPackage(onNavigate, pkg)} className="tour-listing-image relative block h-[260px] w-full cursor-pointer overflow-hidden text-left">
                             <img src={getTravelImage(pkg.imageUrl)} alt={pkg.title} className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={handleTravelImageError} />
                             <span className="feature absolute left-4 top-4 rounded bg-[#4DA528] px-3 py-1 text-[12px] font-bold text-white">Featured</span>
                           </button>
@@ -1387,10 +1439,10 @@ export default function HomeView({
                             <h3 className="title-tour-list mt-4 text-[22px] font-bold leading-tight text-stone-950">{pkg.title}</h3>
                             <div className="flex-two mt-auto flex items-center justify-between pt-5">
                               <p className="text-[14px] text-stone-500">
-                                From <span className="price-sale text-[20px] font-extrabold text-[#4DA528]">{formatPrice(pkg.offerPrice || pkg.price)}</span>
+                                From <span className="price-sale text-[20px] font-extrabold text-[#4DA528]">{formatPackagePrice(pkg.offerPrice || pkg.price)}</span>
                                 {pkg.offerPrice && <span className="ml-2 text-xs font-semibold text-stone-400 line-through">{formatPrice(pkg.price)}</span>}
                               </p>
-                              <button onClick={() => onNavigate('package-detail', getPackageRouteSegment(pkg))} className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-[#4DA528] hover:text-white">
+                              <button onClick={() => openPackage(onNavigate, pkg)} className="icon-bookmark flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-stone-100 text-stone-600 transition hover:bg-[#4DA528] hover:text-white">
                                 <Heart className="h-4 w-4" />
                               </button>
                             </div>
@@ -1417,7 +1469,7 @@ export default function HomeView({
                 <Sparkles className="h-7 w-7" />
               </button>
               <address className="not-italic text-[17px] leading-8 text-white/78">
-                Contact us at <a href="mailto:pravaahtravels@gmail.com" className="text-[#4DA528]">pravaahtravels@gmail.com</a>
+                Contact us at <a href={`mailto:${business.email}`} className="text-[#4DA528]">{business.email}</a>
               </address>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import { ArrowRight, Check, Compass, Mail, MapPin, Phone, Send, Shield } from 'lucide-react';
 import { GalleryImage, WebsiteCMSSettings } from '../types';
 import { handleTravelImageError } from '../utils/imageFallback';
+import { resolveBusinessProfile } from '../utils/businessProfile';
 
 interface FooterProps {
   onNavigate: (view: string, packageId?: string | null) => void;
@@ -11,28 +12,14 @@ interface FooterProps {
 
 export default function Footer({ onNavigate, websiteCMS, gallery, loading = false }: FooterProps) {
   const currentYear = new Date().getFullYear();
-  const isValidUrl = (url?: string) => {
-    if (!url) return false;
-    try {
-      const parsed = new URL(url);
-      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-    } catch {
-      return false;
-    }
-  };
+  const business = resolveBusinessProfile(websiteCMS);
   const uniqueGalleryUrls = Array.from(
     new Set(gallery.map((item) => item.imageUrl).filter((src): src is string => Boolean(src)))
   );
   const footerGallery = uniqueGalleryUrls.slice(0, 6);
-  const safeFooterPhone = String(websiteCMS?.footerPhone ?? '');
-  const socialLinks = [
-    ['f', websiteCMS.socialFacebook],
-    ['x', websiteCMS.socialX],
-    ['in', websiteCMS.socialLinkedIn],
-    ['ig', websiteCMS.socialInstagram],
-  ].filter(([, href]) => isValidUrl(href));
-  const logoMark = websiteCMS.logoUrl ? (
-    <img src={websiteCMS.logoUrl} alt="Pravaah Travels logo" className="h-full w-full object-contain" referrerPolicy="no-referrer" onError={handleTravelImageError} />
+  const socialLabels: Record<string, string> = { Facebook: 'f', X: 'x', LinkedIn: 'in', Instagram: 'ig', YouTube: 'yt' };
+  const logoMark = business.logoUrl ? (
+    <img src={business.logoUrl} alt={`${business.companyName} logo`} className="h-full w-full object-contain" referrerPolicy="no-referrer" onError={handleTravelImageError} />
   ) : (
     <Compass className="h-7 w-7" />
   );
@@ -52,25 +39,24 @@ export default function Footer({ onNavigate, websiteCMS, gallery, loading = fals
                 {logoMark}
               </span>
               <span className="text-left">
-                <span className="block text-2xl font-extrabold leading-none">Pravaah</span>
-                <span className="mt-1 block text-[11px] font-bold uppercase tracking-[0.24em] text-[#4DA528]">Travels</span>
+                <span className="block text-2xl font-extrabold leading-none">{business.companyName}</span>
               </span>
             </button>
             <p className="max-w-sm text-[15px] font-light leading-8 text-white/70">
-              {websiteCMS.footerContactInfo}
+              {business.tagline}
             </p>
             <ul className="space-y-4 text-[15px] text-white/78">
               <li className="flex items-center gap-3">
                 <Mail className="h-5 w-5 text-[#4DA528]" />
-                <a href={`mailto:${websiteCMS.footerEmail}`} className="transition hover:text-[#FF970D]">{websiteCMS.footerEmail}</a>
+                <a href={`mailto:${business.email}`} className="transition hover:text-[#FF970D]">{business.email}</a>
               </li>
               <li className="flex items-center gap-3">
                 <Phone className="h-5 w-5 text-[#4DA528]" />
-                <a href={`tel:${safeFooterPhone.replace(/[^0-9+]/g, '')}`} className="transition hover:text-[#FF970D]">{safeFooterPhone}</a>
+                <a href={business.phoneHref} className="transition hover:text-[#FF970D]">{business.phone}</a>
               </li>
               <li className="flex items-start gap-3">
                 <MapPin className="mt-1 h-5 w-5 shrink-0 text-[#4DA528]" />
-                <span>{websiteCMS.footerAddress}</span>
+                <span>{business.address}</span>
               </li>
             </ul>
           </div>
@@ -152,11 +138,11 @@ export default function Footer({ onNavigate, websiteCMS, gallery, loading = fals
                 <p>Newsletter signup is currently unavailable.</p>
               </div>
             </form>
-            {socialLinks.length > 0 && <ul className="mt-8 flex gap-3">
-              {socialLinks.map(([item, href]) => (
-                <li key={item}>
+            {business.socialLinks.length > 0 && <ul className="mt-8 flex gap-3">
+              {business.socialLinks.map(({ label, href }) => (
+                <li key={label}>
                   <a href={href} target="_blank" rel="noopener noreferrer" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 text-[12px] font-bold uppercase text-white/70 transition hover:border-[#4DA528] hover:bg-[#4DA528] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#081E2A]">
-                    {item}
+                    {socialLabels[label] || label.slice(0, 2)}
                   </a>
                 </li>
               ))}
@@ -165,7 +151,7 @@ export default function Footer({ onNavigate, websiteCMS, gallery, loading = fals
         </div>
 
         <div className="flex flex-col items-center justify-between gap-5 py-8 text-[14px] text-white/62 md:flex-row">
-          <p>Copyright © {currentYear} by <span className="text-[#4DA528]">Pravaah Travels.</span> All Rights Reserved</p>
+          <p>Copyright © {currentYear} by <span className="text-[#4DA528]">{business.companyName}.</span> All Rights Reserved</p>
           <div className="flex flex-wrap items-center justify-center gap-5">
             <button onClick={() => onNavigate('admin-dashboard')} className="flex cursor-pointer items-center gap-2 transition hover:text-[#4DA528]">
               <Shield className="h-4 w-4" />

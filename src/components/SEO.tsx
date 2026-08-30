@@ -8,6 +8,7 @@ interface SEOProps {
   ogImage?: string;
   ogType?: 'website' | 'article' | 'travel';
   schemaMarkup?: object;
+  siteName?: string;
 }
 
 /**
@@ -21,12 +22,13 @@ export default function SEO({
   canonicalUrl,
   ogImage = 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&q=80',
   ogType = 'website',
-  schemaMarkup
+  schemaMarkup,
+  siteName = 'Pravaah Travels',
 }: SEOProps) {
   useEffect(() => {
     // 1. Title
     const safeTitle = String(title ?? '');
-    const formattedTitle = safeTitle.toLowerCase().includes('pravaah travels') ? safeTitle : `${safeTitle} | Pravaah Travels`;
+    const formattedTitle = safeTitle.toLowerCase().includes(siteName.toLowerCase()) ? safeTitle : `${safeTitle} | ${siteName}`;
     document.title = formattedTitle;
 
     // 2. Helper to set or create meta tag
@@ -53,7 +55,7 @@ export default function SEO({
     setMetaTag('property', 'og:image', ogImage);
     setMetaTag('property', 'og:url', currentUrl);
     setMetaTag('property', 'og:type', ogType);
-    setMetaTag('property', 'og:site_name', 'Pravaah Travels');
+    setMetaTag('property', 'og:site_name', siteName);
 
     // 5. Set Twitter Card Tags
     setMetaTag('name', 'twitter:card', 'summary_large_image');
@@ -79,25 +81,10 @@ export default function SEO({
     const defaultSchema = {
       '@context': 'https://schema.org',
       '@type': 'TravelAgency',
-      'name': 'Pravaah Travels',
+      'name': siteName,
       'image': ogImage,
       'description': description,
-      'url': window.location.origin,
-      'telephone': '+91-98765-43210',
-      'priceRange': '$$$',
-      'address': {
-        '@type': 'PostalAddress',
-        'streetAddress': 'Spiti Highway',
-        'addressLocality': 'Shimla',
-        'addressRegion': 'Himachal Pradesh',
-        'postalCode': '171001',
-        'addressCountry': 'IN'
-      },
-      'geo': {
-        '@type': 'GeoCoordinates',
-        'latitude': '31.1048',
-        'longitude': '77.1734'
-      }
+      'url': currentUrl,
     };
 
     const script = document.createElement('script');
@@ -113,7 +100,7 @@ export default function SEO({
         scriptToRemove.remove();
       }
     };
-  }, [title, description, keywords, canonicalUrl, ogImage, ogType, schemaMarkup]);
+  }, [title, description, keywords, canonicalUrl, ogImage, ogType, schemaMarkup, siteName]);
 
   return null; // Side-effect only component
 }

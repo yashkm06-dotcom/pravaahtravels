@@ -4,12 +4,14 @@ import {
   ChevronDown, ChevronUp, Trash2, GripVertical, Sliders, ArrowUp, ArrowDown, Sparkles, Phone, Compass, HelpCircle, CheckCircle2, Heart,
   Star, Camera, ChevronRight, AlertCircle, MessageCircle, BedDouble, Car, Utensils
 } from 'lucide-react';
-import { TravelPackage, Enquiry, Review, WebsiteCMSSettings, DEFAULT_WEBSITE_CMS, formatPrice } from '../types';
+import { TravelPackage, Enquiry, Review, WebsiteCMSSettings, DEFAULT_WEBSITE_CMS, formatPrice, formatPackagePrice } from '../types';
 import { db, collection, addDoc, auth, getDocs, query, where, orderBy, limit } from '../lib/firebase';
 import { triggerSystemEmail } from '../lib/emailClient';
 import InteractiveRouteMap from './InteractiveRouteMap';
 import { DEFAULT_TRAVEL_IMAGE, getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 import { SkeletonCard } from './SkeletonLoader';
+import { openPackage } from '../utils/packageRoute';
+import { resolveBusinessProfile } from '../utils/businessProfile';
 
 interface PackageDetailViewProps {
   pkg: TravelPackage;
@@ -24,24 +26,6 @@ interface PackageDetailViewProps {
   packages?: TravelPackage[];
   websiteCMS?: WebsiteCMSSettings;
 }
-
-const slugifyPackageTitle = (value: string) => String(value ?? '')
-  .toLowerCase()
-  .trim()
-  .replace(/&/g, 'and')
-  .replace(/[^a-z0-9]+/g, '-')
-  .replace(/^-+|-+$/g, '');
-
-const getPackageRouteSegment = (pkg: Pick<TravelPackage, 'id' | 'title'>) => {
-  const slug = slugifyPackageTitle(pkg.title);
-  return slug ? `${slug}-${pkg.id}` : String(pkg.id);
-};
-
-const sanitizeWhatsAppPhone = (value?: string) => {
-  const digits = String(value ?? '').replace(/[^\d]/g, '');
-  if (!digits) return '';
-  return digits.startsWith('91') ? digits : `91${digits.replace(/^0+/, '')}`;
-};
 
 const getMatchingListItems = (items: string[] | undefined, terms: string[]) => {
   return (items || []).filter((item) => {
@@ -63,6 +47,7 @@ export default function PackageDetailView({
   packages = [],
   websiteCMS = DEFAULT_WEBSITE_CMS,
 }: PackageDetailViewProps) {
+  const business = useMemo(() => resolveBusinessProfile(websiteCMS), [websiteCMS]);
   // Accordion state for itinerary days
   const [activeDay, setActiveDay] = useState<number | null>(1);
   const [selectedGalleryImage, setSelectedGalleryImage] = useState(0);
@@ -619,7 +604,7 @@ export default function PackageDetailView({
     { label: 'Meals', value: mealPlanItems[0] || 'Not specified', icon: Utensils },
     { label: 'Transport', value: transportationItems[0] || 'Not specified', icon: Car },
     { label: 'Rating', value: averageRating ? `${averageRating.toFixed(1)} / 5` : 'No reviews yet', icon: Star },
-    { label: 'Starting Price', value: formatPrice(pkg.offerPrice || pkg.price), icon: Check },
+    { label: 'Starting Price', value: formatPackagePrice(pkg.offerPrice || pkg.price), icon: Check },
   ];
   const includedItems = (pkg.inclusions || []).filter(Boolean).slice(0, 8);
   const excludedItems = (pkg.exclusions || []).filter(Boolean).slice(0, 8);
@@ -641,8 +626,7 @@ export default function PackageDetailView({
       ))
       .slice(0, 3);
   }, [packages, pkg.activityId, pkg.category, pkg.destination, pkg.id, pkg.location]);
-  const whatsappPhone = sanitizeWhatsAppPhone(websiteCMS.footerPhone) || sanitizeWhatsAppPhone(DEFAULT_WEBSITE_CMS.footerPhone);
-  const packageWhatsAppUrl = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Hello,\nI am interested in the ${pkg.title} Package.\nPlease send complete details.`)}`;
+  const packageWhatsAppUrl = business.whatsappUrl(`Hello ${business.companyName},\nI am interested in the ${pkg.title} package.\nPlease send complete details.`);
 
   return (
     <div id="package-detail-view" className="animate-fade-in overflow-hidden bg-[#fffaf1]">
@@ -713,7 +697,7 @@ export default function PackageDetailView({
                 </span>
               </div>
               <p className="price-sale text-main mt-4 text-[34px] font-extrabold text-[#4DA528]">
-                {formatPrice(pkg.offerPrice || pkg.price)}
+                {formatPackagePrice(pkg.offerPrice || pkg.price)}
                 {pkg.offerPrice && <span className="price ml-3 text-[18px] font-semibold text-white/58 line-through">{formatPrice(pkg.price)}</span>}
               </p>
               <p className="mt-2 text-[13px] leading-6 text-white/72">Starting price per person. Final quote depends on route, dates, hotels, and group size.</p>
@@ -1181,7 +1165,7 @@ export default function PackageDetailView({
                       <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] text-amber-700">Save {formatPrice((pkg.price || 0) - pkg.offerPrice)}</span>
                     ) : null}
                   </div>
-                  <div className="total text-main mt-1 text-3xl font-extrabold text-[#4DA528]">{formatPrice(pkg.offerPrice || pkg.price)}</div>
+                  <div className="total text-main mt-1 text-3xl font-extrabold text-[#4DA528]">{formatPackagePrice(pkg.offerPrice || pkg.price)}</div>
                   <div className="mt-4 space-y-3 text-sm text-stone-600">
                     <div className="flex-two flex items-center justify-between gap-4">
                       <span className="label font-semibold">Duration:</span>
@@ -1275,7 +1259,7 @@ export default function PackageDetailView({
                   </div>
                   <h4 className="text-lg font-semibold text-stone-950">Enquiry submitted</h4>
                   <p className="text-sm leading-7 text-stone-600">
-                    Thank you for reaching out to Pravaah Travels. Our travel expert will call you shortly on the provided contact number.
+                    Thank you for reaching out to {business.companyName}. Our travel expert will call you shortly on the provided contact number.
                   </p>
                   <button
                     onClick={() => {
@@ -1508,7 +1492,7 @@ export default function PackageDetailView({
                     </div>
                     <button
                       type="button"
-                      onClick={() => onNavigate?.('package-detail', getPackageRouteSegment(related))}
+                      onClick={() => onNavigate && openPackage(onNavigate, related)}
                       className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[5px] bg-stone-950 px-4 py-3 text-[10px] font-extrabold uppercase tracking-[0.16em] text-white transition hover:bg-[#4DA528]"
                     >
                       View Similar Tour
@@ -1573,7 +1557,7 @@ export default function PackageDetailView({
         <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-stone-500">Starting from</p>
-            <p className="text-base font-extrabold text-[#4DA528]">{formatPrice(pkg.offerPrice || pkg.price)}</p>
+            <p className="text-base font-extrabold text-[#4DA528]">{formatPackagePrice(pkg.offerPrice || pkg.price)}</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -1689,7 +1673,7 @@ export default function PackageDetailView({
                   </button>
                 </div>
                 <a
-                  href={`https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Hello Pravaah Travels,\nI have submitted my booking.\nBooking ID: ${submittedBooking?.bookingId || 'PRV-2026-0001'}\nPackage: ${submittedBooking?.packageTitle || bookingForm.packageTitle}\nPlease confirm my booking.`)}`}
+                  href={business.whatsappUrl(`Hello ${business.companyName},\nI have submitted my booking.\nBooking ID: ${submittedBooking?.bookingId || 'PRV-2026-0001'}\nPackage: ${submittedBooking?.packageTitle || bookingForm.packageTitle}\nPlease confirm my booking.`)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-[11px] font-extrabold uppercase tracking-[0.16em] text-emerald-700"
@@ -1904,7 +1888,7 @@ export default function PackageDetailView({
                       <button type="button" onClick={() => downloadBookingDocument('voucher')} className="flex-1 rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-700">Download Voucher</button>
                       <button type="button" onClick={() => downloadBookingDocument('invoice')} className="flex-1 rounded-[10px] border border-stone-200 bg-white px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-700">Download Invoice</button>
                     </div>
-                    <a href={`https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Hello Pravaah Travels, I have booked ${bookingForm.packageTitle}. Booking ID: ${submittedBooking?.bookingId || 'PRV-2026-0001'}`)}`} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">WhatsApp Confirmation</a>
+                    <a href={business.whatsappUrl(`Hello ${business.companyName}, I have booked ${bookingForm.packageTitle}. Booking ID: ${submittedBooking?.bookingId || 'PRV-2026-0001'}`)} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">WhatsApp Confirmation</a>
                   </div>
                 )}
 

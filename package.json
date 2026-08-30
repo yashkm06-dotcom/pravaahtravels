@@ -4,13 +4,23 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs",
+    "dev": "npm run dev:staging",
+    "dev:staging": "node --import tsx scripts/validate-environment.ts staging && APP_ENV=staging tsx server.ts",
+    "dev:production": "node --import tsx scripts/validate-environment.ts production && APP_ENV=production tsx server.ts",
+    "build": "npm run build:production",
+    "build:production": "node --import tsx scripts/validate-environment.ts production && vite build --mode production && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs",
+    "build:staging": "node --import tsx scripts/validate-environment.ts staging && vite build --mode staging && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "set-admin-claim": "tsx scripts/set-admin-claim.ts",
-    "preview": "vite preview"
+    "migrate:public-content:dry-run": "node --import tsx scripts/migrate-public-content-to-staging.ts",
+    "migrate:public-content": "node --import tsx scripts/migrate-public-content-to-staging.ts --apply",
+    "set-staging-admin-claim": "node --import tsx scripts/set-admin-claim.ts",
+    "create:staging:roopkund:dry-run": "node --import tsx scripts/create-staging-roopkund-package.ts",
+    "create:staging:roopkund": "node --import tsx scripts/create-staging-roopkund-package.ts --apply",
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -40,9 +50,11 @@
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
+    "sharp": "0.35.3",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "@playwright/test": "^1.62.1"
   }
 }

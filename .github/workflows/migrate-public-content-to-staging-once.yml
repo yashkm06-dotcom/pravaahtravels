@@ -1,0 +1,142 @@
+name: One-time staging public content migration
+
+on:
+  push:
+    branches:
+      - staging
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: one-time-staging-public-content-migration
+  cancel-in-progress: false
+
+env:
+  AUTHORIZED_MIGRATION_MESSAGE: 'chore(staging): run public content migration [RUN-STAGING-PUBLIC-MIGRATION]'
+
+jobs:
+  migration_message_guard:
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      run_migration: ${{ steps.exact_message.outputs.run_migration }}
+    steps:
+      - name: Check exact authorized commit message
+        id: exact_message
+        shell: bash
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          if [ "$HEAD_COMMIT_MESSAGE" = "$AUTHORIZED_MIGRATION_MESSAGE" ]; then
+            echo "run_migration=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_migration=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  migrate-public-content:
+    needs: migration_message_guard
+    if: >-
+      github.ref == 'refs/heads/staging' &&
+      needs.migration_message_guard.outputs.run_migration == 'true'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 60
+
+    env:
+      SOURCE_PROJECT_ID: zealous-theory-q09p9
+      SOURCE_DATABASE_ID: ai-studio-e139cba2-4b0b-4550-a190-1ca3520d6d45
+      SOURCE_STORAGE_BUCKET: zealous-theory-q09p9.firebasestorage.app
+      DESTINATION_PROJECT_ID: pravaah-travels-test
+      DESTINATION_DATABASE_ID: (default)
+      DESTINATION_STORAGE_BUCKET: pravaah-travels-test.firebasestorage.app
+      EXPECTED_WIF_SERVICE_ACCOUNT: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+    steps:
+      - name: Checkout staging
+        uses: actions/checkout@v4
+
+      - name: Verify immutable workflow context
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/staging"
+          test "$DESTINATION_PROJECT_ID" = "pravaah-travels-test"
+          test "$DESTINATION_PROJECT_ID" != "zealous-theory-q09p9"
+          test "$DESTINATION_DATABASE_ID" = "(default)"
+          test "$DESTINATION_STORAGE_BUCKET" = "pravaah-travels-test.firebasestorage.app"
+          test "$SOURCE_PROJECT_ID" = "zealous-theory-q09p9"
+          test "$SOURCE_DATABASE_ID" = "ai-studio-e139cba2-4b0b-4550-a190-1ca3520d6d45"
+          test "$SOURCE_STORAGE_BUCKET" = "zealous-theory-q09p9.firebasestorage.app"
+          test "$HEAD_COMMIT_MESSAGE" = "$AUTHORIZED_MIGRATION_MESSAGE"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify image transformer
+        run: node -e "import('sharp').then((module) => console.log('sharp', module.default.versions.sharp))"
+
+      - name: Fingerprint reviewed migration implementation
+        run: |
+          set -euo pipefail
+          implementation_hash="$(sha256sum scripts/migrate-public-content-to-staging.ts package.json package-lock.json | sha256sum | awk '{print $1}')"
+          test -n "$implementation_hash"
+          echo "MIGRATION_IMPLEMENTATION_SHA256=$implementation_hash" >> "$GITHUB_ENV"
+          echo "Migration implementation SHA-256: $implementation_hash"
+
+      - name: Authenticate with staging WIF
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: pravaah-travels-test
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Setup Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: pravaah-travels-test
+
+      - name: Verify WIF credentials and destination identity
+        run: |
+          set -euo pipefail
+          test -n "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          test -s "$GOOGLE_APPLICATION_CREDENTIALS"
+          test "${GOOGLE_CLOUD_PROJECT:-}" = "pravaah-travels-test"
+          test "$(gcloud config get-value project 2>/dev/null)" = "pravaah-travels-test"
+          active_account="$(gcloud auth list --filter=status:ACTIVE --format='value(account)')"
+          test -n "$EXPECTED_WIF_SERVICE_ACCOUNT"
+          test "$active_account" = "$EXPECTED_WIF_SERVICE_ACCOUNT"
+          case "$active_account" in
+            *zealous-theory-q09p9*) echo "Production service account rejected."; exit 1 ;;
+            *@*.iam.gserviceaccount.com) ;;
+            *) echo "Unexpected WIF principal format."; exit 1 ;;
+          esac
+          test "$DESTINATION_PROJECT_ID" != "$SOURCE_PROJECT_ID"
+          echo "WIF identity and staging destination guards passed."
+
+      - name: Run immutable dry-run
+        env:
+          MIGRATION_REPORT_PATH: ${{ runner.temp }}/public-content-dry-run-report.json
+        run: npm run migrate:public-content:dry-run
+
+      - name: Upload dry-run report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-content-migration-dry-run-${{ github.run_id }}
+          path: ${{ runner.temp }}/public-content-dry-run-report.json
+          if-no-files-found: error
+          retention-days: 14
