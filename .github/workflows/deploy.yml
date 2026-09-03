@@ -173,21 +173,18 @@ jobs:
 
       # The production build reads packages/blogs from Firestore for the
       # sitemap (scripts/generate-seo.ts), so WIF auth must run BEFORE the
-      # build. The credential file is handed to the Node process via
-      # GOOGLE_APPLICATION_CREDENTIALS (token_format: access produces an
-      # authorized_user file that firebase-admin's ADC can consume).
+      # build. With create_credentials_file + export_environment_variables
+      # (both default true) the action writes a short-lived credentials file
+      # and exports GOOGLE_APPLICATION_CREDENTIALS for every later step in the
+      # job (build + firebase deploy), which firebase-admin's ADC consumes.
       - name: Authenticate to Google Cloud - Production
         uses: google-github-actions/auth@v3
         with:
           project_id: zealous-theory-q09p9
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
-          token_format: access
-          cred_file: '${{ github.workspace }}/ci-gcp.json'
 
       - name: Build production
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: '${{ github.workspace }}/ci-gcp.json'
         run: npm run build:production
 
       - name: Install functions dependencies
