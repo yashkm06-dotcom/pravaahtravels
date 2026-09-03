@@ -154,6 +154,11 @@ export interface Enquiry {
   message: string;
   packageId?: string;
   packageName?: string; // Cache for easy dashboard view
+  packageSlug?: string;
+  whatsapp?: string;
+  preferredAccommodation?: string;
+  pickupLocation?: string;
+  sourceUrl?: string;
   status: EnquiryStatus;
   adults?: number;
   children?: number;

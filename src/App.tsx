@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { onAuthStateChanged, signOut, getIdTokenResult } from 'firebase/auth';
 import { auth, db, collection, getDocs, query, orderBy, deleteDoc, doc, getDoc, onSnapshot, where, addDoc } from './lib/firebase';
-import { MessageCircle, Sparkles, Compass } from 'lucide-react';
+import { MessageCircle, Sparkles, Compass, X } from 'lucide-react';
 import { TravelPackage, Enquiry, GalleryImage, WebsiteCMSSettings, ActivityItem, ActivityChildItem, ActivityRecommendation, FeaturedCategoryItem, BlogPost, DEFAULT_WEBSITE_CMS } from './types';
 
 // Component imports
@@ -14,6 +14,7 @@ import CookieConsent from './components/CookieConsent';
 import SkeletonLoader from './components/SkeletonLoader';
 import GoogleReviews, { GoogleReviewsCache } from './components/GoogleReviews';
 import { isStaging } from './lib/environment';
+import { PRODUCTION_SITE_ORIGIN } from './utils/seoSitemap';
 import {
   getCustomLandingRegistration,
   getRegisteredCustomLandingPath,
@@ -75,11 +76,7 @@ interface PackageFilterSelection {
 
 const getPackageCanonicalUrl = (pkg: Pick<TravelPackage, 'id' | 'title' | 'customLandingPage'>) => {
   const target = getPackageNavigationTarget(pkg);
-  if (target.view === 'custom-landing') {
-    return `https://pravaahtravels.com${target.path}`;
-  }
-  if (typeof window === 'undefined') return target.path;
-  return `${window.location.origin}${target.path}`;
+  return `${PRODUCTION_SITE_ORIGIN}${target.path}`;
 };
 
 const getRouteStateFromUrl = (): RouteState => {
@@ -629,9 +626,13 @@ export default function App() {
     if (currentView === 'custom-landing') {
       const customPath = getRegisteredCustomLandingPath(selectedPackageId);
       if (!customPath) return null;
+      const customLandingPaths = new Set([
+        customPath,
+        ...(getCustomLandingRegistration(selectedPackageId)?.packageMatchPaths || []),
+      ]);
       const matchingPackages = packages.filter((pkg) => (
         pkg.active !== false
-        && getRegisteredCustomLandingPath(pkg.customLandingPage) === customPath
+        && customLandingPaths.has(getRegisteredCustomLandingPath(pkg.customLandingPage))
       ));
       return matchingPackages.length === 1 ? matchingPackages[0] : null;
     }
@@ -658,12 +659,14 @@ export default function App() {
     : null;
   const CustomLandingComponent = customLandingRegistration?.component;
   const isImmersiveCustomLanding = customLandingRegistration?.shell === 'immersive';
+  const canRenderCustomLanding = Boolean(
+    CustomLandingComponent
+    && (activeSelectedPackage || customLandingRegistration?.allowWithoutPackage),
+  );
 
   const pageSeo = useMemo(() => {
-    const baseUrl = typeof window === 'undefined' ? 'https://pravaahtravels.com' : window.location.origin;
-    const structuredDataBaseUrl = currentView === 'custom-landing'
-      ? 'https://pravaahtravels.com'
-      : baseUrl;
+    const baseUrl = PRODUCTION_SITE_ORIGIN;
+    const structuredDataBaseUrl = PRODUCTION_SITE_ORIGIN;
     const fallbackTitle = websiteCMS.seoTitle || DEFAULT_WEBSITE_CMS.seoTitle;
     const fallbackDescription = websiteCMS.seoDescription || DEFAULT_WEBSITE_CMS.seoDescription;
     const fallbackKeywords = websiteCMS.seoKeywords || DEFAULT_WEBSITE_CMS.seoKeywords;
@@ -729,7 +732,14 @@ export default function App() {
       },
     };
 
-    const activeMeta = viewMeta[currentView] || viewMeta.home;
+    const customLandingMeta = currentView === 'custom-landing' && customLandingRegistration
+      ? {
+        title: customLandingRegistration.seoTitle || activeSelectedPackage?.seoTitle || activeSelectedPackage?.title || 'Travel Expedition',
+        description: customLandingRegistration.seoDescription || activeSelectedPackage?.seoDescription || activeSelectedPackage?.shortDescription || fallbackDescription,
+        canonicalPath: customLandingRegistration.path,
+      }
+      : null;
+    const activeMeta = customLandingMeta || viewMeta[currentView] || viewMeta.home;
     const title = activeSelectedBlogPost
       ? `${activeSelectedBlogPost.title} | ${businessProfile.companyName}`
       : activeSelectedPackage?.seoTitle || activeSelectedPackage?.title || activeMeta.title;
@@ -779,6 +789,28 @@ export default function App() {
           } : {}),
         },
       ],
+    } : currentView === 'custom-landing' && customLandingRegistration ? {
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'TravelAgency',
+          name: businessProfile.companyName,
+          url: structuredDataBaseUrl,
+          image: ogImage,
+          telephone: phone,
+          email: businessProfile.email,
+          address,
+        },
+        {
+          '@type': 'TouristTrip',
+          additionalType: 'AdventureTour',
+          name: title,
+          description,
+          image: ogImage,
+          url: canonicalUrl,
+          touristType: 'Adventure travellers',
+        },
+      ],
     } : currentView === 'blog-detail' && activeSelectedBlogPost ? {
       '@context': 'https://schema.org',
       '@graph': [
@@ -814,27 +846,74 @@ export default function App() {
       ],
     } : {
       '@context': 'https://schema.org',
-      '@type': 'TravelAgency',
-      name: businessProfile.companyName,
-      url: structuredDataBaseUrl,
-      image: ogImage,
-      description,
-      telephone: phone,
-      email: businessProfile.email,
-      address,
+      '@graph': [
+        {
+          '@type': 'TravelAgency',
+          name: businessProfile.companyName,
+          url: structuredDataBaseUrl,
+          image: ogImage,
+          description,
+          telephone: phone,
+          email: businessProfile.email,
+          address,
+        },
+        {
+          '@type': 'WebSite',
+          name: businessProfile.companyName,
+          url: structuredDataBaseUrl,
+        },
+      ],
     };
+
+    const breadcrumbLabels = currentView === 'package-detail' && activeSelectedPackage
+      ? ['Packages', activeSelectedPackage.title]
+      : currentView === 'blog-detail' && activeSelectedBlogPost
+        ? ['Journal', activeSelectedBlogPost.title]
+        : currentView === 'custom-landing' && customLandingRegistration
+          ? ['Journeys', title]
+          : null;
+    const breadcrumbParentPath = currentView === 'blog-detail' ? '/blogs' : '/packages';
+    const schemaWithBreadcrumb = breadcrumbLabels ? {
+      '@context': 'https://schema.org',
+      '@graph': [
+        ...(('@graph' in schemaMarkup && Array.isArray(schemaMarkup['@graph']) ? schemaMarkup['@graph'] : [schemaMarkup])),
+        {
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: `${PRODUCTION_SITE_ORIGIN}/` },
+            ...breadcrumbLabels.map((label, index) => ({
+              '@type': 'ListItem',
+              position: index + 2,
+              name: label,
+              item: index === breadcrumbLabels.length - 1 ? canonicalUrl : `${PRODUCTION_SITE_ORIGIN}${breadcrumbParentPath}`,
+            })),
+          ],
+        },
+      ],
+    } : schemaMarkup;
+
+    const privateRoute = ['admin-dashboard', 'admin-login', 'portal'].includes(currentView);
+    const unresolvedPublicContent = (currentView === 'package-detail' && !activeSelectedPackage)
+      || (currentView === 'blog-detail' && !activeSelectedBlogPost)
+      || currentView === 'attraction-detail';
+    const robots = isStaging || privateRoute || unresolvedPublicContent
+      ? 'noindex, nofollow, noarchive, nosnippet'
+      : 'index, follow';
 
     return {
       title,
       description,
-      keywords: activeSelectedPackage
+      keywords: currentView === 'custom-landing' && customLandingRegistration?.seoKeywords
+        ? customLandingRegistration.seoKeywords
+        : activeSelectedPackage
         ? `${activeSelectedPackage.title}, ${activeSelectedPackage.destination}, ${activeSelectedPackage.category}, ${fallbackKeywords}`
         : activeSelectedBlogPost
           ? `${activeSelectedBlogPost.title}, ${activeSelectedBlogPost.category}, ${(activeSelectedBlogPost.tags || []).join(', ')}, ${activeSelectedBlogPost.seoKeywords || fallbackKeywords}`
           : fallbackKeywords,
       canonicalUrl,
       ogImage,
-      schemaMarkup,
+      schemaMarkup: schemaWithBreadcrumb,
+      robots,
     };
   }, [activeSelectedBlogPost, activeSelectedPackage, businessProfile, currentView, customLandingRegistration, selectedPackageId, websiteCMS]);
 
@@ -892,7 +971,7 @@ export default function App() {
 
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-gray-800 font-sans" id="app-root">
+    <div className={`min-h-screen flex flex-col bg-slate-50 text-gray-800 font-sans pravaah-app-shell pravaah-route-${currentView}`} id="app-root">
       {isStaging && (
         <div className="sticky top-0 z-[100] bg-amber-400 px-3 py-1 text-center text-xs font-bold tracking-[0.18em] text-stone-950">
           STAGING / TEST ENVIRONMENT
@@ -904,9 +983,10 @@ export default function App() {
         keywords={pageSeo.keywords}
         canonicalUrl={pageSeo.canonicalUrl}
         ogImage={pageSeo.ogImage}
-        ogType={activeSelectedPackage ? 'travel' : currentView === 'attraction-detail' || currentView === 'blog-detail' ? 'article' : 'website'}
+        ogType={activeSelectedPackage || currentView === 'custom-landing' ? 'travel' : currentView === 'attraction-detail' || currentView === 'blog-detail' ? 'article' : 'website'}
         schemaMarkup={pageSeo.schemaMarkup}
         siteName={businessProfile.companyName}
+        robots={pageSeo.robots}
       />
       {currentView !== 'admin-dashboard' && !isImmersiveCustomLanding && <CookieConsent />}
       
@@ -930,6 +1010,7 @@ export default function App() {
             <HomeView
               featuredPackages={featuredPackages}
               onNavigate={handleNavigate}
+              onEnquire={handleOpenQuoteModal}
               loading={loadingData}
               isAdminLoggedIn={isAdminLoggedIn}
               onDeletePackage={handleDeletePackage}
@@ -952,6 +1033,7 @@ export default function App() {
             <DestinationsView
               onSelectCategory={handleSelectCategory}
               onSelectFilter={(filters) => openPackagesWithFilters(filters, false)}
+              onNavigate={handleNavigate}
               packages={packages}
               featuredCategories={featuredCategories}
               loading={loadingData}
@@ -1009,7 +1091,7 @@ export default function App() {
             </div>
           )}
 
-          {currentView === 'custom-landing' && CustomLandingComponent && activeSelectedPackage && (
+          {currentView === 'custom-landing' && canRenderCustomLanding && CustomLandingComponent && (
             <CustomLandingComponent
               pkg={activeSelectedPackage}
               business={businessProfile}
@@ -1018,7 +1100,7 @@ export default function App() {
             />
           )}
 
-          {currentView === 'custom-landing' && !loadingData && (!CustomLandingComponent || !activeSelectedPackage) && (
+          {currentView === 'custom-landing' && !loadingData && !canRenderCustomLanding && (
             <div className="flex min-h-[70vh] items-center justify-center bg-[#faf8f3] px-4 py-20 text-center">
               <div className="max-w-lg rounded-[28px] border border-stone-200 bg-white p-8 shadow-[0_24px_80px_rgba(18,38,32,0.10)]">
                 <Compass className="mx-auto h-12 w-12 text-[#4DA528]" />
@@ -1078,7 +1160,7 @@ export default function App() {
             <VerifiedReviews onNavigate={handleNavigate} />
           )}
 
-          {currentView === 'about' && <AboutView />}
+          {currentView === 'about' && <AboutView websiteCMS={websiteCMS} />}
 
           {currentView === 'ai-curator' && (
             <AiCuratorView 
@@ -1128,17 +1210,17 @@ export default function App() {
 
       {showLoginModal && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/70 px-4 py-6 backdrop-blur-sm"
+          className="pravaah-login-overlay fixed inset-0 z-[1100] flex items-center justify-center bg-stone-950/70 px-4 py-6 backdrop-blur-sm"
           onClick={handleCloseLoginModal}
         >
-          <div className="relative w-full max-w-md" onClick={(event) => event.stopPropagation()}>
+          <div className="relative w-full max-w-5xl" onClick={(event) => event.stopPropagation()}>
             <button
               type="button"
               onClick={handleCloseLoginModal}
               className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 shadow-sm transition hover:bg-stone-50 hover:text-stone-900"
               aria-label="Close login dialog"
             >
-              ×
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
             <LoginModal
               onLoginSuccess={(isAdmin) => {
@@ -1177,77 +1259,34 @@ export default function App() {
         <Footer onNavigate={handleNavigate} websiteCMS={websiteCMS} gallery={gallery} loading={loadingData} />
       )}
 
-      {/* Floating Action Buttons Vertical Stack */}
+      {/* Persistent travel desk actions */}
       {currentView !== 'admin-dashboard' && !isImmersiveCustomLanding && (
-        <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3" id="floating-actions-stack">
-          
-          {/* Premium Enquiry Floating Button */}
+        <div className="pravaah-float-actions" id="floating-actions-stack">
           <button
             type="button"
             onClick={() => handleOpenQuoteModal()}
-            className="flex items-center gap-2.5 rounded-full border border-[#4DA528]/40 bg-stone-900 px-4 py-3 text-white shadow-lg transition-all duration-300 ease-out hover:scale-105 hover:bg-[#4DA528] hover:shadow-xl sm:px-5 sm:py-3.5 cursor-pointer relative group"
+            className="pravaah-float-action pravaah-float-action--accent"
           >
-            {/* Ambient Pulse */}
-            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#4DA528] opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-[#4DA528]"></span>
-            </span>
-
-            <Sparkles className="w-5 h-5 text-[#4DA528] group-hover:text-white transition-colors duration-200 animate-pulse" />
-            
-            <div className="flex flex-col text-left">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-300 group-hover:text-white leading-none">Plan Your Trip</span>
-              <span className="text-[8.5px] text-stone-400 group-hover:text-white/80 font-light leading-none mt-0.5">
-                Get Free Quote
-              </span>
-            </div>
+            <Sparkles className="h-4 w-4" aria-hidden="true" />
+            <span>Plan your trip<small>Get a free quote</small></span>
           </button>
-
-          {/* Chat with us (WhatsApp) Floating Button */}
           <a
             href={getWhatsAppUrl()}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2.5 bg-[#008080] hover:bg-[#006666] text-white px-4 py-3 sm:px-5 sm:py-3.5 rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 ease-out cursor-pointer relative border border-[#008080]/30 group"
+            className="pravaah-float-action"
           >
-            {/* Emerald Breathing Pulse */}
-            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500"></span>
-            </span>
-
-            <MessageCircle className="w-5 h-5 text-emerald-400 group-hover:text-white transition-colors duration-200" />
-            
-            <div className="flex flex-col text-left">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-100 group-hover:text-white leading-none">Chat with us</span>
-              <span className="text-[8.5px] text-stone-200 group-hover:text-teal-100 font-light leading-none mt-0.5">
-                On WhatsApp
-              </span>
-            </div>
+            <MessageCircle className="h-4 w-4" aria-hidden="true" />
+            <span>Chat with us<small>On WhatsApp</small></span>
           </a>
-
-          {/* Contact Us Floating Button */}
           <button
             type="button"
             onClick={() => handleNavigate('contact')}
-            className={`flex items-center gap-2.5 bg-stone-900 hover:bg-[#008080] text-white px-4 py-3 sm:px-5 sm:py-3.5 rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 ease-out cursor-pointer relative border border-stone-800 group ${currentView === 'contact' ? 'bg-[#008080]' : ''}`}
+            className={`pravaah-float-action ${currentView === 'contact' ? 'is-active' : ''}`}
           >
-            {/* Amber Breathing Pulse */}
-            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-500"></span>
-            </span>
-
-            <Compass className="w-5 h-5 text-amber-400 group-hover:text-white transition-colors duration-200" />
-            
-            <div className="flex flex-col text-left">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-300 group-hover:text-white leading-none">Contact Us</span>
-              <span className="text-[8.5px] text-stone-400 group-hover:text-teal-100 font-light leading-none mt-0.5">
-                Direct Inquiry
-              </span>
-            </div>
+            <Compass className="h-4 w-4" aria-hidden="true" />
+            <span>Contact us<small>Direct enquiry</small></span>
           </button>
-
         </div>
       )}
 

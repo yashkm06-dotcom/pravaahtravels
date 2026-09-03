@@ -2911,13 +2911,13 @@ function AdminDashboardView({
 
 
   return (
-    <div id="admin-dashboard-layout" className="min-h-screen bg-[#f4f6f0] text-stone-800 animate-fade-in">
+    <div id="admin-dashboard-layout" className="pravaah-dashboard pravaah-admin-dashboard min-h-screen bg-[#f4f6f0] text-stone-800 animate-fade-in">
       
       {/* 1. Premium Admin Shell */}
       <div className="flex min-h-screen">
         
         {/* Navigation Sidebar */}
-        <aside className={`${isSidebarCollapsed ? 'w-[88px]' : 'w-[292px]'} hidden shrink-0 border-r border-white/10 bg-[#071d28] text-white shadow-[18px_0_50px_rgba(7,29,40,0.16)] transition-all duration-300 lg:flex lg:flex-col`}>
+        <aside className={`pravaah-admin-sidebar ${isSidebarCollapsed ? 'w-[88px]' : 'w-[292px]'} hidden shrink-0 border-r border-white/10 bg-[#071d28] text-white shadow-[18px_0_50px_rgba(7,29,40,0.16)] transition-all duration-300 lg:flex lg:flex-col`}>
           <div className="flex h-20 items-center justify-between border-b border-white/10 px-5">
             <div className={`flex items-center gap-3 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[#4DA528] text-white shadow-lg">
@@ -2998,7 +2998,7 @@ function AdminDashboardView({
 
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Premium Header Bar */}
-          <header className="sticky top-0 z-40 border-b border-stone-200/70 bg-white/88 px-4 py-4 shadow-[0_12px_35px_rgba(18,38,32,0.06)] backdrop-blur-xl sm:px-6">
+          <header className="pravaah-admin-topbar sticky top-0 z-40 border-b border-stone-200/70 bg-white/88 px-4 py-4 shadow-[0_12px_35px_rgba(18,38,32,0.06)] backdrop-blur-xl sm:px-6">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex items-center gap-3">
                 <button
@@ -3086,7 +3086,7 @@ function AdminDashboardView({
           </header>
 
         {/* Dynamic Display Area */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 xl:p-8">
+        <main className="pravaah-admin-main flex-1 overflow-y-auto p-4 sm:p-6 xl:p-8">
           
           {/* ==================================================== */}
           {/* TAB 1: OVERVIEW */}

@@ -6,12 +6,14 @@ import dotenv from 'dotenv';
 import { triggerSystemEmail } from './src/server/email';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth, type DecodedIdToken } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
+import { buildRobotsTxt, buildSitemapEntries, buildSitemapXml, type SitemapBlogRecord, type SitemapPackageRecord } from './src/utils/seoSitemap';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 
 app.use(express.json({ limit: '64kb' }));
 
@@ -339,94 +341,35 @@ app.post('/api/trigger-email', rateLimit(12, 10 * 60 * 1000), requireFirebaseAut
 // DYNAMIC SEO ENDPOINTS (ROBOTS.TXT & SITEMAP.XML)
 // ----------------------------------------------------
 app.get('/robots.txt', (req, res) => {
-  const origin = req.protocol + '://' + req.get('host');
-  const robots = `User-agent: *
-Allow: /
-Disallow: /admin-dashboard
-Disallow: /admin-login
-
-Sitemap: ${origin}/sitemap.xml
-`;
+  const isStaging = process.env.APP_ENV === 'staging' || process.env.VITE_APP_ENV === 'staging';
+  const robots = buildRobotsTxt({ staging: isStaging });
+  if (isStaging) res.set('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet');
   res.type('text/plain');
   res.send(robots);
 });
 
 app.get('/sitemap.xml', async (req, res) => {
-  const origin = req.protocol + '://' + req.get('host');
-  let packageUrls = '';
-
+  const isStaging = process.env.APP_ENV === 'staging' || process.env.VITE_APP_ENV === 'staging';
   try {
-    // Dynamically retrieve active packages from Firestore if Admin is initialized
-    const { getApps, initializeApp } = await import('firebase-admin/app');
-    const { getFirestore } = await import('firebase-admin/firestore');
-    
-    if (getApps().length === 0) {
-      initializeApp();
+    if (isStaging) {
+      res.type('application/xml');
+      return res.send(buildSitemapXml(buildSitemapEntries({ includeContent: false })));
     }
+
+    ensureAdminApp();
     const adminDb = getFirestore();
-    const snap = await adminDb.collection('packages').where('active', '==', true).get();
-    
-    snap.forEach((doc: any) => {
-      packageUrls += `  <url>\n    <loc>${origin}/package/${doc.id}</loc>\n    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.9</priority>\n  </url>\n`;
-    });
+    const [packageSnapshot, blogSnapshot] = await Promise.all([
+      adminDb.collection('packages').get(),
+      adminDb.collection('blogs').get(),
+    ]);
+    const packages: SitemapPackageRecord[] = packageSnapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Omit<SitemapPackageRecord, 'id'>) }));
+    const blogs: SitemapBlogRecord[] = blogSnapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Omit<SitemapBlogRecord, 'id'>) }));
+    res.type('application/xml');
+    return res.send(buildSitemapXml(buildSitemapEntries({ packages, blogs })));
   } catch (err) {
-    console.warn('[SEO] Failed dynamic package fetch for sitemap. Using basic fallback pages.', err);
+    console.error('[SEO] Failed to generate sitemap from public CMS data.', err);
+    return res.status(503).type('application/xml').send(buildSitemapXml(buildSitemapEntries({ includeContent: false })));
   }
-
-  const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>${origin}/</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>1.0</priority>
-  </url>
-  <url>
-    <loc>${origin}/packages</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>${origin}/destinations</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>${origin}/reviews</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>${origin}/gallery</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>${origin}/about</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>${origin}/contact</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>${origin}/ai-curator</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-${packageUrls}</urlset>`;
-
-  res.type('application/xml');
-  res.send(sitemap);
 });
 
 // ----------------------------------------------------

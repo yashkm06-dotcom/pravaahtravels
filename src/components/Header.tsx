@@ -1,7 +1,6 @@
-import { useState } from 'react';
-import { CalendarDays, Compass, Mail, Menu, Phone, Search, ShieldAlert, UserCircle, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ArrowUpRight, Compass, Mail, Menu, Phone, Search, ShieldCheck, UserCircle, X } from 'lucide-react';
 import { TravelPackage, WebsiteCMSSettings } from '../types';
-import { handleTravelImageError } from '../utils/imageFallback';
 import { resolveBusinessProfile } from '../utils/businessProfile';
 import GlobalSearch from './GlobalSearch';
 
@@ -15,287 +14,148 @@ interface HeaderProps {
   packages?: TravelPackage[];
 }
 
-export default function Header({
-  currentView,
-  onNavigate,
-  isAdminLoggedIn,
-  currentUser,
-  onAdminLogout,
-  websiteCMS,
-  packages = [],
-}: HeaderProps) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+const navItems = [
+  { label: 'Destinations', view: 'destinations' },
+  { label: 'Journeys', view: 'packages' },
+  { label: 'Journal', view: 'blogs' },
+  { label: 'The gallery', view: 'gallery' },
+  { label: 'About', view: 'about' },
+];
+
+export default function Header({ currentView, onNavigate, isAdminLoggedIn, currentUser, onAdminLogout, websiteCMS, packages = [] }: HeaderProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [openNav, setOpenNav] = useState<string | null>(null);
+  const [closingNav, setClosingNav] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
   const business = resolveBusinessProfile(websiteCMS);
 
-  const isValidSocialUrl = (url?: string) => {
-    if (!url) return false;
-    try {
-      const parsed = new URL(url);
-      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-    } catch {
-      return false;
+  useEffect(() => {
+    const update = () => setScrolled(window.scrollY > 18);
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    return () => window.removeEventListener('scroll', update);
+  }, []);
+
+  useEffect(() => {
+    if (menuOpen) {
+      setMenuVisible(true);
+      return undefined;
     }
+    if (!menuVisible) return undefined;
+    const timer = window.setTimeout(() => setMenuVisible(false), 320);
+    return () => window.clearTimeout(timer);
+  }, [menuOpen, menuVisible]);
+
+  useEffect(() => {
+    const menuActive = menuOpen || menuVisible;
+    if (!menuActive) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [menuOpen, menuVisible]);
+
+  useEffect(() => {
+    if (searchOpen) {
+      setSearchVisible(true);
+      return undefined;
+    }
+    if (!searchVisible) return undefined;
+    const timer = window.setTimeout(() => setSearchVisible(false), 260);
+    return () => window.clearTimeout(timer);
+  }, [searchOpen, searchVisible]);
+
+  const closeNav = () => {
+    if (!openNav) return;
+    const current = openNav;
+    setOpenNav(null);
+    setClosingNav(current);
+    window.setTimeout(() => setClosingNav((value) => value === current ? null : value), 220);
   };
 
-  const navItems = [
-    { label: 'Home', view: 'home' },
-    { label: 'Destinations', view: 'destinations' },
-    { label: 'Packages', view: 'packages' },
-    { label: 'Gallery', view: 'gallery' },
-    { label: 'Blog', view: 'blogs' },
-    { label: 'About Us', view: 'about' },
-  ];
+  const showNav = (view: string) => {
+    setClosingNav(null);
+    setOpenNav(view);
+  };
 
-  const handleNavClick = (view: string) => {
+  const navigate = (view: string) => {
     onNavigate(view);
-    setIsMenuOpen(false);
+    setMenuOpen(false);
+    setSearchOpen(false);
+    setOpenNav(null);
+    setClosingNav(null);
   };
 
-  const currentDateLabel = new Intl.DateTimeFormat('en-IN', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date());
-
-  const logoMark = business.logoUrl ? (
-    <img src={business.logoUrl} alt={`${business.companyName} logo`} className="h-full w-full object-contain" referrerPolicy="no-referrer" onError={handleTravelImageError} />
-  ) : (
-    <Compass className="h-7 w-7" />
-  );
-
-  const socialDots = [
-    { href: business.socialLinks.find((item) => item.label === 'Facebook')?.href, label: 'Facebook', className: 'bg-[#4DA528]' },
-    { href: business.socialLinks.find((item) => item.label === 'Instagram')?.href, label: 'Instagram', className: 'bg-[#FF970D]' },
-    { href: business.socialLinks.find((item) => item.label === 'LinkedIn')?.href, label: 'LinkedIn', className: 'bg-stone-900' },
-  ].filter((item) => isValidSocialUrl(item.href));
-
-  const dashboardButton = isAdminLoggedIn ? (
-    <>
-      <button
-        onClick={() => handleNavClick('admin-dashboard')}
-        className="cursor-pointer bg-[#4DA528] px-5 py-3 text-[12px] font-bold uppercase tracking-[0.08em] text-white transition hover:bg-[#FF970D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-      >
-        Admin Dashboard
-      </button>
-      <button
-        onClick={onAdminLogout}
-        className="cursor-pointer border border-stone-200 px-5 py-3 text-[12px] font-bold uppercase tracking-[0.08em] text-stone-900 transition hover:border-[#4DA528] hover:text-[#4DA528]"
-      >
-        Logout
-      </button>
-    </>
-  ) : currentUser ? (
-    <>
-      <button
-        onClick={() => handleNavClick('portal')}
-        className="cursor-pointer bg-[#4DA528] px-5 py-3 text-[12px] font-bold uppercase tracking-[0.08em] text-white transition hover:bg-[#FF970D]"
-      >
-        My Account
-      </button>
-      <button
-        onClick={onAdminLogout}
-        className="cursor-pointer border border-stone-200 px-5 py-3 text-[12px] font-bold uppercase tracking-[0.08em] text-stone-900 transition hover:border-[#4DA528] hover:text-[#4DA528]"
-      >
-        Logout
-      </button>
-    </>
-  ) : (
-    <button
-      onClick={() => handleNavClick('admin-login')}
-      className="cursor-pointer bg-[#4DA528] px-5 py-3 text-[12px] font-bold uppercase tracking-[0.08em] text-white transition hover:bg-[#FF970D]"
-    >
-      Login
-    </button>
-  );
+  const logoMark = business.logoUrl && !logoFailed ? (
+    <img src={business.logoUrl} alt={`${business.companyName} logo`} className="h-full w-full object-contain" referrerPolicy="no-referrer" onError={() => setLogoFailed(true)} />
+  ) : <Compass className="h-6 w-6" aria-hidden="true" />;
 
   return (
-    <header className="relative z-50 w-full bg-white font-sans shadow-[0_8px_30px_rgba(0,0,0,0.05)]" id="main-header">
-      <div className="hidden border-b border-stone-100 bg-white lg:block">
-        <div className="mx-auto flex max-w-[1530px] items-center justify-between px-8 py-3 text-[13px] font-medium text-stone-700">
-          <ul className="flex items-center gap-8">
-            <li className="flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 text-[#4DA528]" />
-              <span>{currentDateLabel}</span>
-            </li>
-            <li className="flex items-center gap-2">
-              <Mail className="h-4 w-4 text-[#4DA528]" />
-              <span>{business.email}</span>
-            </li>
-            <li className="flex items-center gap-2">
-              <Phone className="h-4 w-4 text-[#4DA528]" />
-              <span>{business.phone}</span>
-            </li>
-          </ul>
-          <div className="flex items-center gap-7">
-            <button onClick={() => handleNavClick('contact')} className="flex cursor-pointer items-center gap-2 font-bold text-[#4DA528] transition hover:text-[#FF970D]">
-              <Compass className="h-4 w-4" />
-              <span>Booking Now</span>
-            </button>
-            <div className="flex items-center gap-3 text-stone-500">
-              {socialDots.length > 0 && <span>Follow Us :</span>}
-              {socialDots.map((item) => (
-                <a key={item.label} href={item.href} target="_blank" rel="noopener noreferrer" className={`h-2 w-2 rounded-full ${item.className}`} aria-label={item.label} />
-              ))}
+    <>
+      <header className={`pravaah-header ${scrolled ? 'is-scrolled' : ''}`} id="main-header">
+        <div className="pravaah-header__utility">
+          <div className="pravaah-shell pravaah-header__utility-inner">
+            <span>Independent travel curation from the Himalaya</span>
+            <div className="pravaah-header__utility-contact">
+              <a href={`mailto:${business.email}`}><Mail className="h-3.5 w-3.5" aria-hidden="true" />{business.email}</a>
+              <a href={business.phoneHref}><Phone className="h-3.5 w-3.5" aria-hidden="true" />{business.phone}</a>
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="relative overflow-hidden">
-        <div className="pointer-events-none absolute left-0 top-0 hidden h-full w-48 rounded-r-full bg-[#4DA528]/10 lg:block" />
-        <div className="mx-auto flex h-[88px] max-w-[1530px] items-center justify-between gap-3 px-4 sm:h-[92px] sm:px-6 lg:px-8 xl:pl-[120px]">
-          <button
-            type="button"
-            onClick={() => handleNavClick('home')}
-            className="group flex cursor-pointer items-center gap-3"
-            id="logo-container"
-          >
-            <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-[#4DA528] p-2 text-white shadow-[0_12px_28px_rgba(77,165,40,0.28)] transition group-hover:bg-[#FF970D]">
-              {logoMark}
-            </span>
-            <span className="text-left">
-              <span className="block text-[18px] font-extrabold leading-none text-stone-950 sm:text-2xl">{business.companyName}</span>
-            </span>
+        <div className="pravaah-shell pravaah-header__main">
+          <button type="button" className="pravaah-wordmark" onClick={() => navigate('home')} aria-label="Go to Pravaah home">
+            <span className="pravaah-wordmark__mark">{logoMark}</span>
+            <span className="pravaah-wordmark__text"><strong>{business.companyName}</strong><small>Travel with intention</small></span>
           </button>
 
-          <nav className="hidden items-center gap-8 lg:flex" id="desktop-nav">
+          <nav className="pravaah-header__nav" aria-label="Primary navigation" onMouseLeave={closeNav}>
+            <button type="button" className={currentView === 'home' ? 'is-active' : ''} onClick={() => navigate('home')}>Home</button>
             {navItems.map((item) => (
-              <button
-                key={item.view}
-                onClick={() => handleNavClick(item.view)}
-                className={`relative cursor-pointer py-9 text-[15px] font-semibold transition ${
-                  currentView === item.view ? 'text-[#4DA528]' : 'text-stone-900 hover:text-[#4DA528]'
-                }`}
-              >
-                {item.label}
-                {currentView === item.view && (
-                  <span className="absolute inset-x-0 bottom-6 h-[3px] rounded-full bg-[#4DA528]" />
-                )}
-              </button>
+              <div key={item.view} className="pravaah-header__nav-item" onMouseEnter={() => showNav(item.view)}>
+                <button type="button" className={currentView === item.view || (item.view === 'blogs' && currentView === 'blog-detail') ? 'is-active' : ''} onClick={() => navigate(item.view)} onFocus={() => showNav(item.view)} aria-expanded={openNav === item.view}>{item.label}</button>
+                {(openNav === item.view || closingNav === item.view) && <div className={`pravaah-header__dropdown ${openNav === item.view ? 'is-open' : 'is-closing'}`} role="menu">
+                  <button type="button" role="menuitem" onClick={() => navigate(item.view)}>{item.label === 'About' ? 'Our approach' : item.label === 'The gallery' ? 'Open the gallery' : `Browse ${item.label.toLowerCase()}`} <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button>
+                  {item.view === 'packages' && <button type="button" role="menuitem" onClick={() => navigate('contact')}>Plan with a curator <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button>}
+                  {item.view === 'destinations' && <button type="button" role="menuitem" onClick={() => navigate('packages')}>View all journeys <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button>}
+                </div>}
+              </div>
             ))}
-            <button onClick={() => handleNavClick('contact')} className="cursor-pointer py-9 text-[15px] font-semibold text-stone-900 transition hover:text-[#4DA528]">
-              Contact
-            </button>
           </nav>
 
-          <div className="hidden items-center gap-5 lg:flex">
-            <button
-              onClick={() => setIsSearchOpen(true)}
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-stone-200 text-stone-900 transition hover:border-[#4DA528] hover:text-[#4DA528]"
-              type="button"
-              aria-label="Search packages and destinations"
-            >
-              <Search className="h-4 w-4" />
-            </button>
-            <div className="flex items-center gap-3">{dashboardButton}</div>
-          </div>
-
-          <div className="flex items-center gap-2 lg:hidden">
-            <button
-              onClick={() => setIsSearchOpen(true)}
-              className="rounded-full border border-stone-200 bg-white p-2 text-stone-800 shadow-sm transition hover:border-[#4DA528] hover:text-[#4DA528]"
-              type="button"
-              aria-label="Search packages and destinations"
-            >
-              <Search className="h-5 w-5" />
-            </button>
-            {(isAdminLoggedIn || currentUser) && (
-              <button
-                onClick={() => handleNavClick(isAdminLoggedIn ? 'admin-dashboard' : 'portal')}
-                className="rounded-full bg-[#4DA528]/10 p-2 text-[#4DA528] ring-1 ring-[#4DA528]/15"
-                title={isAdminLoggedIn ? 'Admin Dashboard' : 'My Dashboard'}
-              >
-                {isAdminLoggedIn ? <ShieldAlert className="h-5 w-5" /> : <UserCircle className="h-5 w-5" />}
-              </button>
-            )}
-            <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="rounded-full border border-stone-200 bg-white p-2 text-stone-800 shadow-sm transition hover:border-[#4DA528] hover:text-[#4DA528] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/35 focus-visible:ring-offset-2"
-              id="mobile-menu-btn"
-              aria-label={isMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
-            >
-              {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {isMenuOpen && (
-        <div className="space-y-2 border-t border-stone-100 bg-white px-4 pb-6 pt-4 shadow-[0_18px_36px_rgba(18,38,32,0.08)] lg:hidden" id="mobile-nav-drawer">
-          {navItems.map((item) => (
-            <button
-              key={item.view}
-              onClick={() => handleNavClick(item.view)}
-              className={`block w-full px-4 py-3 text-left text-sm font-bold transition-colors ${
-                currentView === item.view
-                  ? 'bg-[#4DA528] text-white'
-                  : 'text-stone-800 hover:bg-stone-50 hover:text-[#4DA528]'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-          <div className="flex flex-col gap-2 border-t border-stone-100 px-4 pt-4">
+          <div className="pravaah-header__actions">
+            <button type="button" className="pravaah-icon-button" onClick={() => setSearchOpen(true)} aria-label="Search journeys and destinations" title="Search"><Search className="h-4 w-4" aria-hidden="true" /></button>
             {isAdminLoggedIn ? (
-              <>
-                <button
-                  onClick={() => handleNavClick('admin-dashboard')}
-                  className="w-full bg-[#4DA528] py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
-                >
-                  Admin Dashboard
-                </button>
-                <button
-                  onClick={() => {
-                    onAdminLogout();
-                    setIsMenuOpen(false);
-                  }}
-                  className="w-full bg-stone-900 py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-stone-800"
-                >
-                  Logout
-                </button>
-              </>
+              <><button type="button" className="pravaah-header__account" onClick={() => navigate('admin-dashboard')}><ShieldCheck className="h-4 w-4" aria-hidden="true" />Operations</button><button type="button" className="pravaah-header__logout" onClick={onAdminLogout}>Log out</button></>
             ) : currentUser ? (
-              <>
-                <button
-                  onClick={() => handleNavClick('portal')}
-                  className="w-full bg-[#4DA528] py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
-                >
-                  My Account
-                </button>
-                <button
-                  onClick={() => {
-                    onAdminLogout();
-                    setIsMenuOpen(false);
-                  }}
-                  className="w-full bg-stone-900 py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-stone-800"
-                >
-                  Logout
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={() => handleNavClick('admin-login')}
-                className="w-full bg-[#4DA528] py-3 text-center text-xs font-extrabold uppercase tracking-wider text-white transition hover:bg-[#FF970D]"
-              >
-                Login
-              </button>
-            )}
+              <><button type="button" className="pravaah-header__account" onClick={() => navigate('portal')}><UserCircle className="h-4 w-4" aria-hidden="true" />My travel desk</button><button type="button" className="pravaah-header__logout" onClick={onAdminLogout}>Log out</button></>
+            ) : <button type="button" className="pravaah-header__account" onClick={() => navigate('admin-login')}>Sign in <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button>}
+            <button type="button" className="pravaah-header__cta" onClick={() => navigate('contact')}>Plan a trip <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button>
+          </div>
+
+          <div className="pravaah-header__mobile-actions">
+            <button type="button" className="pravaah-icon-button" onClick={() => setSearchOpen(true)} aria-label="Search journeys and destinations"><Search className="h-5 w-5" aria-hidden="true" /></button>
+            <button type="button" className="pravaah-icon-button" onClick={() => setMenuOpen((value) => !value)} aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'} aria-expanded={menuOpen}>{menuOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}</button>
+          </div>
+        </div>
+      </header>
+      {menuVisible && (
+        <div className={`pravaah-mobile-menu-layer ${menuOpen ? 'is-open' : 'is-closing'}`}>
+          <button type="button" className="pravaah-mobile-menu__backdrop" onClick={() => setMenuOpen(false)} aria-label="Close navigation menu" />
+          <div className="pravaah-mobile-menu" role="dialog" aria-modal="true" aria-label="Mobile navigation">
+            <div className="pravaah-shell pravaah-mobile-menu__inner">
+              <span className="pravaah-kicker">The way through</span>
+              <button type="button" className={currentView === 'home' ? 'is-active' : ''} onClick={() => navigate('home')}>Home</button>
+              {navItems.map((item) => <button key={item.view} type="button" className={currentView === item.view ? 'is-active' : ''} onClick={() => navigate(item.view)}>{item.label}</button>)}
+              <button type="button" className="pravaah-mobile-menu__cta" onClick={() => navigate('contact')}>Plan a trip <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button>
+            </div>
           </div>
         </div>
       )}
-
-      {isSearchOpen && (
-        <GlobalSearch
-          packages={packages}
-          onNavigate={(view, packageId) => {
-            setIsSearchOpen(false);
-            onNavigate(view, packageId);
-          }}
-          onClose={() => setIsSearchOpen(false)}
-        />
-      )}
-    </header>
+      {searchVisible && <GlobalSearch isClosing={!searchOpen} onClose={() => setSearchOpen(false)} packages={packages} onNavigate={onNavigate} />}
+    </>
   );
 }

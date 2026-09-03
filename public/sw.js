@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pravaah-cache-v1';
+const CACHE_NAME = 'pravaah-cache-v2';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/favicon.svg', '/offline.html'];
 
 self.addEventListener('install', (event) => {

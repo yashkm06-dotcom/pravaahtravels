@@ -9,6 +9,7 @@ interface SEOProps {
   ogType?: 'website' | 'article' | 'travel';
   schemaMarkup?: object;
   siteName?: string;
+  robots?: string;
 }
 
 /**
@@ -24,6 +25,7 @@ export default function SEO({
   ogType = 'website',
   schemaMarkup,
   siteName = 'Pravaah Travels',
+  robots = 'index, follow',
 }: SEOProps) {
   useEffect(() => {
     // 1. Title
@@ -44,6 +46,7 @@ export default function SEO({
 
     // 3. Set standard descriptions
     setMetaTag('name', 'description', description);
+    setMetaTag('name', 'robots', robots);
     if (keywords) {
       setMetaTag('name', 'keywords', keywords);
     }
@@ -100,7 +103,7 @@ export default function SEO({
         scriptToRemove.remove();
       }
     };
-  }, [title, description, keywords, canonicalUrl, ogImage, ogType, schemaMarkup, siteName]);
+  }, [title, description, keywords, canonicalUrl, ogImage, ogType, schemaMarkup, siteName, robots]);
 
   return null; // Side-effect only component
 }

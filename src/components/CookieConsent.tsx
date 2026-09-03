@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Cookie, ShieldCheck } from 'lucide-react';
 import {
   CookieConsentPreferences,
@@ -10,6 +10,11 @@ export default function CookieConsent() {
   const [savedPreferences, setSavedPreferences] = useState<CookieConsentPreferences | null>(() => getCookieConsent());
 
   const hasSavedChoice = savedPreferences !== null;
+
+  useEffect(() => {
+    document.body.classList.toggle('has-cookie-consent', !hasSavedChoice);
+    return () => document.body.classList.remove('has-cookie-consent');
+  }, [hasSavedChoice]);
 
   const persistPreferences = (preferences: Pick<CookieConsentPreferences, 'analytics' | 'marketing'>) => {
     const saved = saveCookieConsent(preferences);

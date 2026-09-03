@@ -7,7 +7,8 @@ const stagingSeoPlugin = (isStaging: boolean) => ({
   name: 'staging-seo-protection',
   transformIndexHtml(html: string) {
     if (!isStaging) return html;
-    return html.replace(
+    const withoutIndexableRobots = html.replace(/\s*<meta\s+name="robots"[^>]*>/i, '');
+    return withoutIndexableRobots.replace(
       '<head>',
       '<head>\n    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet" />',
     );

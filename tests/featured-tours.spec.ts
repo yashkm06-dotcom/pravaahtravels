@@ -7,9 +7,12 @@ const featuredSection = (page: Page) => page.locator('section#featured-packages'
 
 async function waitForPackageData(page: Page) {
   const section = featuredSection(page);
-  await expect(section.getByRole('heading', { name: /Amazing Featured Tour/ })).toBeVisible();
-  await expect(section.locator('article').first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText('Roopkund Trek', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(section.getByRole('heading', { name: /Featured Tours for the way you wander/ })).toBeVisible();
+  const cookieBanner = page.getByRole('region', { name: 'Cookie consent' });
+  if (await cookieBanner.isVisible().catch(() => false)) {
+    await cookieBanner.getByRole('button', { name: 'Decline' }).click();
+  }
+  await expect(section.locator('.pravaah-featured-carousel')).toBeVisible({ timeout: 30_000 });
 }
 
 async function clickTab(section: Locator, name: string) {
@@ -18,44 +21,23 @@ async function clickTab(section: Locator, name: string) {
 }
 
 async function inspectCards(section: Locator) {
-  const cards = section.locator('article');
-  const count = await cards.count();
-  expect(count).toBeGreaterThan(0);
-  const texts = await cards.allTextContents();
-  for (const card of await cards.all()) {
-    const bookNow = card.getByRole('button', { name: 'Book Now', exact: true });
-    const viewDetails = card.getByRole('button', { name: 'View Details', exact: true });
-    if (await bookNow.count() === 0) continue;
-    const cardBox = await card.boundingBox();
-    const bookBox = await bookNow.boundingBox();
-    const detailsBox = await viewDetails.boundingBox();
-    expect(cardBox).not.toBeNull();
-    expect(bookBox).not.toBeNull();
-    expect(detailsBox).not.toBeNull();
-    if (!cardBox || !bookBox || !detailsBox) continue;
-    for (const buttonBox of [bookBox, detailsBox]) {
-      expect(buttonBox.x).toBeGreaterThanOrEqual(cardBox.x);
-      expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
-    }
-    expect(bookBox.y + bookBox.height).toBeLessThanOrEqual(detailsBox.y + 0.5);
+  const showcase = section.locator('.pravaah-featured-carousel');
+  await expect(showcase).toBeVisible();
+  const activeCard = showcase.locator('.pravaah-featured-carousel__active-card');
+  const railCards = showcase.locator('.pravaah-featured-carousel__rail-card:not(.pravaah-featured-carousel__rail-card--coming)');
+  if (await activeCard.count() === 0) {
+    await expect(showcase.locator('.pravaah-featured-carousel__empty')).toContainText('New featured journeys are taking shape.');
+    return { showcase, cardCount: 0 };
   }
-  const placeholderCount = texts.filter((text) => text.includes('More Coming Soon')).length;
-  const realCount = count - placeholderCount;
-  expect(realCount + placeholderCount).toBe(count);
-  const cardGrid = section.locator('[data-featured-total-count]').first();
-  const logicalRealCount = Number(await cardGrid.getAttribute('data-featured-real-count'));
-  const logicalPlaceholderCount = Number(await cardGrid.getAttribute('data-featured-placeholder-count'));
-  const logicalTotalCount = Number(await cardGrid.getAttribute('data-featured-total-count'));
-  expect(logicalRealCount).toBeGreaterThanOrEqual(0);
-  expect(logicalRealCount).toBeLessThanOrEqual(4);
-  expect(logicalPlaceholderCount).toBe(1);
-  expect(logicalTotalCount).toBeLessThanOrEqual(5);
-  expect(logicalTotalCount).toBe(logicalRealCount + 1);
-  if (logicalRealCount >= 4) {
-    expect(logicalRealCount).toBe(4);
-    expect(logicalTotalCount).toBe(5);
+  await expect(activeCard).toBeVisible();
+  await expect(activeCard.getByRole('button', { name: /View details/ })).toBeVisible();
+  await expect(activeCard.locator('img')).toBeVisible();
+  if (await railCards.count()) {
+    await expect(railCards.first()).toBeVisible();
+  } else {
+    await expect(showcase.locator('.pravaah-featured-carousel__rail-card--coming')).toBeVisible();
   }
-  return { cards, texts, placeholderCount, realCount, logicalRealCount };
+  return { showcase, cardCount: await railCards.count() };
 }
 
 test.describe('Featured Tours', () => {
@@ -68,8 +50,7 @@ test.describe('Featured Tours', () => {
     await expect(section.locator('ul').first().getByRole('tab')).toHaveCount(4);
     for (const destination of primaryDestinations) {
       await clickTab(section, destination);
-      const { cards } = await inspectCards(section);
-      expect(await cards.count()).toBeGreaterThanOrEqual(3);
+      await inspectCards(section);
     }
 
     await clickTab(section, 'International');
@@ -79,18 +60,23 @@ test.describe('Featured Tours', () => {
 
     for (const country of countries) {
       await clickTab(section, country);
-      const { texts } = await inspectCards(section);
-      expect(texts.join(' ')).not.toMatch(/Jim Corbett|Valley of Flowers|Rishikesh Adventure Escape/);
-      const realTexts = texts.filter((text) => !text.includes('More Coming Soon'));
-      if (realTexts.length > 0) expect(realTexts.join(' ')).toContain(country === 'United Arab Emirates' ? 'Dubai' : country === 'Indonesia' ? 'Bali' : country);
+      await inspectCards(section);
+      const showcaseText = await section.locator('.pravaah-featured-carousel').innerText();
+      expect(showcaseText).not.toMatch(/Jim Corbett|Valley of Flowers|Rishikesh Adventure Escape/);
+      if (!showcaseText.includes('New featured journeys are taking shape.')) {
+        expect(showcaseText).toContain(country === 'United Arab Emirates' ? 'Dubai' : country === 'Indonesia' ? 'Bali' : country);
+      }
     }
 
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440);
   });
 
   for (const viewport of [
+    { name: 'desktop compact', width: 1280, height: 800 },
     { name: 'tablet', width: 1024, height: 768 },
+    { name: 'tablet portrait', width: 768, height: 1024 },
     { name: 'mobile', width: 390, height: 844 },
+    { name: 'mobile compact', width: 375, height: 812 },
   ]) {
     test(`${viewport.name} responsive International filters`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
@@ -106,4 +92,42 @@ test.describe('Featured Tours', () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
     });
   }
+
+  test('master-detail switching updates the active card, story, rail, and actions', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    await waitForPackageData(page);
+    const section = featuredSection(page);
+    await clickTab(section, 'Uttarakhand');
+    const showcase = section.locator('.pravaah-featured-carousel');
+    const activeCard = showcase.locator('.pravaah-featured-carousel__active-card');
+    if (await activeCard.count() === 0) {
+      await expect(showcase.locator('.pravaah-featured-carousel__empty')).toContainText('New featured journeys are taking shape.');
+      return;
+    }
+
+    const initialTitle = await activeCard.locator('h3').innerText();
+    const initialImage = await activeCard.locator('img').getAttribute('src');
+    const initialStory = await showcase.locator('.pravaah-featured-carousel__editorial h3').innerText();
+    const firstRailCard = showcase.locator('.pravaah-featured-carousel__rail-card:not(.pravaah-featured-carousel__rail-card--coming)').first();
+    await expect(firstRailCard).toBeVisible();
+    const nextTitle = await firstRailCard.locator('strong').innerText();
+
+    await firstRailCard.click();
+    await expect(activeCard.locator('h3')).toHaveText(nextTitle);
+    await expect(showcase.locator('.pravaah-featured-carousel__editorial h3')).not.toHaveText(initialStory);
+    await expect(showcase.locator('.pravaah-featured-carousel__rail')).toContainText(initialTitle);
+    expect(await activeCard.locator('img').getAttribute('src')).not.toBe(initialImage);
+
+    await showcase.getByRole('button', { name: 'Next featured journey' }).click();
+    await showcase.getByRole('button', { name: 'Previous featured journey' }).click();
+    await expect(activeCard.locator('h3')).toHaveText(nextTitle);
+
+    await showcase.getByRole('button', { name: 'Enquire now' }).click();
+    await expect(page.getByRole('dialog', { name: /Plan a trip/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Close enquiry' }).click();
+
+    await showcase.getByRole('button', { name: /View details/ }).click();
+    await expect(page).toHaveURL(/\/packages\//);
+  });
 });

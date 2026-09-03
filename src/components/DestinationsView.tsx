@@ -1,242 +1,53 @@
-import { useMemo, useState } from 'react';
-import { ArrowRight, Loader2, MapPin, Sparkles } from 'lucide-react';
-import { FeaturedCategoryItem, TravelPackage } from '../types';
+import { useMemo, useRef, useState } from 'react';
+import { ArrowUpRight, Compass, MapPin } from 'lucide-react';
+import { FeaturedCategoryItem, formatPackagePrice, TravelPackage } from '../types';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
+import { openPackage } from '../utils/packageRoute';
+import PackageImage from './PackageImage';
+import { usePravaahMotion } from '../hooks/usePravaahMotion';
+import { getPackageVisual } from '../utils/packageVisual';
 
-interface PackageFilterSelection {
-  search?: string;
-  category?: string;
-  location?: string;
-  destination?: string;
-  bookingType?: string;
-}
+interface PackageFilterSelection { search?: string; category?: string; location?: string; destination?: string; bookingType?: string; }
+interface DestinationsViewProps { onSelectCategory: (category: string) => void; onSelectFilter?: (filters: PackageFilterSelection) => void; onNavigate?: (view: string, packageId?: string | null) => void; packages?: TravelPackage[]; featuredCategories?: FeaturedCategoryItem[]; loading?: boolean; }
+interface DestinationStory { id: string; name: string; description: string; image: string; count: number; filter: PackageFilterSelection; }
 
-interface DestinationCard {
-  id: string;
-  title: string;
-  description: string;
-  image: string;
-  badge: string;
-  count: number;
-  filter: PackageFilterSelection;
-}
+const fallbackImages = ['/images/roopkund/bedni-bugyal.jpg', '/images/buran-ghati/pass-crossing.webp', '/images/roopkund/rishikesh-valley.jpg', '/images/buran-ghati/dayara-meadow.webp'];
+const normalize = (value: unknown) => String(value || '').trim().toLowerCase();
 
-interface DestinationsViewProps {
-  onSelectCategory: (category: string) => void;
-  onSelectFilter?: (filters: PackageFilterSelection) => void;
-  packages?: TravelPackage[];
-  featuredCategories?: FeaturedCategoryItem[];
-  loading?: boolean;
-}
-
-const normalizeKey = (value: string) => value.trim().toLowerCase();
-
-export default function DestinationsView({
-  onSelectCategory,
-  onSelectFilter,
-  packages = [],
-  featuredCategories = [],
-  loading = false,
-}: DestinationsViewProps) {
-  const [redirectingId, setRedirectingId] = useState<string | null>(null);
-
-  const activePackages = useMemo(() => packages.filter((pkg) => pkg.active), [packages]);
-
-  const destinationCards = useMemo<DestinationCard[]>(() => {
-    const enabledCmsCards = featuredCategories
-      .filter((item) => item.enabled !== false)
-      .map((item) => {
-        const linkedPackageIds = new Set((item.packageIds || []).map((id) => String(id)));
-        const matchingPackages = activePackages.filter((pkg) => {
-          const matchesLinkedPackage = linkedPackageIds.size > 0 && linkedPackageIds.has(String(pkg.id));
-          const matchesCategory = item.category && normalizeKey(String(pkg.category)) === normalizeKey(String(item.category));
-          const matchesLocation = item.location && (
-            normalizeKey(String(pkg.location ?? '')).includes(normalizeKey(String(item.location))) ||
-            normalizeKey(String(pkg.destination ?? '')).includes(normalizeKey(String(item.location)))
-          );
-          return matchesLinkedPackage || matchesCategory || matchesLocation;
-        });
-
-        const fallbackPackage = matchingPackages[0] || activePackages[0];
-        const filter: PackageFilterSelection = item.category
-          ? { category: String(item.category) }
-          : item.location
-            ? { location: String(item.location) }
-            : { search: item.title };
-
-        return {
-          id: `cms-${item.id}`,
-          title: item.title,
-          description: item.description || `Explore ${item.title} packages curated by Pravaah Travels.`,
-          image: item.imageUrl || fallbackPackage?.imageUrl || '',
-          badge: item.category || item.location || 'Curated',
-          count: matchingPackages.length,
-          filter,
-        };
-      });
-
-    if (enabledCmsCards.length > 0) {
-      return enabledCmsCards;
-    }
-
-    const groupedByCategory = new Map<string, DestinationCard>();
-    activePackages.forEach((pkg) => {
-      const category = String(pkg.category || '').trim();
-      if (!category) return;
-
-      const key = normalizeKey(category);
-      const existing = groupedByCategory.get(key);
-      if (existing) {
-        existing.count += 1;
-        return;
-      }
-
-      groupedByCategory.set(key, {
-        id: `category-${key}`,
-        title: `${category} Tours`,
-        description: `Browse ${category.toLowerCase()} packages built from live Pravaah itinerary data.`,
-        image: pkg.imageUrl,
-        badge: category,
-        count: 1,
-        filter: { category },
-      });
+export default function DestinationsView({ onSelectCategory, onSelectFilter, onNavigate, packages = [], featuredCategories = [], loading = false }: DestinationsViewProps) {
+  const viewRef = useRef<HTMLDivElement>(null);
+  usePravaahMotion(viewRef);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const stories = useMemo<DestinationStory[]>(() => {
+    const active = packages.filter((pkg) => pkg.active !== false);
+    if (featuredCategories.length > 0) return featuredCategories.filter((item) => item.enabled !== false).map((item, index) => {
+      const linked = new Set((item.packageIds || []).map(String));
+      const matching = active.filter((pkg) => linked.has(pkg.id) || (item.category && normalize(pkg.category) === normalize(item.category)) || (item.location && `${pkg.location} ${pkg.destination}`.toLowerCase().includes(normalize(item.location))));
+      return { id: item.id, name: item.title, description: item.description || 'A Pravaah route shaped by the landscape.', image: item.imageUrl || (matching[0] ? getPackageVisual(matching[0]) : '') || fallbackImages[index % fallbackImages.length], count: matching.length, filter: item.category ? { category: item.category } : { location: item.location || item.title } };
     });
-
-    const groupedByBookingType = new Map<string, DestinationCard>();
-    activePackages.forEach((pkg) => {
-      const bookingType = String(pkg.bookingType || '').trim();
-      if (!bookingType) return;
-
-      const key = normalizeKey(bookingType);
-      if (groupedByCategory.has(key) || groupedByBookingType.has(key)) {
-        const existing = groupedByBookingType.get(key);
-        if (existing) existing.count += 1;
-        return;
-      }
-
-      groupedByBookingType.set(key, {
-        id: `type-${key}`,
-        title: bookingType,
-        description: `Discover ${bookingType.toLowerCase()} packages available in the current catalog.`,
-        image: pkg.imageUrl,
-        badge: 'Travel Style',
-        count: 1,
-        filter: { bookingType },
-      });
+    const map = new Map<string, DestinationStory>();
+    active.forEach((pkg) => {
+      const name = String(pkg.location || pkg.destination || 'Uttarakhand');
+      const key = normalize(name);
+      const existing = map.get(key);
+      if (existing) { existing.count += 1; return; }
+      map.set(key, { id: key, name, description: pkg.shortDescription || `Routes through ${name}, paced with room to look around.`, image: getPackageVisual(pkg) || fallbackImages[map.size % fallbackImages.length], count: 1, filter: { location: name } });
     });
+    return [...map.values()];
+  }, [packages, featuredCategories]);
+  const activePackages = useMemo(() => packages.filter((pkg) => pkg.active !== false), [packages]);
+  const routePreview = useMemo(() => activePackages.slice(0, 3), [activePackages]);
 
-    return [...groupedByCategory.values(), ...groupedByBookingType.values()];
-  }, [activePackages, featuredCategories]);
-
-  const handleCardClick = (card: DestinationCard) => {
-    setRedirectingId(card.id);
-    window.setTimeout(() => {
-      if (onSelectFilter) {
-        onSelectFilter(card.filter);
-        return;
-      }
-
-      if (card.filter.category) {
-        onSelectCategory(card.filter.category);
-      }
-    }, 180);
+  const select = (story: DestinationStory) => {
+    setActiveId(story.id);
+    window.setTimeout(() => { if (onSelectFilter) onSelectFilter(story.filter); else if (story.filter.category) onSelectCategory(story.filter.category); }, 150);
   };
 
-  return (
-    <div id="destinations-view" className="animate-fade-in bg-[#F7F8F4] py-20">
-      <div className="mx-auto max-w-[1320px] space-y-12 px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-3xl space-y-3 text-center">
-          <span className="text-xs font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Travel Styles</span>
-          <h2 className="text-[38px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">
-            Discover by Destination Category
-          </h2>
-          <div className="mx-auto mt-3 h-0.5 w-16 bg-[#FF970D]" />
-          <p className="mx-auto max-w-xl text-sm leading-7 text-stone-500 sm:text-base">
-            Choose your preferred travel mood. Each card opens matching live packages automatically.
-          </p>
-        </div>
-
-        {loading ? (
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="h-[430px] animate-pulse rounded-[12px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(18,38,32,0.08)]">
-                <div className="h-64 rounded-t-[12px] bg-stone-200" />
-                <div className="space-y-4 p-6">
-                  <div className="h-5 w-2/3 rounded bg-stone-200" />
-                  <div className="h-4 w-full rounded bg-stone-100" />
-                  <div className="h-4 w-5/6 rounded bg-stone-100" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : destinationCards.length === 0 ? (
-          <div className="rounded-[18px] border border-dashed border-stone-300 bg-white p-10 text-center shadow-sm">
-            <Sparkles className="mx-auto h-10 w-10 text-[#4DA528]" />
-            <h3 className="mt-4 text-2xl font-extrabold text-stone-950">No destination categories yet</h3>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-7 text-stone-500">
-              Publish active packages or featured category CMS cards to populate this page.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-            {destinationCards.map((card) => {
-              const isRedirecting = redirectingId === card.id;
-
-              return (
-                <button
-                  key={card.id}
-                  type="button"
-                  onClick={() => handleCardClick(card)}
-                  disabled={Boolean(redirectingId)}
-                  className="group flex h-full cursor-pointer flex-col overflow-hidden rounded-[12px] border border-stone-200 bg-white text-left shadow-[0_12px_35px_rgba(18,38,32,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(18,38,32,0.14)] disabled:cursor-wait disabled:opacity-80"
-                >
-                  <div className="relative aspect-[4/3] overflow-hidden bg-stone-100">
-                    <img
-                      src={getTravelImage(card.image)}
-                      alt={card.title}
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
-                      referrerPolicy="no-referrer"
-                      loading="lazy"
-                      decoding="async"
-                      onError={handleTravelImageError}
-                    />
-                    <div className="absolute inset-0 bg-linear-to-t from-stone-900/65 via-stone-900/10 to-transparent" />
-                    <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between gap-3 text-white">
-                      <span className="rounded-[5px] bg-[#4DA528] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
-                        {card.badge}
-                      </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-stone-800">
-                        <MapPin className="h-3.5 w-3.5 text-[#FF970D]" />
-                        {card.count} {card.count === 1 ? 'Package' : 'Packages'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-1 flex-col justify-between space-y-4 p-6">
-                    <div className="space-y-2">
-                      <h3 className="text-[22px] font-bold leading-tight text-stone-950 transition-colors group-hover:text-[#4DA528]">
-                        {card.title}
-                      </h3>
-                      <p className="line-clamp-3 text-sm leading-7 text-stone-600">
-                        {card.description}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between border-t border-stone-100 pt-4 text-[11px] font-bold uppercase tracking-wider text-[#4DA528]">
-                      <span>{isRedirecting ? 'Opening packages' : 'Explore matching packages'}</span>
-                      {isRedirecting ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                      )}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  return <div ref={viewRef} id="destinations-view" className="pravaah-page pravaah-destinations-page">
+    <section className="pravaah-page-hero pravaah-page-hero--destinations"><div className="pravaah-page-hero__image"><img src={getTravelImage('/images/roopkund/mount-trishul.jpg')} alt="Mountain ridges above a Himalayan valley" onError={handleTravelImageError} /></div><div className="pravaah-page-hero__veil" /><div className="pravaah-shell pravaah-page-hero__inner"><span className="pravaah-kicker pravaah-kicker--light">The destination index</span><h1>Find the landscape<br /><em>that finds you.</em></h1><p>Not a list of places. A collection of regions, each with its own pace, altitude, and way of opening up.</p></div></section>
+    <section className="pravaah-destinations-intro pravaah-section"><div className="pravaah-shell pravaah-destinations-intro__grid"><div><span className="pravaah-kicker">Read the terrain</span><h2>Choose by feeling,<br />then let the route follow.</h2></div><p>Start with a region or a travel style. The live collection will take you from there, with real packages and the details needed to decide well.</p></div></section>
+    <section className="pravaah-destination-stories pravaah-section"><div className="pravaah-shell"><div className="pravaah-destination-stories__label"><span>Published regions</span><span>{String(stories.length).padStart(2, '0')} directions</span></div>{loading ? <div className="pravaah-destination-loading">Loading the field index...</div> : stories.length > 0 ? <div className="pravaah-destination-stories__list">{stories.map((story, index) => <button type="button" key={story.id} className={`pravaah-destination-story ${index === 0 ? 'is-lead' : ''} ${activeId === story.id ? 'is-opening' : ''}`} onClick={() => select(story)} disabled={Boolean(activeId && activeId !== story.id)}><span className="pravaah-destination-story__number">{String(index + 1).padStart(2, '0')}</span><span className="pravaah-destination-story__image"><img src={getTravelImage(story.image)} alt={story.name} loading="lazy" onError={handleTravelImageError} /></span><span className="pravaah-destination-story__body"><span className="pravaah-kicker">{story.count} {story.count === 1 ? 'journey' : 'journeys'}</span><strong>{story.name}</strong><span>{story.description}</span><small>Open matching routes <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></small></span></button>)}</div> : <div className="pravaah-empty-state pravaah-empty-state--large"><Compass className="h-7 w-7" aria-hidden="true" /><h2>The index is waiting for its first route.</h2><p>Publish active packages or destination stories from the CMS to bring this page to life.</p></div>}</div></section>
+    <section className="pravaah-destinations-note"><div className="pravaah-shell"><MapPin className="h-5 w-5" aria-hidden="true" /><p>Every destination entry is tied to the live package collection, so what you find here is what you can actually plan.</p></div></section>
+    <section className="pravaah-destination-routes pravaah-section" aria-labelledby="destination-routes-title"><div className="pravaah-shell"><div className="pravaah-section-heading"><div><span className="pravaah-kicker">Journeys already on the ground</span><h2 id="destination-routes-title">Start with a route.</h2><p>A few live departures from the collection. Open one to see the pace, detail, and room built into the journey.</p></div><button type="button" className="pravaah-text-link" onClick={() => onNavigate?.('packages')}>Browse all packages <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button></div><div className="pravaah-destination-routes__list">{routePreview.map((pkg, index) => <article key={pkg.id}><button type="button" className="pravaah-destination-route__image" onClick={() => onNavigate && openPackage(onNavigate, pkg)} aria-label={`Open ${pkg.title}`}><PackageImage src={pkg.imageUrl || pkg.packageBannerUrl || pkg.heroImage || fallbackImages[index % fallbackImages.length]} alt={pkg.title} className="h-full w-full object-cover" /></button><div className="pravaah-destination-route__body"><span className="pravaah-kicker">{pkg.location || pkg.destination} / {pkg.category}</span><h3><button type="button" onClick={() => onNavigate && openPackage(onNavigate, pkg)}>{pkg.title}</button></h3><p>{pkg.shortDescription || 'A route shaped around the landscape and the people travelling through it.'}</p><div><span>{pkg.duration}</span><strong>{pkg.offerPrice || pkg.price ? `From ${formatPackagePrice(pkg.offerPrice || pkg.price)}` : 'Enquire for route'}</strong></div></div></article>)}</div></div></section>
+  </div>;
 }

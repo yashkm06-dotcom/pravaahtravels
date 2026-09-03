@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Compass, Mail, MapPin, Phone, Send, Shield } from 'lucide-react';
+import { ArrowUpRight, Compass, Mail, MapPin, Phone } from 'lucide-react';
 import { GalleryImage, WebsiteCMSSettings } from '../types';
 import { handleTravelImageError } from '../utils/imageFallback';
 import { resolveBusinessProfile } from '../utils/businessProfile';
@@ -11,156 +11,51 @@ interface FooterProps {
 }
 
 export default function Footer({ onNavigate, websiteCMS, gallery, loading = false }: FooterProps) {
-  const currentYear = new Date().getFullYear();
   const business = resolveBusinessProfile(websiteCMS);
-  const uniqueGalleryUrls = Array.from(
-    new Set(gallery.map((item) => item.imageUrl).filter((src): src is string => Boolean(src)))
-  );
-  const footerGallery = uniqueGalleryUrls.slice(0, 6);
-  const socialLabels: Record<string, string> = { Facebook: 'f', X: 'x', LinkedIn: 'in', Instagram: 'ig', YouTube: 'yt' };
-  const logoMark = business.logoUrl ? (
-    <img src={business.logoUrl} alt={`${business.companyName} logo`} className="h-full w-full object-contain" referrerPolicy="no-referrer" onError={handleTravelImageError} />
-  ) : (
-    <Compass className="h-7 w-7" />
-  );
+  const year = new Date().getFullYear();
+  const galleryImages = Array.from(new Set(gallery.map((item) => item.imageUrl).filter(Boolean))).slice(0, 4);
 
   return (
-    <footer className="relative bg-[#081E2A] pt-24 text-white" id="main-footer">
-      <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 gap-12 border-b border-white/10 pb-16 sm:grid-cols-2 lg:grid-cols-[1.1fr_0.7fr_0.9fr_1fr]">
-          <div className="space-y-7">
-            <button
-              type="button"
-              onClick={() => onNavigate('home')}
-              className="group flex cursor-pointer items-center gap-3"
-              id="footer-logo"
-            >
-              <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-[#4DA528] p-2 text-white transition group-hover:bg-[#FF970D]">
-                {logoMark}
-              </span>
-              <span className="text-left">
-                <span className="block text-2xl font-extrabold leading-none">{business.companyName}</span>
-              </span>
+    <footer className="pravaah-footer" id="main-footer">
+      <div className="pravaah-shell">
+        <div className="pravaah-footer__lead">
+          <div><span className="pravaah-kicker pravaah-kicker--light">Keep moving slowly</span><h2>There is more world<br />to meet.</h2></div>
+          <button type="button" className="pravaah-footer__enquiry" onClick={() => onNavigate('contact')}>Start a conversation <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button>
+        </div>
+
+        <div className="pravaah-footer__grid">
+          <div className="pravaah-footer__brand">
+            <button type="button" className="pravaah-wordmark pravaah-wordmark--footer" onClick={() => onNavigate('home')}>
+              <span className="pravaah-wordmark__mark"><Compass className="h-6 w-6" aria-hidden="true" /></span>
+              <span className="pravaah-wordmark__text"><strong>{business.companyName}</strong><small>Travel with intention</small></span>
             </button>
-            <p className="max-w-sm text-[15px] font-light leading-8 text-white/70">
-              {business.tagline}
-            </p>
-            <ul className="space-y-4 text-[15px] text-white/78">
-              <li className="flex items-center gap-3">
-                <Mail className="h-5 w-5 text-[#4DA528]" />
-                <a href={`mailto:${business.email}`} className="transition hover:text-[#FF970D]">{business.email}</a>
-              </li>
-              <li className="flex items-center gap-3">
-                <Phone className="h-5 w-5 text-[#4DA528]" />
-                <a href={business.phoneHref} className="transition hover:text-[#FF970D]">{business.phone}</a>
-              </li>
-              <li className="flex items-start gap-3">
-                <MapPin className="mt-1 h-5 w-5 shrink-0 text-[#4DA528]" />
-                <span>{business.address}</span>
-              </li>
-            </ul>
-          </div>
-
-          <div>
-            <h5 className="mb-8 text-[20px] font-bold">Services Req</h5>
-            <ul className="space-y-4 text-[15px] text-white/70">
-              {[
-                ['About Us', 'about'],
-                ['Gallery', 'gallery'],
-                ['Packages', 'packages'],
-                ['Contact', 'contact'],
-                ['Customer Portal', 'portal'],
-              ].map(([label, view]) => (
-                <li key={view}>
-                  <button onClick={() => onNavigate(view)} className="group flex cursor-pointer items-center gap-2 transition hover:text-[#4DA528] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[#081E2A]">
-                    <ArrowRight className="h-3.5 w-3.5 opacity-0 transition group-hover:opacity-100" />
-                    <span>{label}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <h5 className="mb-8 text-[20px] font-bold">Gallery</h5>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {loading ? (
-                Array.from({ length: 6 }).map((_, idx) => (
-                  <div key={idx} className="aspect-square animate-pulse rounded-md bg-white/10" />
-                ))
-              ) : footerGallery.length > 0 ? (
-                footerGallery.map((src, idx) => (
-                  <button
-                    key={src}
-                    type="button"
-                    onClick={() => onNavigate('gallery')}
-                    className="group aspect-square cursor-pointer overflow-hidden rounded-md bg-white/10"
-                  >
-                    <img
-                      src={src}
-                      alt={`Travel gallery ${idx + 1}`}
-                      className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
-                      referrerPolicy="no-referrer"
-                      onError={handleTravelImageError}
-                    />
-                  </button>
-                ))
-              ) : (
-                <div className="col-span-2 rounded-md border border-white/10 bg-white/5 p-3 text-sm text-white/70 sm:col-span-3">
-                  No gallery images have been published yet.
-                </div>
-              )}
+            <p>{business.tagline}</p>
+            <div className="pravaah-footer__contact-list">
+              <a href={`mailto:${business.email}`}><Mail className="h-4 w-4" aria-hidden="true" />{business.email}</a>
+              <a href={business.phoneHref}><Phone className="h-4 w-4" aria-hidden="true" />{business.phone}</a>
+              <span><MapPin className="h-4 w-4" aria-hidden="true" />{business.address}</span>
             </div>
           </div>
 
-          <div>
-            <h5 className="mb-8 text-[20px] font-bold">Newsletter</h5>
-            <form
-              onSubmit={(e) => e.preventDefault()}
-              className="space-y-5"
-              aria-disabled="true"
-            >
-              <div className="flex flex-col gap-2 rounded-md bg-white/70 sm:flex-row sm:overflow-hidden">
-                <input
-                  type="email"
-                  placeholder="Enter Email Address"
-                  disabled
-                  className="min-w-0 flex-1 px-5 py-4 text-sm font-medium text-stone-900 outline-none"
-                />
-                <button type="submit" disabled className="flex h-12 w-full cursor-not-allowed items-center justify-center bg-white/20 text-white/50 sm:w-14">
-                  <Send className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="flex items-center gap-3 text-[13px] text-white/70">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/15 text-white/70">
-                  <Check className="h-3 w-3" />
-                </span>
-                <p>Newsletter signup is currently unavailable.</p>
-              </div>
-            </form>
-            {business.socialLinks.length > 0 && <ul className="mt-8 flex gap-3">
-              {business.socialLinks.map(({ label, href }) => (
-                <li key={label}>
-                  <a href={href} target="_blank" rel="noopener noreferrer" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 text-[12px] font-bold uppercase text-white/70 transition hover:border-[#4DA528] hover:bg-[#4DA528] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4DA528]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#081E2A]">
-                    {socialLabels[label] || label.slice(0, 2)}
-                  </a>
-                </li>
-              ))}
-            </ul>}
+          <div><span className="pravaah-footer__label">Navigate</span><div className="pravaah-footer__links">
+            <button type="button" onClick={() => onNavigate('destinations')}>Destinations</button>
+            <button type="button" onClick={() => onNavigate('packages')}>Journeys</button>
+            <button type="button" onClick={() => onNavigate('blogs')}>Journal</button>
+            <button type="button" onClick={() => onNavigate('about')}>About Pravaah</button>
+            <button type="button" onClick={() => onNavigate('portal')}>Travel desk</button>
+          </div></div>
+
+          <div className="pravaah-footer__journal"><span className="pravaah-footer__label">From the field</span>
+            <button type="button" onClick={() => onNavigate('gallery')} className="pravaah-footer__gallery-link">Open the photo journal <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button>
+            <div className="pravaah-footer__gallery">
+              {loading ? [1, 2, 3, 4].map((item) => <span key={item} className="pravaah-footer__gallery-placeholder" />) : galleryImages.length > 0 ? galleryImages.map((src, index) => (
+                <button type="button" key={src} onClick={() => onNavigate('gallery')} aria-label={`Open travel photo ${index + 1}`}><img src={src} alt="" loading="lazy" onError={handleTravelImageError} /></button>
+              )) : <p>No photographs have been published yet.</p>}
+            </div>
           </div>
         </div>
 
-        <div className="flex flex-col items-center justify-between gap-5 py-8 text-[14px] text-white/62 md:flex-row">
-          <p>Copyright © {currentYear} by <span className="text-[#4DA528]">{business.companyName}.</span> All Rights Reserved</p>
-          <div className="flex flex-wrap items-center justify-center gap-5">
-            <button onClick={() => onNavigate('admin-dashboard')} className="flex cursor-pointer items-center gap-2 transition hover:text-[#4DA528]">
-              <Shield className="h-4 w-4" />
-              <span>Admin Gateway</span>
-            </button>
-            <span>Terms</span>
-            <span>Privacy</span>
-          </div>
-        </div>
+        <div className="pravaah-footer__bottom"><span>© {year} {business.companyName}. All rights reserved.</span><span>Routes chosen with care from Rishikesh, Uttarakhand.</span></div>
       </div>
     </footer>
   );

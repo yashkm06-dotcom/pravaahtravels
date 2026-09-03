@@ -1,147 +1,18 @@
 import { useMemo, useState } from 'react';
-import { BookOpen, Search, User } from 'lucide-react';
-import type { BlogPost } from '../types';
-import { getTravelImage } from '../utils/imageFallback';
-import { formatBlogDate, getBlogExcerpt, getBlogRouteSegment } from '../utils/blogContent';
-import { CardGridSkeletonLoader } from './SkeletonLoader';
-import TravelMedia from './TravelMedia';
+import { ArrowUpRight, BookOpen, Search } from 'lucide-react';
+import { BlogPost } from '../types';
+import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 
-interface BlogsViewProps {
-  blogPosts: BlogPost[];
-  onNavigate: (view: string, blogId?: string | null) => void;
-  loading: boolean;
-}
+interface BlogsViewProps { blogPosts: BlogPost[]; onNavigate: (view: string, packageId?: string | null) => void; loading: boolean; }
+const excerpt = (content: string) => String(content || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 180);
 
 export default function BlogsView({ blogPosts, onNavigate, loading }: BlogsViewProps) {
-  const [search, setSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('All');
+  const categories = useMemo(() => ['All', ...Array.from(new Set(blogPosts.map((post) => post.category).filter(Boolean)))], [blogPosts]);
+  const posts = useMemo(() => blogPosts.filter((post) => (category === 'All' || post.category === category) && (!query.trim() || `${post.title} ${post.category} ${post.content}`.toLowerCase().includes(query.toLowerCase()))), [blogPosts, category, query]);
+  const lead = posts[0];
+  const open = (post: BlogPost) => onNavigate('blog-detail', post.slug || post.id);
 
-  const publishedPosts = useMemo(
-    () => blogPosts.filter((post) => post.status === 'Publish'),
-    [blogPosts],
-  );
-
-  const categories = useMemo(() => {
-    const unique = new Set<string>();
-    publishedPosts.forEach((post) => {
-      if (post.category) unique.add(post.category);
-    });
-    return ['All', ...Array.from(unique).sort((a, b) => a.localeCompare(b))];
-  }, [publishedPosts]);
-
-  const filteredPosts = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return publishedPosts
-      .filter((post) => selectedCategory === 'All' || post.category === selectedCategory)
-      .filter((post) => {
-        if (!query) return true;
-        return [post.title, post.content, post.category, ...(post.tags || [])]
-          .some((field) => String(field ?? '').toLowerCase().includes(query));
-      })
-      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-  }, [publishedPosts, search, selectedCategory]);
-
-  const handleOpenPost = (post: BlogPost) => onNavigate('blog-detail', getBlogRouteSegment(post));
-
-  return (
-    <div id="blogs-view" className="animate-fade-in bg-[#F7F8F4] py-20">
-      <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8 space-y-12">
-        <div className="mx-auto max-w-3xl space-y-3 text-center">
-          <span className="text-xs font-extrabold uppercase tracking-[0.2em] text-[#4DA528]">Stories & Guides</span>
-          <h1 className="text-[38px] font-extrabold leading-tight text-stone-950 sm:text-[56px]">
-            The Pravaah Travel Journal
-          </h1>
-          <div className="mx-auto mt-3 h-0.5 w-16 bg-[#FF970D]" />
-          <p className="mx-auto max-w-xl text-sm leading-7 text-stone-500 sm:text-base">
-            Destination guides, travel tips, and stories from the Himalayas and beyond.
-          </p>
-        </div>
-
-        <div className="mx-auto flex max-w-xl flex-col gap-4">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4DA528]" />
-            <input
-              type="text"
-              placeholder="Search articles, destinations, topics..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              className="w-full rounded-full border border-stone-200 bg-white py-3 pl-11 pr-4 text-sm text-stone-800 shadow-sm focus:border-[#4DA528] focus:outline-none"
-            />
-          </div>
-
-          {categories.length > 1 && (
-            <div className="flex flex-wrap justify-center gap-2" id="blog-category-pills">
-              {categories.map((category) => (
-                <button
-                  key={category}
-                  type="button"
-                  onClick={() => setSelectedCategory(category)}
-                  className={`cursor-pointer border px-4 py-2 text-[10px] font-bold uppercase tracking-wider transition-all ${
-                    selectedCategory === category
-                      ? 'border-[#4DA528] bg-[#4DA528] text-white shadow-sm'
-                      : 'border-stone-200 bg-white text-stone-600 hover:border-[#4DA528] hover:text-[#4DA528]'
-                  }`}
-                >
-                  {category}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {loading ? (
-          <CardGridSkeletonLoader count={6} />
-        ) : filteredPosts.length === 0 ? (
-          <div className="mx-auto max-w-lg space-y-3 rounded-[12px] border border-stone-200 bg-white p-12 text-center">
-            <BookOpen className="mx-auto h-8 w-8 text-stone-300" />
-            <p className="text-xs font-light text-stone-400">
-              {publishedPosts.length === 0
-                ? 'No articles have been published yet. Check back soon.'
-                : `No articles match "${search || selectedCategory}".`}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3" id="blog-grid">
-            {filteredPosts.map((post) => (
-              <article
-                key={post.id}
-                onClick={() => handleOpenPost(post)}
-                className="group flex cursor-pointer flex-col overflow-hidden rounded-[16px] border border-stone-200 bg-white shadow-[0_12px_35px_rgba(18,38,32,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_55px_rgba(18,38,32,0.14)]"
-              >
-                <div className="relative aspect-[16/10] overflow-hidden bg-stone-100">
-                  <TravelMedia
-                    src={getTravelImage(post.featuredImageUrl)}
-                    alt={post.title}
-                    className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                  {post.category && (
-                    <span className="absolute left-4 top-4 rounded-full bg-[#4DA528] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow">
-                      {post.category}
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-1 flex-col gap-3 p-6">
-                  <h2 className="line-clamp-2 text-lg font-extrabold leading-snug text-stone-950 transition group-hover:text-[#4DA528]">
-                    {post.title}
-                  </h2>
-                  <p className="line-clamp-3 flex-1 text-sm leading-6 text-stone-500">
-                    {getBlogExcerpt(post.content, 130)}
-                  </p>
-                  <div className="flex items-center justify-between border-t border-stone-100 pt-4 text-[11px] font-medium text-stone-400">
-                    <span className="flex items-center gap-1.5">
-                      <User className="h-3.5 w-3.5" />
-                      {post.author || 'Pravaah Travels'}
-                    </span>
-                    <span>{formatBlogDate(post.createdAt)}</span>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  return <div id="blogs-view" className="pravaah-page pravaah-blog-page"><section className="pravaah-page-hero pravaah-page-hero--journal"><div className="pravaah-page-hero__image"><img src={getTravelImage(lead?.featuredImageUrl || '/images/roopkund/rishikesh-valley.jpg')} alt="A Pravaah field journal" onError={handleTravelImageError} /></div><div className="pravaah-page-hero__veil" /><div className="pravaah-shell pravaah-page-hero__inner"><span className="pravaah-kicker pravaah-kicker--light">The Pravaah journal</span><h1>Stories from<br /><em>the long way round.</em></h1><p>Notes on landscapes, local life, and travelling with enough time to notice both.</p></div></section><section className="pravaah-blog-body pravaah-section"><div className="pravaah-shell"><div className="pravaah-blog-toolbar"><div><span className="pravaah-kicker">Read slowly</span><p>{posts.length} notes in the archive</p></div><div className="pravaah-blog-controls"><label><Search className="h-4 w-4" aria-hidden="true" /><span className="sr-only">Search journal</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search the journal" /></label><div>{categories.map((item) => <button type="button" key={item} className={category === item ? 'is-active' : ''} onClick={() => setCategory(item)}>{item}</button>)}</div></div></div>{loading ? <div className="pravaah-blog-loading">Loading the journal...</div> : posts.length === 0 ? <div className="pravaah-empty-state pravaah-empty-state--large"><BookOpen className="h-7 w-7" aria-hidden="true" /><h2>No notes match that search.</h2><p>Try another word or return to the full archive.</p></div> : <div className="pravaah-blog-index"><article className="pravaah-blog-lead"><button type="button" onClick={() => open(lead)}><img src={getTravelImage(lead.featuredImageUrl)} alt={lead.title} onError={handleTravelImageError} /></button><div><span className="pravaah-kicker">{lead.category}</span><h2>{lead.title}</h2><p>{excerpt(lead.content)}</p><button type="button" className="pravaah-text-link" onClick={() => open(lead)}>Read the story <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button></div></article><div className="pravaah-blog-list">{posts.slice(1).map((post, index) => <article key={post.id}><span className="pravaah-blog-list__number">{String(index + 2).padStart(2, '0')}</span><div className="pravaah-blog-list__image">{post.featuredImageUrl && <img src={getTravelImage(post.featuredImageUrl)} alt="" loading="lazy" onError={handleTravelImageError} />}</div><div><span className="pravaah-kicker">{post.category}</span><h3><button type="button" onClick={() => open(post)}>{post.title}</button></h3><p>{excerpt(post.content)}</p><small>{post.author || 'Pravaah field desk'}</small></div><button type="button" className="pravaah-list-arrow" onClick={() => open(post)} aria-label={`Read ${post.title}`}><ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button></article>)}</div></div>}</div></section></div>;
 }

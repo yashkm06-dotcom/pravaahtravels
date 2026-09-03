@@ -2392,11 +2392,11 @@ export default function CustomerPortalView({
   const journeyTimelineItems = ['Booking Confirmed ✔', 'Mountain Conditions', 'Packing Ready', 'Departure Day', 'Enjoy Your Trek'];
 
   return (
-    <div className="min-h-screen bg-[#f6f7f2] px-4 py-8 font-sans sm:px-6 lg:px-8" id="customer-portal-active-root">
+    <div className="pravaah-dashboard pravaah-customer-dashboard min-h-screen bg-[#f6f7f2] px-4 py-8 font-sans sm:px-6 lg:px-8" id="customer-portal-active-root">
       <div className="mx-auto max-w-7xl space-y-8">
       
       {/* Header Banner */}
-      <section className="relative overflow-hidden rounded-[24px] bg-[#081E2A] p-5 text-white shadow-[0_24px_70px_rgba(8,30,42,0.24)] sm:p-7 lg:p-8">
+      <section className="pravaah-dashboard-hero relative overflow-hidden rounded-[24px] bg-[#081E2A] p-5 text-white shadow-[0_24px_70px_rgba(8,30,42,0.24)] sm:p-7 lg:p-8">
         <img
           src={getTravelImage('https://images.unsplash.com/photo-1516690561799-46d8f74f90f6?auto=format&fit=crop&w=1800&q=80')}
           alt="Luxury mountain dashboard"
@@ -2457,7 +2457,7 @@ export default function CustomerPortalView({
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5" id="customer-dashboard-stats">
+      <section className="pravaah-dashboard-stats grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5" id="customer-dashboard-stats">
         {[
           ['Upcoming Bookings', upcomingBookings.length, Calendar, 'from-[#4DA528]/12 to-white'],
           ['Completed Trips', completedTrips, Briefcase, 'from-[#FF970D]/14 to-white'],
@@ -2488,7 +2488,7 @@ export default function CustomerPortalView({
       )}
 
       {/* Tabs */}
-      <div className="scrollbar-none flex gap-2 overflow-x-auto rounded-[18px] border border-stone-200 bg-white p-2 shadow-[0_12px_35px_rgba(18,38,32,0.06)]">
+      <div className="pravaah-dashboard-tabs scrollbar-none flex gap-2 overflow-x-auto rounded-[18px] border border-stone-200 bg-white p-2 shadow-[0_12px_35px_rgba(18,38,32,0.06)]">
         <button
           type="button"
           onClick={() => setActiveTab('bookings')}

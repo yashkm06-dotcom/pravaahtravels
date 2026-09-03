@@ -8,3 +8,14 @@ coverage/
 !.env.example
 !.env.production
 !.env.staging.example
+
+*storybook.log
+storybook-static
+
+# local tooling / test output
+test-results/
+.kilo/
+.vscode/
+.agents/
+skills-lock.json
+.firebase/
