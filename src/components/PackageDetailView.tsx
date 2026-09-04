@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type SyntheticEvent } from 'react';
-import { ArrowLeft, ArrowUpRight, CalendarDays, Check, ChevronDown, ChevronUp, Clock3, Compass, Heart, Mail, MapPin, MessageCircle, Phone, Send, ShieldCheck, Star, Users, X } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, CalendarDays, Check, ChevronDown, ChevronUp, Clock3, Compass, Heart, Mail, MapPin, MessageCircle, Send, ShieldCheck, Star, Users, X } from 'lucide-react';
 import { addDoc, collection, db, getDocs, orderBy, query } from '../lib/firebase';
 import { triggerSystemEmail } from '../lib/emailClient';
 import { Enquiry, formatPackagePrice, Review, TravelPackage, WebsiteCMSSettings } from '../types';
 import { getTravelImage, handleTravelImageError } from '../utils/imageFallback';
 import { getPackageNavigationTarget, openPackage } from '../utils/packageRoute';
 import { resolveBusinessProfile } from '../utils/businessProfile';
+import { getPackageImageAlt, resolvePackageDisplayTitle, resolvePackageSeoDescription } from '../utils/packageSeo';
 import PackageImage from './PackageImage';
 import { usePravaahMotion } from '../hooks/usePravaahMotion';
 import { getPackageVisual } from '../utils/packageVisual';
@@ -52,9 +53,72 @@ export default function PackageDetailView({ pkg, onBack, onEnquirySuccess, isAdm
   const [success, setSuccess] = useState(false);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const triggerElementRef = useRef<HTMLElement | null>(null);
   const gallery = imageList(pkg);
   const galleryFallback = gallery[0] || '/images/buran-ghati/hero-buran-ghati.webp';
   const [activeImage, setActiveImage] = useState(0);
+
+  useEffect(() => {
+    if (!enquiryOpen) {
+      if (triggerElementRef.current) {
+        triggerElementRef.current.focus();
+        triggerElementRef.current = null;
+      }
+      return;
+    }
+
+    triggerElementRef.current = document.activeElement as HTMLElement | null;
+
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const getFocusableElements = () => Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((el) => !el.hasAttribute('disabled') && el.offsetParent !== null);
+
+    const focusables = getFocusableElements();
+    if (focusables.length > 0) {
+      focusables[0].focus();
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (!submitting) setEnquiryOpen(false);
+        return;
+      }
+
+      if (event.key === 'Tab') {
+        const currentFocusables = getFocusableElements();
+        if (currentFocusables.length === 0) {
+          event.preventDefault();
+          return;
+        }
+
+        const first = currentFocusables[0];
+        const last = currentFocusables[currentFocusables.length - 1];
+
+        if (event.shiftKey) {
+          if (document.activeElement === first || !dialog.contains(document.activeElement)) {
+            event.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last || !dialog.contains(document.activeElement)) {
+            event.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [enquiryOpen, submitting]);
 
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); setActiveImage(0); setActiveDay(1); setActiveFaq(0); }, [pkg.id]);
   useEffect(() => {
@@ -95,18 +159,288 @@ export default function PackageDetailView({ pkg, onBack, onEnquirySuccess, isAdm
     } catch { setFormError('We could not send your enquiry right now. Please try again or use WhatsApp.'); } finally { setSubmitting(false); }
   };
 
+  const displayTitle = resolvePackageDisplayTitle(pkg);
+
   return <div ref={viewRef} id="package-detail-view" className="pravaah-page pravaah-detail-page">
-    <section className="pravaah-detail-hero"><div className="pravaah-detail-hero__image"><img key={activeImage} src={getTravelImage(gallery[activeImage] || galleryFallback)} alt={pkg.title} onError={(event) => handleGalleryImageError(event, galleryFallback)} /></div><div className="pravaah-detail-hero__veil" /><div className="pravaah-shell pravaah-detail-hero__inner"><button type="button" className="pravaah-quiet-link pravaah-quiet-link--light" onClick={onBack}><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back to journeys</button><div className="pravaah-detail-hero__copy"><span className="pravaah-kicker pravaah-kicker--light">{pkg.category} / {pkg.location || pkg.destination}</span><h1>{pkg.title}</h1><p>{pkg.shortDescription || pkg.fullDescription}</p><div className="pravaah-detail-hero__meta"><span><Clock3 className="h-4 w-4" aria-hidden="true" />{pkg.duration}</span><span><MapPin className="h-4 w-4" aria-hidden="true" />{pkg.destination}</span><span>From <strong>{formatPackagePrice(pkg.offerPrice || pkg.price)}</strong></span></div></div></div><div className="pravaah-detail-hero__counter"><span>{String(activeImage + 1).padStart(2, '0')}</span><span>/</span><span>{String(gallery.length).padStart(2, '0')}</span></div></section>
-    <section className="pravaah-detail-summary" aria-label="Package summary"><div className="pravaah-shell pravaah-detail-summary__inner"><div><span className="pravaah-kicker">Route snapshot</span><h2>{pkg.title}</h2><p>{pkg.category} / {pkg.location || pkg.destination}</p></div><div className="pravaah-detail-summary__signals"><span><Clock3 className="h-4 w-4" aria-hidden="true" />{pkg.duration}</span><span><Users className="h-4 w-4" aria-hidden="true" />{pkg.maxGuests ? `Up to ${pkg.maxGuests}` : 'Small group'}</span><span><strong>{formatPackagePrice(pkg.offerPrice || pkg.price)}</strong></span></div><div className="pravaah-detail-summary__actions"><button type="button" className={`pravaah-save-button ${saved ? 'is-saved' : ''}`} onClick={() => { onToggleWishlist?.(pkg); onPackageSaved?.(); }} aria-label={saved ? 'Remove journey from saved trips' : 'Save journey'} title={saved ? 'Remove saved journey' : 'Save journey'}><Heart className="h-4 w-4" aria-hidden="true" /></button><button type="button" className="pravaah-button pravaah-button--dark" onClick={() => setEnquiryOpen(true)}>Plan this trip <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button></div></div></section>
-    <section className="pravaah-detail-gallery"><div className="pravaah-shell pravaah-detail-gallery__inner"><div className="pravaah-detail-gallery__thumbs">{gallery.slice(0, 6).map((src, index) => <button type="button" key={src} className={activeImage === index ? 'is-active' : ''} onClick={() => setActiveImage(index)} aria-label={`Show journey image ${index + 1}`}><img src={getTravelImage(src)} alt="" loading="lazy" onError={(event) => handleGalleryImageError(event, galleryFallback)} /></button>)}</div><div className="pravaah-detail-gallery__note"><span className="pravaah-kicker">A route in focus</span><p>Look closely. The best journeys are made of small changes in light, weather, and pace.</p></div></div></section>
-    <section className="pravaah-detail-facts" aria-label="Route facts"><div className="pravaah-shell pravaah-detail-facts__grid"><div><Clock3 className="h-4 w-4" aria-hidden="true" /><span>Duration</span><strong>{pkg.duration}</strong></div><div><Users className="h-4 w-4" aria-hidden="true" /><span>Group size</span><strong>{pkg.maxGuests ? `Up to ${pkg.maxGuests}` : 'Made to fit'}</strong></div><div><Compass className="h-4 w-4" aria-hidden="true" /><span>Difficulty</span><strong>{pkg.difficultyLabel || 'Comfortable pace'}</strong></div><div><MapPin className="h-4 w-4" aria-hidden="true" /><span>Pickup</span><strong>{pkg.pickup || pkg.location || 'Planned with you'}</strong></div></div></section>
-    <section className="pravaah-detail-body pravaah-section"><div className="pravaah-shell pravaah-detail-layout"><div className="pravaah-detail-content"><div className="pravaah-detail-overview"><span className="pravaah-kicker">The route</span><h2>{pkg.overview || 'A journey with space to notice what is around you.'}</h2><p>{pkg.fullDescription || pkg.shortDescription}</p></div>{pkg.highlights?.length ? <div className="pravaah-detail-highlights"><span className="pravaah-kicker">Along the way</span><div>{pkg.highlights.map((item, index) => <div key={`${item}-${index}`}><span>0{index + 1}</span><p>{item}</p></div>)}</div></div> : null}<div className="pravaah-detail-itinerary"><div className="pravaah-detail-block-heading"><div><span className="pravaah-kicker">Day by day</span><h2>The itinerary</h2></div><span>{pkg.itinerary?.length || 0} days</span></div>{pkg.itinerary?.length ? pkg.itinerary.map((day) => <div key={day.day} className={`pravaah-itinerary-row ${activeDay === day.day ? 'is-open' : ''}`}><button type="button" onClick={() => setActiveDay(activeDay === day.day ? null : day.day)} aria-expanded={activeDay === day.day}><span className="pravaah-itinerary-row__day">Day {String(day.day).padStart(2, '0')}</span><strong>{day.title}</strong>{activeDay === day.day ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}</button><AccordionContent open={activeDay === day.day}><p>{day.description}</p></AccordionContent></div>) : <p className="pravaah-muted-copy">The itinerary for this route is being prepared by the travel desk.</p>}</div><div className="pravaah-detail-split"><div><span className="pravaah-kicker">Included</span><ul>{(pkg.inclusions || []).map((item, index) => <li key={`${item}-${index}`}><Check className="h-4 w-4" aria-hidden="true" />{item}</li>)}</ul></div><div><span className="pravaah-kicker">Not included</span><ul>{(pkg.exclusions || []).map((item, index) => <li key={`${item}-${index}`}><X className="h-4 w-4" aria-hidden="true" />{item}</li>)}</ul></div></div>{(pkg.hotels?.length || pkg.thingsToCarry?.length || pkg.knowBeforeYouGo?.length) ? <div className="pravaah-detail-notes"><div><span className="pravaah-kicker">Before you go</span>{(pkg.knowBeforeYouGo || pkg.thingsToCarry || []).slice(0, 5).map((item) => <p key={item}><Check className="h-4 w-4" aria-hidden="true" />{item}</p>)}</div>{pkg.hotels?.length ? <div><span className="pravaah-kicker">Stay along the way</span>{pkg.hotels.slice(0, 4).map((hotel, index) => <p key={`${hotel.city}-${index}`}><MapPin className="h-4 w-4" aria-hidden="true" />{hotel.city || 'Route stay'}{hotel.hotel ? ` / ${hotel.hotel}` : ''}</p>)}</div> : null}</div> : null}
-      {(routeDetails.length > 0 || pkg.hotels?.length) ? <div className="pravaah-detail-logistics"><div><span className="pravaah-kicker">Comforts along the way</span><h2>Details that make the route easier.</h2></div><div className="pravaah-detail-logistics__list">{routeDetails.map((item, index) => <p key={`${item}-${index}`}><Check className="h-4 w-4" aria-hidden="true" />{item}</p>)}{pkg.hotels?.slice(0, 3).map((hotel, index) => <p key={`${hotel.city}-${index}`}><MapPin className="h-4 w-4" aria-hidden="true" />{hotel.city || 'Route stay'}{hotel.hotel ? ` / ${hotel.hotel}` : ''}</p>)}</div></div> : null}
-      <div className="pravaah-detail-reviews"><div className="pravaah-detail-block-heading"><div><span className="pravaah-kicker">Guest notes</span><h2>What the route leaves behind.</h2></div><div className="pravaah-detail-review-score">{reviewCount > 0 ? <><Star className="h-4 w-4" aria-hidden="true" /><strong>{reviewAverage.toFixed(1)}</strong><span>{reviewCount} guest notes</span></> : <span>Guest score pending</span>}</div></div>{reviewsLoading ? <p className="pravaah-muted-copy">Loading guest notes...</p> : reviews.length > 0 ? <div className="pravaah-review-list">{reviews.map((review) => <blockquote key={review.id}><p>“{review.comment}”</p><footer>{review.name} <span>{review.rating}/5</span></footer></blockquote>)}</div> : <p className="pravaah-muted-copy">Guest notes will appear here as more travellers return from this route.</p>}</div>
-      {pkg.faqs?.length ? <div className="pravaah-detail-faqs"><div className="pravaah-detail-block-heading"><div><span className="pravaah-kicker">Before you go</span><h2>Questions, answered.</h2></div><span>{pkg.faqs.length} answers</span></div>{pkg.faqs.map((faq, index) => <div className="pravaah-faq-row" key={`${faq.question}-${index}`}><button type="button" onClick={() => setActiveFaq(activeFaq === index ? null : index)} aria-expanded={activeFaq === index}><strong>{faq.question}</strong>{activeFaq === index ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}</button><AccordionContent open={activeFaq === index}><p>{faq.answer}</p></AccordionContent></div>)}</div> : null}
-    </div><aside className="pravaah-detail-aside"><div className="pravaah-detail-aside__sticky"><span className="pravaah-kicker">Make it yours</span><h2>Plan this trip.</h2><p>Tell us what you are looking for. We will shape the route, stays, and pace around it.</p><div className="pravaah-detail-aside__price"><span>Starting from</span><strong>{formatPackagePrice(pkg.offerPrice || pkg.price)}</strong><small>{pkg.duration}</small></div><button type="button" className="pravaah-button pravaah-button--copper pravaah-button--wide" onClick={() => setEnquiryOpen(true)}>Plan your trip <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button><a className="pravaah-outline-button pravaah-outline-button--wide" href={whatsappUrl} target="_blank" rel="noopener noreferrer"><MessageCircle className="h-4 w-4" aria-hidden="true" />Ask on WhatsApp</a>{onToggleWishlist && <button type="button" className={`pravaah-outline-button pravaah-outline-button--wide ${saved ? 'is-saved' : ''}`} onClick={() => { onToggleWishlist(pkg); onPackageSaved?.(); }}><Heart className="h-4 w-4" aria-hidden="true" />{saved ? 'Saved to travel desk' : 'Save this journey'}</button>}{isAdminLoggedIn && onDeletePackage && <button type="button" className="pravaah-danger-link" onClick={() => onDeletePackage(pkg.id)}>Delete package</button>}<div className="pravaah-detail-aside__reassurance"><p><ShieldCheck className="h-4 w-4" aria-hidden="true" />Human support from first call to return</p><p><Compass className="h-4 w-4" aria-hidden="true" />A flexible plan, never a rushed itinerary</p></div></div></aside></div></section>
-    {related.length > 0 && <section className="pravaah-related pravaah-section"><div className="pravaah-shell"><div className="pravaah-section-heading"><div><span className="pravaah-kicker">Keep looking around</span><h2>More routes from here.</h2></div><button type="button" className="pravaah-text-link" onClick={() => onNavigate?.('packages')}>All journeys <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button></div><div className="pravaah-related__rail">{related.map((item, index) => <article key={item.id}><button type="button" onClick={() => onNavigate && openPackage(onNavigate, item)}><PackageImage src={getPackageVisual(item)} alt={item.title} className="h-full w-full object-cover" /></button><span>{item.category} / {item.duration}</span><h3>{item.title}</h3></article>)}</div></div></section>}
-    {!enquiryOpen && <div className="pravaah-detail-mobile-bar"><div><span>From</span><strong>{formatPackagePrice(pkg.offerPrice || pkg.price)}</strong></div><button type="button" className="pravaah-button pravaah-button--copper" onClick={() => setEnquiryOpen(true)}>Plan this trip <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button></div>}
-    {enquiryOpen && <div className="pravaah-enquiry-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !submitting) setEnquiryOpen(false); }}><div className="pravaah-enquiry-dialog" role="dialog" aria-modal="true" aria-labelledby="enquiry-title"><div className="pravaah-enquiry-dialog__intro"><button type="button" className="pravaah-icon-button pravaah-icon-button--light" onClick={() => setEnquiryOpen(false)} aria-label="Close trip enquiry"><X className="h-5 w-5" aria-hidden="true" /></button><span className="pravaah-kicker pravaah-kicker--light">Trip enquiry</span><h2 id="enquiry-title">Plan your<br /><em>{pkg.title}.</em></h2><p>Share the essentials. A Pravaah curator will return with a thoughtful first draft.</p><div><p><Compass className="h-4 w-4" aria-hidden="true" />Route planning by people who know the ground</p><p><CalendarDays className="h-4 w-4" aria-hidden="true" />Flexible dates and travel styles welcome</p></div></div><form className="pravaah-enquiry-form" onSubmit={submitEnquiry}><div className="pravaah-enquiry-form__heading"><span className="pravaah-kicker">Your details</span><h3>Let us begin with the basics.</h3></div>{formError && <div className="pravaah-form-error" role="alert">{formError}</div>}{success ? <div className="pravaah-form-success"><Check className="h-5 w-5" aria-hidden="true" /><h3>Your enquiry is on its way.</h3><p>We will be in touch shortly to talk through the route and the details.</p><button type="button" className="pravaah-button pravaah-button--dark" onClick={() => setEnquiryOpen(false)}>Close</button></div> : <><div className="pravaah-form-grid"><label>Name *<input name="name" value={formData.name} onChange={updateField} required /></label><label>Phone *<input name="phone" type="tel" value={formData.phone} onChange={updateField} required /></label><label>Email *<input name="email" type="email" value={formData.email} onChange={updateField} required /></label><label>Travel date *<input name="travelDate" type="date" value={formData.travelDate} onChange={updateField} required /></label><label>Travellers<input name="travelers" type="number" min="1" value={formData.travelers} onChange={updateField} /></label><label>Budget<select name="budget" value={formData.budget} onChange={updateField}><option>Rs. 20,000 - Rs. 50,000</option><option>Rs. 50,000 - Rs. 1,00,000</option><option>Rs. 1,00,000 - Rs. 2,50,000</option><option>Rs. 2,50,000+</option></select></label></div><label className="pravaah-form-full">Anything we should know?<textarea name="message" value={formData.message} onChange={updateField} rows={4} placeholder="Your pace, preferences, accessibility needs, or the feeling you want from the trip..." /></label><button type="submit" disabled={submitting} className="pravaah-button pravaah-button--copper pravaah-button--wide">{submitting ? 'Sending your enquiry...' : 'Send enquiry'} <Send className="h-4 w-4" aria-hidden="true" /></button><p className="pravaah-form-footnote"><Mail className="h-4 w-4" aria-hidden="true" />We reply with a human plan, not an automated checkout.</p></>}</form></div></div>}
+    <section className="pravaah-detail-hero">
+      <div className="pravaah-detail-hero__image">
+        <img key={activeImage} src={getTravelImage(gallery[activeImage] || galleryFallback)} alt={getPackageImageAlt(pkg, 'hero')} onError={(event) => handleGalleryImageError(event, galleryFallback)} />
+      </div>
+      <div className="pravaah-detail-hero__veil" />
+      <div className="pravaah-shell pravaah-detail-hero__inner">
+        <div className="flex flex-wrap items-center justify-between gap-4 pb-2">
+          <button type="button" className="pravaah-quiet-link pravaah-quiet-link--light" onClick={onBack}>
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />Back to journeys
+          </button>
+          <nav aria-label="Breadcrumb" className="pravaah-breadcrumb text-xs text-stone-300">
+            <ol className="flex items-center gap-1.5">
+              <li><button type="button" onClick={() => onNavigate?.('home')} className="hover:text-white transition-colors">Home</button></li>
+              <li aria-hidden="true" className="text-stone-400">/</li>
+              <li><button type="button" onClick={() => onNavigate?.('packages')} className="hover:text-white transition-colors">Packages</button></li>
+              <li aria-hidden="true" className="text-stone-400">/</li>
+              <li className="text-stone-100 font-medium truncate max-w-[220px]" aria-current="page">{displayTitle}</li>
+            </ol>
+          </nav>
+        </div>
+        <div className="pravaah-detail-hero__copy">
+          <span className="pravaah-kicker pravaah-kicker--light">{pkg.category} / {pkg.location || pkg.destination}</span>
+          <h1>{displayTitle}</h1>
+          <p>{pkg.shortDescription || pkg.fullDescription}</p>
+          <div className="pravaah-detail-hero__meta">
+            <span><Clock3 className="h-4 w-4" aria-hidden="true" />{pkg.duration}</span>
+            <span><MapPin className="h-4 w-4" aria-hidden="true" />{pkg.destination}</span>
+            <span>From <strong>{formatPackagePrice(pkg.offerPrice || pkg.price)}</strong></span>
+          </div>
+        </div>
+      </div>
+      <div className="pravaah-detail-hero__counter">
+        <span>{String(activeImage + 1).padStart(2, '0')}</span><span>/</span><span>{String(gallery.length).padStart(2, '0')}</span>
+      </div>
+    </section>
+
+    <section className="pravaah-detail-summary" aria-label="Package summary">
+      <div className="pravaah-shell pravaah-detail-summary__inner">
+        <div>
+          <span className="pravaah-kicker">Route snapshot</span>
+          <h2>Journey Summary</h2>
+          <p>{pkg.category} / {pkg.location || pkg.destination}</p>
+        </div>
+        <div className="pravaah-detail-summary__signals">
+          <span><Clock3 className="h-4 w-4" aria-hidden="true" />{pkg.duration}</span>
+          <span><Users className="h-4 w-4" aria-hidden="true" />{pkg.maxGuests ? `Up to ${pkg.maxGuests}` : 'Small group'}</span>
+          <span><strong>{formatPackagePrice(pkg.offerPrice || pkg.price)}</strong></span>
+        </div>
+        <div className="pravaah-detail-summary__actions">
+          <button type="button" className={`pravaah-save-button ${saved ? 'is-saved' : ''}`} onClick={() => { onToggleWishlist?.(pkg); onPackageSaved?.(); }} aria-label={saved ? 'Remove journey from saved trips' : 'Save journey'} title={saved ? 'Remove saved journey' : 'Save journey'}><Heart className="h-4 w-4" aria-hidden="true" /></button>
+          <button type="button" className="pravaah-button pravaah-button--dark" onClick={() => setEnquiryOpen(true)}>Plan this trip <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button>
+        </div>
+      </div>
+    </section>
+
+    <section className="pravaah-detail-gallery" aria-label="Package gallery">
+      <div className="pravaah-shell pravaah-detail-gallery__inner">
+        <div className="pravaah-detail-gallery__thumbs">
+          {gallery.slice(0, 6).map((src, index) => <button type="button" key={src} className={activeImage === index ? 'is-active' : ''} onClick={() => setActiveImage(index)} aria-label={`Show journey image ${index + 1}`}><img src={getTravelImage(src)} alt={getPackageImageAlt(pkg, 'gallery', index)} loading="lazy" onError={(event) => handleGalleryImageError(event, galleryFallback)} /></button>)}
+        </div>
+        <div className="pravaah-detail-gallery__note">
+          <span className="pravaah-kicker">A route in focus</span>
+          <p>Look closely. The best journeys are made of small changes in light, weather, and pace.</p>
+        </div>
+      </div>
+    </section>
+
+    <section className="pravaah-detail-facts" aria-label="Route facts">
+      <div className="pravaah-shell pravaah-detail-facts__grid">
+        <div><Clock3 className="h-4 w-4" aria-hidden="true" /><span>Duration</span><strong>{pkg.duration}</strong></div>
+        <div><Users className="h-4 w-4" aria-hidden="true" /><span>Group size</span><strong>{pkg.maxGuests ? `Up to ${pkg.maxGuests}` : 'Made to fit'}</strong></div>
+        <div><Compass className="h-4 w-4" aria-hidden="true" /><span>Difficulty</span><strong>{pkg.difficultyLabel || 'Comfortable pace'}</strong></div>
+        <div><MapPin className="h-4 w-4" aria-hidden="true" /><span>Pickup</span><strong>{pkg.pickup || pkg.location || 'Planned with you'}</strong></div>
+      </div>
+    </section>
+
+    <section className="pravaah-detail-body pravaah-section">
+      <div className="pravaah-shell pravaah-detail-layout">
+        <div className="pravaah-detail-content">
+          <div className="pravaah-detail-overview">
+            <span className="pravaah-kicker">The route</span>
+            <h2>About the Journey</h2>
+            <p className="font-serif text-lg leading-relaxed text-stone-800 pb-2">{pkg.overview || 'A journey with space to notice what is around you.'}</p>
+            <p>{pkg.fullDescription || pkg.shortDescription}</p>
+          </div>
+
+          {pkg.highlights?.length ? <div className="pravaah-detail-highlights">
+            <span className="pravaah-kicker">Along the way</span>
+            <h2>Route Highlights</h2>
+            <div>{pkg.highlights.map((item, index) => <div key={`${item}-${index}`}><span>0{index + 1}</span><p>{item}</p></div>)}</div>
+          </div> : null}
+
+          <div className="pravaah-detail-itinerary">
+            <div className="pravaah-detail-block-heading">
+              <div>
+                <span className="pravaah-kicker">Day by day</span>
+                <h2>Day-by-Day Itinerary</h2>
+              </div>
+              <span>{pkg.itinerary?.length || 0} days</span>
+            </div>
+            {pkg.itinerary?.length ? pkg.itinerary.map((day) => <div key={day.day} className={`pravaah-itinerary-row ${activeDay === day.day ? 'is-open' : ''}`}>
+              <button type="button" onClick={() => setActiveDay(activeDay === day.day ? null : day.day)} aria-expanded={activeDay === day.day}>
+                <span className="pravaah-itinerary-row__day">Day {String(day.day).padStart(2, '0')}</span>
+                <span className="font-semibold text-stone-900">{day.title}</span>
+                {activeDay === day.day ? <ChevronUp className="h-4 w-4 ml-auto" aria-hidden="true" /> : <ChevronDown className="h-4 w-4 ml-auto" aria-hidden="true" />}
+              </button>
+              <AccordionContent open={activeDay === day.day}>
+                <p>{day.description}</p>
+              </AccordionContent>
+            </div>) : <p className="pravaah-muted-copy">The itinerary for this route is being prepared by the travel desk.</p>}
+          </div>
+
+          <div className="pravaah-detail-split">
+            <div>
+              <span className="pravaah-kicker">Included</span>
+              <h2>What's Included</h2>
+              <ul>{(pkg.inclusions || []).map((item, index) => <li key={`${item}-${index}`}><Check className="h-4 w-4" aria-hidden="true" />{item}</li>)}</ul>
+            </div>
+            <div>
+              <span className="pravaah-kicker">Not included</span>
+              <h2>What's Not Included</h2>
+              <ul>{(pkg.exclusions || []).map((item, index) => <li key={`${item}-${index}`}><X className="h-4 w-4" aria-hidden="true" />{item}</li>)}</ul>
+            </div>
+          </div>
+
+          {(pkg.hotels?.length || pkg.thingsToCarry?.length || pkg.knowBeforeYouGo?.length) ? <div className="pravaah-detail-notes">
+            <div>
+              <span className="pravaah-kicker">Before you go</span>
+              <h2>Important Travel Information</h2>
+              {Array.from(new Set([...(pkg.knowBeforeYouGo || []), ...(pkg.thingsToCarry || [])])).slice(0, 5).map((item, index) => <p key={`${item}-${index}`}><Check className="h-4 w-4" aria-hidden="true" />{item}</p>)}
+            </div>
+            {pkg.hotels?.length ? <div>
+              <span className="pravaah-kicker">Stay along the way</span>
+              <h2>Accommodations</h2>
+              {pkg.hotels.slice(0, 4).map((hotel, index) => <p key={`${hotel.city}-${index}`}><MapPin className="h-4 w-4" aria-hidden="true" />{hotel.city || 'Route stay'}{hotel.hotel ? ` / ${hotel.hotel}` : ''}</p>)}
+            </div> : null}
+          </div> : null}
+
+          {(routeDetails.length > 0 || pkg.hotels?.length) ? <div className="pravaah-detail-logistics">
+            <div>
+              <span className="pravaah-kicker">Comforts along the way</span>
+              <h2>Route Logistics & Comforts</h2>
+            </div>
+            <div className="pravaah-detail-logistics__list">
+              {routeDetails.map((item, index) => <p key={`${item}-${index}`}><Check className="h-4 w-4" aria-hidden="true" />{item}</p>)}
+              {pkg.hotels?.slice(0, 3).map((hotel, index) => <p key={`${hotel.city}-${index}`}><MapPin className="h-4 w-4" aria-hidden="true" />{hotel.city || 'Route stay'}{hotel.hotel ? ` / ${hotel.hotel}` : ''}</p>)}
+            </div>
+          </div> : null}
+
+          <div className="pravaah-detail-reviews">
+            <div className="pravaah-detail-block-heading">
+              <div>
+                <span className="pravaah-kicker">Guest notes</span>
+                <h2>Guest Notes & Verified Reviews</h2>
+              </div>
+              <div className="pravaah-detail-review-score">
+                {reviewCount > 0 ? <><Star className="h-4 w-4" aria-hidden="true" /><strong>{reviewAverage.toFixed(1)}</strong><span>{reviewCount} guest notes</span></> : <span>Guest score pending</span>}
+              </div>
+            </div>
+            {reviewsLoading ? <p className="pravaah-muted-copy">Loading guest notes...</p> : reviews.length > 0 ? <div className="pravaah-review-list">{reviews.map((review) => <blockquote key={review.id}><p>“{review.comment}”</p><footer>{review.name} <span>{review.rating}/5</span></footer></blockquote>)}</div> : <p className="pravaah-muted-copy">Guest notes will appear here as more travellers return from this route.</p>}
+          </div>
+
+          {pkg.faqs?.length ? <div className="pravaah-detail-faqs">
+            <div className="pravaah-detail-block-heading">
+              <div>
+                <span className="pravaah-kicker">Before you go</span>
+                <h2>Frequently Asked Questions</h2>
+              </div>
+              <span>{pkg.faqs.length} answers</span>
+            </div>
+            {pkg.faqs.map((faq, index) => <div className="pravaah-faq-row" key={`${faq.question}-${index}`}>
+              <button type="button" onClick={() => setActiveFaq(activeFaq === index ? null : index)} aria-expanded={activeFaq === index}>
+                <strong>{faq.question}</strong>
+                {activeFaq === index ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
+              </button>
+              <AccordionContent open={activeFaq === index}>
+                <p>{faq.answer}</p>
+              </AccordionContent>
+            </div>)}
+          </div> : null}
+        </div>
+
+        <aside className="pravaah-detail-aside">
+          <div className="pravaah-detail-aside__sticky">
+            <span className="pravaah-kicker">Make it yours</span>
+            <h2>Plan Your Journey</h2>
+            <p>Tell us what you are looking for. We will shape the route, stays, and pace around it.</p>
+            <div className="pravaah-detail-aside__price">
+              <span>Starting from</span>
+              <strong>{formatPackagePrice(pkg.offerPrice || pkg.price)}</strong>
+              <small>{pkg.duration}</small>
+            </div>
+            <button type="button" className="pravaah-button pravaah-button--copper pravaah-button--wide" onClick={() => setEnquiryOpen(true)}>
+              Plan your trip <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+            </button>
+            <a className="pravaah-outline-button pravaah-outline-button--wide" href={whatsappUrl} target="_blank" rel="noopener noreferrer">
+              <MessageCircle className="h-4 w-4" aria-hidden="true" />Ask on WhatsApp
+            </a>
+            {onToggleWishlist && <button type="button" className={`pravaah-outline-button pravaah-outline-button--wide ${saved ? 'is-saved' : ''}`} onClick={() => { onToggleWishlist(pkg); onPackageSaved?.(); }}>
+              <Heart className="h-4 w-4" aria-hidden="true" />{saved ? 'Saved to travel desk' : 'Save this journey'}
+            </button>}
+            {isAdminLoggedIn && onDeletePackage && <button type="button" className="pravaah-danger-link" onClick={() => onDeletePackage(pkg.id)}>Delete package</button>}
+            <div className="pravaah-detail-aside__reassurance">
+              <p><ShieldCheck className="h-4 w-4" aria-hidden="true" />Human support from first call to return</p>
+              <p><Compass className="h-4 w-4" aria-hidden="true" />A flexible plan, never a rushed itinerary</p>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    {related.length > 0 && <section className="pravaah-related pravaah-section">
+      <div className="pravaah-shell">
+        <div className="pravaah-section-heading">
+          <div>
+            <span className="pravaah-kicker">Keep looking around</span>
+            <h2>Related Journeys & Similar Routes</h2>
+          </div>
+          <button type="button" className="pravaah-text-link" onClick={() => onNavigate?.('packages')}>
+            All journeys <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="pravaah-related__rail">
+          {related.map((item) => <article key={item.id}>
+            <button type="button" onClick={() => onNavigate && openPackage(onNavigate, item)}>
+              <PackageImage src={getPackageVisual(item)} alt={getPackageImageAlt(item, 'card')} className="h-full w-full object-cover" />
+            </button>
+            <span>{item.category} / {item.duration}</span>
+            <h3>{item.title}</h3>
+          </article>)}
+        </div>
+      </div>
+    </section>}
+
+    {!enquiryOpen && <div className="pravaah-detail-mobile-bar">
+      <div><span>From</span><strong>{formatPackagePrice(pkg.offerPrice || pkg.price)}</strong></div>
+      <button type="button" className="pravaah-button pravaah-button--copper" onClick={() => setEnquiryOpen(true)}>
+        Plan this trip <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+      </button>
+    </div>}
+
+    {enquiryOpen && <div className="pravaah-enquiry-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !submitting) setEnquiryOpen(false); }}>
+      <div ref={dialogRef} className="pravaah-enquiry-dialog" role="dialog" aria-modal="true" aria-labelledby="enquiry-title">
+        <div className="pravaah-enquiry-dialog__intro">
+          <button type="button" className="pravaah-icon-button pravaah-icon-button--light" onClick={() => setEnquiryOpen(false)} aria-label="Close trip enquiry"><X className="h-5 w-5" aria-hidden="true" /></button>
+          <span className="pravaah-kicker pravaah-kicker--light">Trip enquiry</span>
+          <h2 id="enquiry-title">Plan your<br /><em>{pkg.title}.</em></h2>
+          <p>Share the essentials. A Pravaah curator will return with a thoughtful first draft.</p>
+          <div>
+            <p><Compass className="h-4 w-4" aria-hidden="true" />Route planning by people who know the ground</p>
+            <p><CalendarDays className="h-4 w-4" aria-hidden="true" />Flexible dates and travel styles welcome</p>
+          </div>
+        </div>
+        <form className="pravaah-enquiry-form" onSubmit={submitEnquiry}>
+          <div className="pravaah-enquiry-form__heading">
+            <span className="pravaah-kicker">Your details</span>
+            <h3>Let us begin with the basics.</h3>
+          </div>
+          {formError && <div className="pravaah-form-error" role="alert">{formError}</div>}
+          {success ? <div className="pravaah-form-success">
+            <Check className="h-5 w-5" aria-hidden="true" />
+            <h3>Your enquiry is on its way.</h3>
+            <p>We will be in touch shortly to talk through the route and the details.</p>
+            <button type="button" className="pravaah-button pravaah-button--dark" onClick={() => setEnquiryOpen(false)}>Close</button>
+          </div> : <>
+            <div className="pravaah-form-grid">
+              <label>Name *<input name="name" value={formData.name} onChange={updateField} required /></label>
+              <label>Phone *<input name="phone" type="tel" value={formData.phone} onChange={updateField} required /></label>
+              <label>Email *<input name="email" type="email" value={formData.email} onChange={updateField} required /></label>
+              <label>Travel date *<input name="travelDate" type="date" value={formData.travelDate} onChange={updateField} required /></label>
+              <label>Travellers<input name="travelers" type="number" min="1" value={formData.travelers} onChange={updateField} /></label>
+              <label>Budget<select name="budget" value={formData.budget} onChange={updateField}><option>Rs. 20,000 - Rs. 50,000</option><option>Rs. 50,000 - Rs. 1,00,000</option><option>Rs. 1,00,000 - Rs. 2,50,000</option><option>Rs. 2,50,000+</option></select></label>
+            </div>
+            <label className="pravaah-form-full">Anything we should know?<textarea name="message" value={formData.message} onChange={updateField} rows={4} placeholder="Your pace, preferences, accessibility needs, or the feeling you want from the trip..." /></label>
+            <button type="submit" disabled={submitting} className="pravaah-button pravaah-button--copper pravaah-button--wide">{submitting ? 'Sending your enquiry...' : 'Send enquiry'} <Send className="h-4 w-4" aria-hidden="true" /></button>
+            <p className="pravaah-form-footnote"><Mail className="h-4 w-4" aria-hidden="true" />We reply with a human plan, not an automated checkout.</p>
+          </>}
+        </form>
+      </div>
+    </div>}
   </div>;
 }

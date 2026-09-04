@@ -1,15 +1,13 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wdth,wght@75..100,400..700&family=Syne:wght@400..800&display=swap');
-
 /* Pravaah Field Atlas: public editorial layer. The app engine and custom landings stay untouched. */
 #app-root.pravaah-app-shell {
   --atlas-ink: #0b1110;
   --atlas-paper: #f1f0e9;
   --atlas-limestone: #e2e3dc;
   --atlas-mist: #d7e1df;
-  --atlas-lichen: #5b746f;
-  --atlas-blue: #2e92a0;
-  --atlas-rust: #c96945;
-  --atlas-charcoal: #2a3431;
+  --atlas-lichen: #465c58;
+  --atlas-blue: #227d8b;
+  --atlas-rust: #a9441d;
+  --atlas-charcoal: #253330;
   --atlas-line: rgba(11, 17, 16, 0.16);
   --atlas-soft-line: rgba(11, 17, 16, 0.1);
   --atlas-display: 'Syne', 'Arial Black', sans-serif;
@@ -63,6 +61,14 @@
 #app-root.pravaah-app-shell h4 {
   color: var(--atlas-ink);
   font-weight: 600;
+}
+
+#app-root.pravaah-app-shell .pravaah-custom-landing h1,
+#app-root.pravaah-app-shell .pravaah-custom-landing h2,
+#app-root.pravaah-app-shell .pravaah-custom-landing h3,
+#app-root.pravaah-app-shell .pravaah-custom-landing h4 {
+  color: inherit;
+  font-weight: inherit;
 }
 
 #app-root.pravaah-app-shell em {
@@ -423,8 +429,8 @@
 #app-root.pravaah-app-shell .pravaah-featured-carousel__meta { display: flex; justify-content: space-between; gap: 10px; color: var(--atlas-lichen); font-size: 9px; font-weight: 700; letter-spacing: .1em; line-height: 1.35; text-transform: uppercase; }
 #app-root.pravaah-app-shell .pravaah-featured-carousel__meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #app-root.pravaah-app-shell .pravaah-featured-carousel__meta span:last-child { color: var(--atlas-rust); text-align: right; }
-#app-root.pravaah-app-shell .pravaah-featured-carousel__body h3 { display: -webkit-box; overflow: hidden; margin: 12px 0 0; color: var(--atlas-ink); font-family: var(--atlas-display); font-size: 25px; font-weight: 650; letter-spacing: -.055em; line-height: .98; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-#app-root.pravaah-app-shell .pravaah-featured-carousel__body > p { display: -webkit-box; overflow: hidden; margin: 10px 0 0; color: var(--atlas-lichen); font-size: 12px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+#app-root.pravaah-app-shell .pravaah-featured-carousel__body h3 { display: -webkit-box; overflow: hidden; margin: 12px 0 0; color: var(--atlas-ink); font-family: var(--atlas-display); font-size: 25px; font-weight: 650; letter-spacing: -.055em; line-height: .98; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+#app-root.pravaah-app-shell .pravaah-featured-carousel__body > p { display: -webkit-box; overflow: hidden; margin: 10px 0 0; color: var(--atlas-lichen); font-size: 12px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 #app-root.pravaah-app-shell .pravaah-featured-carousel__facts { display: flex; flex-wrap: wrap; gap: 9px 14px; margin-top: 14px; color: var(--atlas-lichen); font-size: 10px; line-height: 1.3; }
 #app-root.pravaah-app-shell .pravaah-featured-carousel__facts span,
 #app-root.pravaah-app-shell .pravaah-featured-carousel__detail-facts span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
@@ -485,17 +491,34 @@
 #app-root.pravaah-app-shell .pravaah-home-process__marker strong { color: rgba(255,255,255,.32); font-family: var(--atlas-display); }
 #app-root.pravaah-app-shell .pravaah-home-process__steps > div { border-color: rgba(255,255,255,.28); }
 #app-root.pravaah-app-shell .pravaah-home-process__steps > div > span { color: #ef9b78; }
-#app-root.pravaah-app-shell .pravaah-field-notes { background: var(--atlas-paper); }
-#app-root.pravaah-app-shell .pravaah-field-note { border-color: var(--atlas-line); }
+
+/* Field Notes (light cream background) */
+#app-root.pravaah-app-shell .pravaah-field-notes { background: var(--atlas-paper); color: var(--atlas-ink); }
+#app-root.pravaah-app-shell .pravaah-field-notes__intro h2 { color: var(--atlas-ink); }
+#app-root.pravaah-app-shell .pravaah-field-notes__intro p { color: var(--atlas-charcoal); font-size: 16px; line-height: 1.75; }
+#app-root.pravaah-app-shell .pravaah-field-notes__intro .pravaah-text-link { color: var(--atlas-rust); }
+#app-root.pravaah-app-shell .pravaah-field-notes__intro .pravaah-text-link:hover { color: var(--atlas-ink); }
+#app-root.pravaah-app-shell .pravaah-field-notes__list { border-top: 1px solid var(--atlas-line); }
+#app-root.pravaah-app-shell .pravaah-field-note { border-color: var(--atlas-line); color: var(--atlas-ink); }
 #app-root.pravaah-app-shell .pravaah-field-note:hover { background: var(--atlas-mist); }
-#app-root.pravaah-app-shell .pravaah-field-note__image { border-radius: 0; }
+#app-root.pravaah-app-shell .pravaah-field-note__number { color: var(--atlas-rust); font-family: var(--atlas-display); font-size: 22px; font-weight: 700; opacity: .9; }
+#app-root.pravaah-app-shell .pravaah-field-note__image { border-radius: 0; background: var(--atlas-mist); }
 #app-root.pravaah-app-shell .pravaah-field-note__image img { transition: transform 550ms cubic-bezier(.2,.7,.2,1); }
 #app-root.pravaah-app-shell .pravaah-field-note:hover .pravaah-field-note__image img { transform: scale(1.06); }
-#app-root.pravaah-app-shell .pravaah-trust { background: var(--atlas-mist); }
+#app-root.pravaah-app-shell .pravaah-field-note h3 { color: var(--atlas-ink); font-family: var(--atlas-display); font-size: 28px; font-weight: 650; letter-spacing: -.04em; }
+#app-root.pravaah-app-shell .pravaah-field-note p { color: var(--atlas-charcoal); font-size: 13.5px; line-height: 1.6; }
+#app-root.pravaah-app-shell .pravaah-field-note > svg { color: var(--atlas-rust); }
+
+/* Trust (light mist background) */
+#app-root.pravaah-app-shell .pravaah-trust { background: var(--atlas-mist); color: var(--atlas-ink); }
+#app-root.pravaah-app-shell .pravaah-trust h2 { color: var(--atlas-ink); }
+#app-root.pravaah-app-shell .pravaah-trust__copy > p { color: var(--atlas-charcoal); }
 #app-root.pravaah-app-shell .pravaah-trust__image { border-radius: 0; }
 #app-root.pravaah-app-shell .pravaah-trust__image span { background: var(--atlas-ink); color: #d7e1df; }
-#app-root.pravaah-app-shell .pravaah-trust__points > div { border-color: var(--atlas-line); }
+#app-root.pravaah-app-shell .pravaah-trust__points > div { border-color: var(--atlas-line); color: var(--atlas-ink); }
 #app-root.pravaah-app-shell .pravaah-trust__points svg { color: var(--atlas-blue); }
+#app-root.pravaah-app-shell .pravaah-trust__review { color: var(--atlas-rust); }
+
 #app-root.pravaah-app-shell .pravaah-home-cta { background: var(--atlas-rust); }
 #app-root.pravaah-app-shell .pravaah-home-cta h2 { color: #fff; font-family: var(--atlas-display); letter-spacing: -.07em; }
 #app-root.pravaah-app-shell .pravaah-home-cta .pravaah-kicker { color: #ffe2d6; }
@@ -526,31 +549,47 @@
 #app-root.pravaah-app-shell .pravaah-catalog-item:hover { background: var(--atlas-mist); box-shadow: 8px 8px 0 var(--atlas-blue); transform: translate(-3px, -3px); }
 #app-root.pravaah-app-shell .pravaah-catalog-item__image { border-radius: 0; }
 #app-root.pravaah-app-shell .pravaah-catalog-item__body h2 { font-family: var(--atlas-display); letter-spacing: -.06em; }
-#app-root.pravaah-app-shell .pravaah-catalog-item__facts,
+#app-root.pravaah-app-shell .pravaah-catalog-item__body h2 button { color: var(--atlas-ink); }
+#app-root.pravaah-app-shell .pravaah-catalog-item__body p { color: var(--atlas-charcoal); }
+#app-root.pravaah-app-shell .pravaah-catalog-item__meta span { color: var(--atlas-lichen); font-weight: 600; }
+#app-root.pravaah-app-shell .pravaah-catalog-item__facts { border-color: var(--atlas-line); color: var(--atlas-charcoal); }
 #app-root.pravaah-app-shell .pravaah-catalog-item__footer { border-color: var(--atlas-line); }
+#app-root.pravaah-app-shell .pravaah-catalog-item__footer span { color: var(--atlas-charcoal); }
+#app-root.pravaah-app-shell .pravaah-catalog-item__footer strong { color: var(--atlas-ink); }
 #app-root.pravaah-app-shell .pravaah-pagination button { border-radius: 0; }
 #app-root.pravaah-app-shell .pravaah-pagination button.is-active { background: var(--atlas-ink); color: var(--atlas-paper); }
 #app-root.pravaah-app-shell .pravaah-destinations-intro { background: var(--atlas-mist); }
+#app-root.pravaah-app-shell .pravaah-destinations-intro p { color: var(--atlas-charcoal); }
 #app-root.pravaah-app-shell .pravaah-destination-stories { background: var(--atlas-paper); }
 #app-root.pravaah-app-shell .pravaah-destination-stories__label { border-color: var(--atlas-line); color: var(--atlas-lichen); }
 #app-root.pravaah-app-shell .pravaah-destination-story { border-color: var(--atlas-line); border-radius: 0; background: transparent; }
 #app-root.pravaah-app-shell .pravaah-destination-story:hover { background: var(--atlas-mist); }
 #app-root.pravaah-app-shell .pravaah-destination-story__image { border-radius: 0; }
-#app-root.pravaah-app-shell .pravaah-destination-story__body strong { font-family: var(--atlas-display); letter-spacing: -.06em; }
+#app-root.pravaah-app-shell .pravaah-destination-story__number { color: var(--atlas-rust); font-family: var(--atlas-display); font-size: 26px; font-weight: 700; opacity: .9; }
+#app-root.pravaah-app-shell .pravaah-destination-story__body strong { color: var(--atlas-ink); font-family: var(--atlas-display); letter-spacing: -.06em; }
+#app-root.pravaah-app-shell .pravaah-destination-story__body > span:not(.pravaah-kicker) { color: var(--atlas-charcoal); }
+#app-root.pravaah-app-shell .pravaah-destination-story__body small { color: var(--atlas-rust); font-weight: 700; }
 #app-root.pravaah-app-shell .pravaah-destinations-note { background: var(--atlas-blue); color: #fff; }
-#app-root.pravaah-app-shell .pravaah-destinations-note svg { color: #ef9b78; }
+#app-root.pravaah-app-shell .pravaah-destinations-note svg { color: #ffd4c2; }
 #app-root.pravaah-app-shell .pravaah-destination-routes { background: var(--atlas-limestone); }
 #app-root.pravaah-app-shell .pravaah-destination-routes__list article { border-color: var(--atlas-line); }
 #app-root.pravaah-app-shell .pravaah-destination-route__image { border-radius: 0; }
 #app-root.pravaah-app-shell .pravaah-destination-route__body h3 { font-family: var(--atlas-display); letter-spacing: -.05em; }
+#app-root.pravaah-app-shell .pravaah-destination-route__body h3 button { color: var(--atlas-ink); }
+#app-root.pravaah-app-shell .pravaah-destination-route__body p { color: var(--atlas-charcoal); }
+#app-root.pravaah-app-shell .pravaah-destination-route__body div span { color: var(--atlas-charcoal); }
+#app-root.pravaah-app-shell .pravaah-destination-route__body div strong { color: var(--atlas-ink); }
 #app-root.pravaah-app-shell .pravaah-detail-hero,
 #app-root.pravaah-app-shell .pravaah-detail-main { background: var(--atlas-paper); }
 #app-root.pravaah-app-shell .pravaah-detail-hero { min-height: 610px; }
 #app-root.pravaah-app-shell .pravaah-detail-hero__inner { min-height: 610px; }
-#app-root.pravaah-app-shell .pravaah-detail-hero h1 { font-family: var(--atlas-display); letter-spacing: -.07em; }
+#app-root.pravaah-app-shell .pravaah-detail-hero h1 { font-family: var(--atlas-display); letter-spacing: -.07em; color: var(--atlas-ink); }
+#app-root.pravaah-app-shell .pravaah-detail-hero__copy > p { color: var(--atlas-charcoal); }
+#app-root.pravaah-app-shell .pravaah-detail-hero__meta { color: var(--atlas-charcoal); }
 #app-root.pravaah-app-shell .pravaah-detail-summary { margin-top: -22px; }
 #app-root.pravaah-app-shell .pravaah-detail-summary__inner { border-radius: 0; border-color: var(--atlas-line); background: var(--atlas-paper); box-shadow: 8px 8px 0 var(--atlas-blue); }
-#app-root.pravaah-app-shell .pravaah-detail-summary h2 { font-family: var(--atlas-display); letter-spacing: -.055em; }
+#app-root.pravaah-app-shell .pravaah-detail-summary h2 { font-family: var(--atlas-display); letter-spacing: -.055em; color: var(--atlas-ink); }
+#app-root.pravaah-app-shell .pravaah-detail-summary__copy > p { color: var(--atlas-charcoal); }
 #app-root.pravaah-app-shell .pravaah-detail-summary__signals strong { color: var(--atlas-rust); font-family: var(--atlas-display); }
 #app-root.pravaah-app-shell .pravaah-detail-hero__image,
 #app-root.pravaah-app-shell .pravaah-detail-gallery__main,
@@ -560,10 +599,16 @@
 #app-root.pravaah-app-shell .pravaah-detail-aside { border: 1px solid var(--atlas-line); border-radius: 0; background: var(--atlas-mist); box-shadow: 8px 8px 0 var(--atlas-rust); }
 #app-root.pravaah-app-shell .pravaah-detail-aside__price { border-color: var(--atlas-line); }
 #app-root.pravaah-app-shell .pravaah-detail-aside__price strong { color: var(--atlas-rust); }
+#app-root.pravaah-app-shell .pravaah-detail-facts span { color: var(--atlas-lichen); font-weight: 600; }
+#app-root.pravaah-app-shell .pravaah-detail-facts strong { color: var(--atlas-ink); }
+#app-root.pravaah-app-shell .pravaah-detail-gallery__note p { color: var(--atlas-charcoal); }
 #app-root.pravaah-app-shell .pravaah-itinerary-item,
 #app-root.pravaah-app-shell .pravaah-faq-item { border-color: var(--atlas-line); }
 #app-root.pravaah-app-shell .pravaah-itinerary-item > button,
 #app-root.pravaah-app-shell .pravaah-faq-item > button { color: var(--atlas-ink); }
+#app-root.pravaah-app-shell .pravaah-detail-main p,
+#app-root.pravaah-app-shell .pravaah-itinerary-item p,
+#app-root.pravaah-app-shell .pravaah-faq-item p { color: var(--atlas-charcoal); }
 #app-root.pravaah-app-shell .pravaah-related { background: var(--atlas-ink); }
 #app-root.pravaah-app-shell .pravaah-related h2,
 #app-root.pravaah-app-shell .pravaah-related h3 { color: var(--atlas-paper); }
@@ -592,6 +637,10 @@
 #app-root.pravaah-app-shell .pravaah-blog-list__image { border-radius: 0; }
 #app-root.pravaah-app-shell .pravaah-blog-lead h2,
 #app-root.pravaah-app-shell .pravaah-blog-list h3 { font-family: var(--atlas-display); letter-spacing: -.055em; }
+#app-root.pravaah-app-shell .pravaah-blog-lead p,
+#app-root.pravaah-app-shell .pravaah-blog-list article p,
+#app-root.pravaah-app-shell .pravaah-about-manifesto p,
+#app-root.pravaah-app-shell .pravaah-about-contact p { color: var(--atlas-charcoal); }
 #app-root.pravaah-app-shell .pravaah-contact-hero { background: var(--atlas-blue); }
 #app-root.pravaah-app-shell .pravaah-contact-hero h1 { color: #fff; font-family: var(--atlas-display); letter-spacing: -.07em; }
 #app-root.pravaah-app-shell .pravaah-contact-hero p { color: #d7e1df; }
@@ -773,7 +822,7 @@
 #app-root.pravaah-app-shell .pravaah-featured-carousel__rail-card__veil { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(11,17,16,.8), rgba(11,17,16,.25)); }
 #app-root.pravaah-app-shell .pravaah-featured-carousel__rail-card__copy { position: absolute; inset: 13px 32px 11px 13px; display: grid; align-content: center; gap: 4px; }
 #app-root.pravaah-app-shell .pravaah-featured-carousel__rail-card__copy small { overflow: hidden; color: #c7ddda; font-size: 8px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; }
-#app-root.pravaah-app-shell .pravaah-featured-carousel__rail-card__copy strong { display: -webkit-box; overflow: hidden; color: #fff; font-family: var(--atlas-display); font-size: 18px; letter-spacing: -.045em; line-height: .94; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+#app-root.pravaah-app-shell .pravaah-featured-carousel__rail-card__copy strong { display: -webkit-box; overflow: hidden; color: #fff; font-family: var(--atlas-display); font-size: 18px; letter-spacing: -.045em; line-height: .94; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 #app-root.pravaah-app-shell .pravaah-featured-carousel__rail-card__copy em { color: #ef9b78; font-size: 10px; font-style: normal; }
 #app-root.pravaah-app-shell .pravaah-featured-carousel__rail-card__arrow { position: absolute; right: 12px; top: 50%; color: #ef9b78; transform: translateY(-50%); }
 #app-root.pravaah-app-shell .pravaah-featured-carousel__rail-card--coming { display: flex; align-items: center; gap: 12px; min-height: 96px; padding: 13px; background: var(--atlas-mist); color: var(--atlas-ink); cursor: default; }

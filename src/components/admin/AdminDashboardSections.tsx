@@ -27,8 +27,8 @@ interface OverviewTabProps {
     recentEnquiries: Enquiry[];
   };
   formatPriceValue: (value: number) => string;
-  quickActions: Array<{ label: string; icon: React.ElementType; action: () => void; tone: string }>;
-  dashboardStats: Array<{ label: string; value: string | number; description: string; icon: React.ElementType; tone: string }>;
+  quickActions: Array<{ label: string; icon: React.ComponentType<{ className?: string }>; action: () => void; tone: string }>;
+  dashboardStats: Array<{ label: string; value: string | number; description: string; icon: React.ComponentType<{ className?: string }>; tone: string }>;
   setActiveTab: (tab: any) => void;
   setActiveBooking: (booking: any) => void;
   setAssignee: (value: string) => void;
@@ -259,7 +259,7 @@ function AdminManagementCard({
   count,
   onOpen,
 }: {
-  icon: React.ElementType;
+  icon: React.ComponentType<{ className?: string }>;
   title: string;
   description: string;
   count: number;
@@ -313,7 +313,7 @@ function AdminSearchBar({
   );
 }
 
-function AdminEmptyState({ icon: Icon, title, description }: { icon: React.ElementType; title: string; description: string }) {
+function AdminEmptyState({ icon: Icon, title, description }: { icon: React.ComponentType<{ className?: string }>; title: string; description: string }) {
   return (
     <div className="rounded-[20px] border border-dashed border-stone-200 bg-[#f7f8f3] p-10 text-center">
       <Icon className="mx-auto h-10 w-10 text-stone-300" />

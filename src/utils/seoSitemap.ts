@@ -16,7 +16,9 @@ export const STATIC_PUBLIC_SITEMAP_PATHS = [
 export const PUBLIC_CUSTOM_LANDING_PATHS = [
   '/roopkund-trek',
   '/buran-ghati-trek',
-  '/roopkund-mystery',
+  '/ladakh',
+  '/himachal',
+  '/himachal-trek',
 ] as const;
 
 export interface SitemapPackageRecord {
@@ -97,20 +99,15 @@ export const isPublishedBlog = (post: SitemapBlogRecord) => Boolean(
   post.id && post.status === 'Publish',
 );
 
-const slugifyPackageTitle = (value: string) => String(value || '')
-  .toLowerCase()
-  .trim()
-  .replace(/&/g, 'and')
-  .replace(/[^a-z0-9]+/g, '-')
-  .replace(/^-+|-+$/g, '');
+import { getPackageCanonicalSlug } from './packageRoute';
 
 export const getPublicPackagePath = (pkg: SitemapPackageRecord) => {
   const customPath = normalizePath(String(pkg.customLandingPage || ''));
   if (customPath && PUBLIC_CUSTOM_LANDING_PATHS.includes(customPath as (typeof PUBLIC_CUSTOM_LANDING_PATHS)[number])) {
     return customPath;
   }
-  const slug = slugifyPackageTitle(String(pkg.title || ''));
-  return `/packages/${slug ? `${slug}-${pkg.id}` : pkg.id}`;
+  const slug = getPackageCanonicalSlug(pkg);
+  return `/packages/${slug}`;
 };
 
 export const getPublicBlogPath = (post: SitemapBlogRecord) => {
@@ -137,7 +134,7 @@ export const buildSitemapEntries = ({
 
   const entries: SitemapEntry[] = [
     ...STATIC_PUBLIC_SITEMAP_PATHS.map(staticEntry),
-    ...PUBLIC_CUSTOM_LANDING_PATHS.map((path) => ({ path, changefreq: 'monthly' as const, priority: '0.8' })),
+    ...PUBLIC_CUSTOM_LANDING_PATHS.map((path) => ({ path, changefreq: 'weekly' as const, priority: '0.9' })),
     ...packages.filter(isPublicPackage).map((pkg) => ({
       path: getPublicPackagePath(pkg),
       lastmod: toSitemapDate(pkg.updatedAt ?? pkg.publishedAt ?? pkg.createdAt),

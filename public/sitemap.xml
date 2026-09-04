@@ -47,381 +47,391 @@
   </url>
   <url>
     <loc>https://pravaahtravels.com/roopkund-trek</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
     <loc>https://pravaahtravels.com/buran-ghati-trek</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/roopkund-mystery</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
+    <loc>https://pravaahtravels.com/ladakh</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/jim-corbett-and-nainital-wildlife-and-hill-station-combo-jim-corbett-and-nainital-wildlife-and-hill-station-combo</loc>
+    <loc>https://pravaahtravels.com/himachal</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://pravaahtravels.com/himachal-trek</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://pravaahtravels.com/packages/jim-corbett-nainital-tour</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/vietnam-highlights-hanoi-halong-bay-da-nang-and-hoi-an-grand-tour-vietnam-highlights-hanoi-halong-bay-da-nang-and-hoi-an-grand-tour</loc>
+    <loc>https://pravaahtravels.com/packages/vietnam-hanoi-halong-da-nang-hoi-an</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/maldives-all-inclusive-complete-worry-free-island-holiday-maldives-all-inclusive-complete-worry-free-island-holiday</loc>
+    <loc>https://pravaahtravels.com/packages/maldives-all-inclusive-resort</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/himachal-honeymoon-shimla-manali-and-private-romance-himachal-honeymoon-shimla-manali-and-private-romance</loc>
+    <loc>https://pravaahtravels.com/packages/himachal-honeymoon-shimla-manali</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/sri-lanka-highlights-colombo-kandy-and-coastal-galle-sri-lanka-highlights-colombo-kandy-and-coastal-galle</loc>
+    <loc>https://pravaahtravels.com/packages/sri-lanka-colombo-kandy-galle</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/dharamshala-bir-billing-paragliding-and-tibetan-culture-tour-dharamshala-bir-billing-paragliding-and-tibetan-culture-tour</loc>
+    <loc>https://pravaahtravels.com/packages/dharamshala-bir-billing-paragliding</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/himalayan-luxury-escape-wellness-and-serenity-retreat-himalayan-luxury-escape-wellness-and-serenity-retreat</loc>
+    <loc>https://pravaahtravels.com/packages/himalayan-wellness-serenity-retreat</loc>
     <lastmod>2026-08-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/maldives-water-villa-escape-overwater-bungalow-getaway-maldives-water-villa-escape-overwater-bungalow-getaway</loc>
+    <loc>https://pravaahtravels.com/packages/maldives-overwater-villa-holiday</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/harshil-hidden-himalayas-offbeat-valley-escape-harshil-hidden-himalayas-offbeat-valley-escape</loc>
+    <loc>https://pravaahtravels.com/packages/harshil-valley-himalayan-escape</loc>
     <lastmod>2026-08-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/signature-adventure-collection-ultimate-himalayan-expedition-signature-adventure-collection-ultimate-himalayan-expedition</loc>
+    <loc>https://pravaahtravels.com/packages/manali-to-leh-multi-sport-expedition</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/ramayana-trail-sacred-sites-of-sri-lanka-ramayana-trail-sacred-sites-of-sri-lanka</loc>
+    <loc>https://pravaahtravels.com/packages/sri-lanka-ramayana-trail</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/chopta-tungnath-chandrashila-trek-chopta-tungnath-chandrashila-trek</loc>
+    <loc>https://pravaahtravels.com/packages/chopta-tungnath-chandrashila-trek</loc>
     <lastmod>2026-08-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/scenic-sri-lanka-wildlife-waterfalls-and-ancient-cities-scenic-sri-lanka-wildlife-waterfalls-and-ancient-cities</loc>
+    <loc>https://pravaahtravels.com/packages/sri-lanka-sigiriya-ella-yala</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/luxury-ladakh-premium-himalayan-escape-luxury-ladakh-premium-himalayan-escape</loc>
+    <loc>https://pravaahtravels.com/packages/luxury-ladakh-experience</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/rishikesh-adventure-escape-river-rafting-camping-and-yoga-rishikesh-adventure-escape-river-rafting-camping-and-yoga</loc>
+    <loc>https://pravaahtravels.com/packages/rishikesh-rafting-camping-yoga</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/dubai-honeymoon-escape-private-desert-yacht-and-spa-romance-dubai-honeymoon-escape-private-desert-yacht-and-spa-romance</loc>
+    <loc>https://pravaahtravels.com/packages/dubai-honeymoon-yacht-desert</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/kasol-tosh-parvati-valley-backpacker-escape-kasol-tosh-parvati-valley-backpacker-escape</loc>
+    <loc>https://pravaahtravels.com/packages/kasol-tosh-parvati-valley-tour</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/bali-highlights-classic-ubud-kintamani-seminyak-and-uluwatu-tour-bali-highlights-classic-ubud-kintamani-seminyak-and-uluwatu-tour</loc>
+    <loc>https://pravaahtravels.com/packages/bali-ubud-kintamani-seminyak-uluwatu</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/maldives-luxury-escape-ultra-premium-private-island-retreat-maldives-luxury-escape-ultra-premium-private-island-retreat</loc>
+    <loc>https://pravaahtravels.com/packages/maldives-private-island-retreat</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/pravaah-privilege-uttarakhand-flagship-luxury-himalayan-journey-pravaah-privilege-uttarakhand-flagship-luxury-himalayan-journey</loc>
+    <loc>https://pravaahtravels.com/packages/privilege-uttarakhand-luxury-tour</loc>
     <lastmod>2026-08-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/complete-ladakh-explorer-nubra-pangong-tso-moriri-and-monasteries-complete-ladakh-explorer-nubra-pangong-tso-moriri-and-monasteries</loc>
+    <loc>https://pravaahtravels.com/packages/ladakh-nubra-pangong-tso-moriri</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/bangkok-pattaya-compact-thailand-city-and-beach-break-bangkok-pattaya-compact-thailand-city-and-beach-break</loc>
+    <loc>https://pravaahtravels.com/packages/bangkok-pattaya-city-beach-tour</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/auli-snow-escape-skiing-and-himalayan-cable-car-views-auli-snow-escape-skiing-and-himalayan-cable-car-views</loc>
+    <loc>https://pravaahtravels.com/packages/auli-skiing-cable-car-tour</loc>
     <lastmod>2026-08-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/bali-family-holiday-culture-nature-and-beach-fun-for-all-ages-bali-family-holiday-culture-nature-and-beach-fun-for-all-ages</loc>
+    <loc>https://pravaahtravels.com/packages/bali-family-vacation</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/pravaah-privilege-himalayas-grand-uttarakhand-and-ladakh-journey-pravaah-privilege-himalayas-grand-uttarakhand-and-ladakh-journey</loc>
+    <loc>https://pravaahtravels.com/packages/grand-himalayan-journey-uttarakhand-ladakh</loc>
     <lastmod>2026-08-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/amazing-thailand-bangkok-chiang-mai-and-phuket-amazing-thailand-bangkok-chiang-mai-and-phuket</loc>
+    <loc>https://pravaahtravels.com/packages/thailand-bangkok-chiang-mai-phuket</loc>
     <lastmod>2026-08-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/pravaah-privilege-ladakh-flagship-luxury-high-altitude-journey-pravaah-privilege-ladakh-flagship-luxury-high-altitude-journey</loc>
+    <loc>https://pravaahtravels.com/packages/privilege-ladakh-luxury-journey</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/jibhi-tirthan-valley-quiet-riverside-retreat-jibhi-tirthan-valley-quiet-riverside-retreat</loc>
+    <loc>https://pravaahtravels.com/packages/jibhi-tirthan-valley-retreat</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/char-dham-yatra-yamunotri-gangotri-kedarnath-and-badrinath-char-dham-yatra-yamunotri-gangotri-kedarnath-and-badrinath</loc>
+    <loc>https://pravaahtravels.com/packages/char-dham-yatra-uttarakhand</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/hanoi-and-halong-bay-north-vietnam-old-quarter-and-luxury-cruise-escape-hanoi-and-halong-bay-north-vietnam-old-quarter-and-luxury-cruise-escape</loc>
+    <loc>https://pravaahtravels.com/packages/hanoi-halong-bay-luxury-cruise</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/vietnam-honeymoon-escape-private-cruise-beach-and-romance-vietnam-honeymoon-escape-private-cruise-beach-and-romance</loc>
+    <loc>https://pravaahtravels.com/packages/vietnam-honeymoon-da-nang-hoi-an-halong</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/hanle-turtuk-expedition-dark-sky-reserve-and-border-village-hanle-turtuk-expedition-dark-sky-reserve-and-border-village</loc>
+    <loc>https://pravaahtravels.com/packages/ladakh-hanle-dark-sky-turtuk</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/singapore-highlights-gardens-marina-bay-and-city-icons-singapore-highlights-gardens-marina-bay-and-city-icons</loc>
+    <loc>https://pravaahtravels.com/packages/singapore-city-highlights</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/thailand-honeymoon-escape-bangkok-and-phuket-thailand-honeymoon-escape-bangkok-and-phuket</loc>
+    <loc>https://pravaahtravels.com/packages/thailand-honeymoon-bangkok-phuket</loc>
     <lastmod>2026-08-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/thailand-family-vacation-bangkok-and-phuket-thailand-family-vacation-bangkok-and-phuket</loc>
+    <loc>https://pravaahtravels.com/packages/thailand-family-bangkok-phuket</loc>
     <lastmod>2026-08-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/kedarnath-dham-yatra-focused-pilgrimage-package-kedarnath-dham-yatra-focused-pilgrimage-package</loc>
+    <loc>https://pravaahtravels.com/packages/kedarnath-dham-yatra</loc>
     <lastmod>2026-08-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/da-nang-and-hoi-an-golden-bridge-beaches-and-lantern-heritage-break-da-nang-and-hoi-an-golden-bridge-beaches-and-lantern-heritage-break</loc>
+    <loc>https://pravaahtravels.com/packages/da-nang-hoi-an-golden-bridge</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/do-dham-yatra-kedarnath-and-badrinath-pilgrimage-do-dham-yatra-kedarnath-and-badrinath-pilgrimage</loc>
+    <loc>https://pravaahtravels.com/packages/do-dham-kedarnath-badrinath</loc>
     <lastmod>2026-08-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/kinnaur-kalpa-chitkul-last-village-on-the-old-hindustan-tibet-road-kinnaur-kalpa-chitkul-last-village-on-the-old-hindustan-tibet-road</loc>
+    <loc>https://pravaahtravels.com/packages/kinnaur-kalpa-chitkul-sangla</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/valley-of-flowers-and-hemkund-sahib-trek-valley-of-flowers-and-hemkund-sahib-trek</loc>
+    <loc>https://pravaahtravels.com/packages/valley-of-flowers-hemkund-sahib-trek</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/complete-bali-explorer-ubud-north-bali-nusa-penida-and-the-south-coast-complete-bali-explorer-ubud-north-bali-nusa-penida-and-the-south-coast</loc>
+    <loc>https://pravaahtravels.com/packages/bali-nusa-penida-grand-explorer</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/dubai-family-vacation-theme-parks-aquariums-and-fun-for-all-ages-dubai-family-vacation-theme-parks-aquariums-and-fun-for-all-ages</loc>
+    <loc>https://pravaahtravels.com/packages/dubai-family-vacation-theme-parks</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/singapore-sentosa-family-fun-and-island-adventure-singapore-sentosa-family-fun-and-island-adventure</loc>
+    <loc>https://pravaahtravels.com/packages/singapore-sentosa-family-holiday</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/nainital-mussoorie-twin-hill-station-getaway-nainital-mussoorie-twin-hill-station-getaway</loc>
+    <loc>https://pravaahtravels.com/packages/nainital-mussoorie-tour</loc>
     <lastmod>2026-08-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/ladakh-bike-expedition-manali-to-leh-via-khardung-la-ladakh-bike-expedition-manali-to-leh-via-khardung-la</loc>
+    <loc>https://pravaahtravels.com/packages/manali-to-leh-motorcycle-expedition</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/leh-nubra-pangong-extended-valley-and-lake-circuit-leh-nubra-pangong-extended-valley-and-lake-circuit</loc>
+    <loc>https://pravaahtravels.com/packages/leh-nubra-pangong-extended-circuit</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/phuket-and-krabi-island-escape-phuket-and-krabi-island-escape</loc>
+    <loc>https://pravaahtravels.com/packages/phuket-krabi-island-explorer</loc>
     <lastmod>2026-08-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/singapore-and-malaysia-twin-city-state-explorer-singapore-and-malaysia-twin-city-state-explorer</loc>
+    <loc>https://pravaahtravels.com/packages/singapore-malaysia-twin-tour</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/dubai-budget-escape-affordable-city-and-desert-holiday-dubai-budget-escape-affordable-city-and-desert-holiday</loc>
+    <loc>https://pravaahtravels.com/packages/dubai-budget-city-desert</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/complete-vietnam-explorer-hanoi-to-mekong-delta-north-south-journey-complete-vietnam-explorer-hanoi-to-mekong-delta-north-south-journey</loc>
+    <loc>https://pravaahtravels.com/packages/vietnam-hanoi-to-mekong-delta</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/manali-adventure-paragliding-trekking-and-river-rafting-manali-adventure-paragliding-trekking-and-river-rafting</loc>
+    <loc>https://pravaahtravels.com/packages/manali-adventure-rafting-paragliding-trek</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/dubai-luxury-holiday-burj-khalifa-marina-and-palm-jumeirah-premium-experience-dubai-luxury-holiday-burj-khalifa-marina-and-palm-jumeirah-premium-experience</loc>
+    <loc>https://pravaahtravels.com/packages/dubai-luxury-burj-khalifa-palm</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/leh-ladakh-highlights-nubra-pangong-and-monasteries-leh-ladakh-highlights-nubra-pangong-and-monasteries</loc>
+    <loc>https://pravaahtravels.com/packages/leh-ladakh-nubra-pangong</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/thailand-highlights-bangkok-pattaya-and-phuket-thailand-highlights-bangkok-pattaya-and-phuket</loc>
+    <loc>https://pravaahtravels.com/packages/thailand-bangkok-pattaya-phuket</loc>
     <lastmod>2026-08-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/bali-nusa-penida-escape-island-hopping-cliffs-and-hidden-lagoons-bali-nusa-penida-escape-island-hopping-cliffs-and-hidden-lagoons</loc>
+    <loc>https://pravaahtravels.com/packages/bali-nusa-penida-island-tour</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/complete-thailand-explorer-bangkok-to-chiang-mai-and-islands-complete-thailand-explorer-bangkok-to-chiang-mai-and-islands</loc>
+    <loc>https://pravaahtravels.com/packages/thailand-bangkok-chiang-mai-phuket-krabi</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/shimla-manali-classic-himachal-hill-station-tour-shimla-manali-classic-himachal-hill-station-tour</loc>
+    <loc>https://pravaahtravels.com/packages/shimla-manali-tour</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/maldives-honeymoon-romantic-overwater-villa-escape-maldives-honeymoon-romantic-overwater-villa-escape</loc>
+    <loc>https://pravaahtravels.com/packages/maldives-honeymoon-overwater-villa</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/bali-honeymoon-escape-private-villas-in-ubud-sidemen-and-nusa-dua-bali-honeymoon-escape-private-villas-in-ubud-sidemen-and-nusa-dua</loc>
+    <loc>https://pravaahtravels.com/packages/bali-honeymoon-ubud-sidemen-nusa-dua</loc>
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/spiti-valley-expedition-cold-desert-circuit-via-kinnaur-spiti-valley-expedition-cold-desert-circuit-via-kinnaur</loc>
+    <loc>https://pravaahtravels.com/packages/spiti-valley-circuit-kinnaur</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pravaahtravels.com/packages/dubai-and-abu-dhabi-explorer-twin-emirates-culture-and-modern-city-tour-dubai-and-abu-dhabi-explorer-twin-emirates-culture-and-modern-city-tour</loc>
+    <loc>https://pravaahtravels.com/packages/dubai-abu-dhabi-twin-emirates</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>

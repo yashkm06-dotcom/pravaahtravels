@@ -7,6 +7,7 @@ import PackageImage from './PackageImage';
 import FeaturedPackageShowcase from './FeaturedPackageShowcase';
 import { usePravaahMotion } from '../hooks/usePravaahMotion';
 import { getPackageVisual } from '../utils/packageVisual';
+import { resolvePackageDisplayTitle } from '../utils/packageSeo';
 
 interface HomeViewProps {
   featuredPackages: TravelPackage[];
@@ -56,18 +57,19 @@ function SectionHeading({ eyebrow, title, copy, action, onAction }: { eyebrow: s
 
 function JourneyCard({ pkg, index, onNavigate, wishlisted, onToggleWishlist }: { pkg: TravelPackage; index: number; onNavigate: HomeViewProps['onNavigate']; wishlisted: boolean; onToggleWishlist?: (pkg: TravelPackage) => void }) {
   const image = getPackageVisual(pkg);
+  const displayTitle = resolvePackageDisplayTitle(pkg);
   return <article className={`pravaah-journey-card pravaah-journey-card--${index + 1}`}>
-    <button type="button" className="pravaah-journey-card__image" onClick={() => openPackage(onNavigate, pkg)} aria-label={`Open ${pkg.title}`}>
-      <PackageImage src={image} alt={pkg.title} className="h-full w-full object-cover" />
+    <button type="button" className="pravaah-journey-card__image" onClick={() => openPackage(onNavigate, pkg)} aria-label={`Open ${displayTitle}`}>
+      <PackageImage src={image} alt={displayTitle} className="h-full w-full object-cover" />
       <span className="pravaah-journey-card__index">0{index + 1}</span>
     </button>
     <div className="pravaah-journey-card__body">
       <div className="pravaah-journey-card__meta"><span>{pkg.category}</span><span>{pkg.duration}</span></div>
-      <h3><button type="button" onClick={() => openPackage(onNavigate, pkg)}>{pkg.title}</button></h3>
+      <h3><button type="button" onClick={() => openPackage(onNavigate, pkg)}>{displayTitle}</button></h3>
       <p>{cleanText(pkg.shortDescription, 'A considered route through remarkable country.')}</p>
       <div className="pravaah-journey-card__footer">
         <span>From <strong>{formatPackagePrice(pkg.offerPrice || pkg.price)}</strong></span>
-        {onToggleWishlist && <button type="button" className={`pravaah-save-button ${wishlisted ? 'is-saved' : ''}`} onClick={() => onToggleWishlist(pkg)} aria-label={wishlisted ? `Remove ${pkg.title} from saved journeys` : `Save ${pkg.title}`} title={wishlisted ? 'Remove saved journey' : 'Save journey'}><Heart className="h-4 w-4" aria-hidden="true" /></button>}
+        {onToggleWishlist && <button type="button" className={`pravaah-save-button ${wishlisted ? 'is-saved' : ''}`} onClick={() => onToggleWishlist(pkg)} aria-label={wishlisted ? `Remove ${displayTitle} from saved journeys` : `Save ${displayTitle}`} title={wishlisted ? 'Remove saved journey' : 'Save journey'}><Heart className="h-4 w-4" aria-hidden="true" /></button>}
       </div>
     </div>
   </article>;
@@ -134,7 +136,7 @@ export default function HomeView({ featuredPackages, onNavigate, onEnquire, load
 
   return <div ref={viewRef} id="home-view" className={`pravaah-home ${filtersOpen ? 'is-filters-open' : ''}`}>
     <section className="pravaah-home-hero" aria-labelledby="home-hero-title">
-      <div className="pravaah-home-hero__image">{heroImage && <img src={heroImage} alt="A mountain landscape prepared for a Pravaah journey" onError={handleTravelImageError} />}</div>
+      <div className="pravaah-home-hero__image">{heroImage && <img src={heroImage} alt="A mountain landscape prepared for a Pravaah journey" loading="eager" fetchPriority="high" decoding="async" onError={handleTravelImageError} />}</div>
       <div className="pravaah-home-hero__veil" />
       <div className="pravaah-shell pravaah-home-hero__content">
         <div className="pravaah-home-hero__copy">
@@ -176,7 +178,7 @@ export default function HomeView({ featuredPackages, onNavigate, onEnquire, load
     </section>
 
     <section className="pravaah-featured-section pravaah-section" id="featured-packages" aria-labelledby="featured-journeys-title">
-      <div className="pravaah-shell"><div className="pravaah-featured-heading"><div><span className="pravaah-kicker">The featured routes</span><h2 id="featured-journeys-title">Featured Tours for the way you wander</h2><p>Start with a region, then narrow the feeling down to a country when the route reaches beyond India.</p></div><button type="button" className="pravaah-text-link" onClick={() => onNavigate('packages')}>Browse all journeys <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button></div><ul className="pravaah-featured-tabs" role="tablist" aria-label="Featured journey regions">{featuredLocations.map((item) => <li key={item}><button type="button" role="tab" aria-selected={activeFeaturedLocation === item} className={activeFeaturedLocation === item ? 'is-active' : ''} onClick={() => { setActiveFeaturedLocation(item); setActiveFeaturedCountry('All'); }}>{item}</button></li>)}</ul>{activeFeaturedLocation === 'International' && <ul className="pravaah-featured-tabs pravaah-featured-tabs--countries" role="tablist" aria-label="International countries">{internationalCountries.map((country) => <li key={country}><button type="button" role="tab" aria-selected={activeFeaturedCountry === country} className={activeFeaturedCountry === country ? 'is-active' : ''} onClick={() => setActiveFeaturedCountry(country)}>{country}</button></li>)}</ul>}<FeaturedPackageShowcase packages={featuredMatches.slice(0, 3)} onNavigate={onNavigate} onEnquire={onEnquire} /></div>
+      <div className="pravaah-shell"><div className="pravaah-featured-heading"><div><span className="pravaah-kicker">The featured routes</span><h2 id="featured-journeys-title">Featured Tours for the way you wander</h2><p>Start with a region, then narrow the feeling down to a country when the route reaches beyond India.</p></div><button type="button" className="pravaah-text-link" onClick={() => onNavigate('packages')}>Browse all journeys <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></button></div><ul className="pravaah-featured-tabs" role="tablist" aria-label="Featured journey regions">{featuredLocations.map((item) => <li key={item} role="presentation"><button type="button" role="tab" id={`featured-tab-${item.toLowerCase()}`} aria-controls="featured-showcase-panel" aria-selected={activeFeaturedLocation === item} className={activeFeaturedLocation === item ? 'is-active' : ''} onClick={() => { setActiveFeaturedLocation(item); setActiveFeaturedCountry('All'); }}>{item}</button></li>)}</ul>{activeFeaturedLocation === 'International' && <ul className="pravaah-featured-tabs pravaah-featured-tabs--countries" role="tablist" aria-label="International countries">{internationalCountries.map((country) => <li key={country} role="presentation"><button type="button" role="tab" id={`country-tab-${country.toLowerCase().replace(/\s+/g, '-')}`} aria-controls="featured-showcase-panel" aria-selected={activeFeaturedCountry === country} className={activeFeaturedCountry === country ? 'is-active' : ''} onClick={() => setActiveFeaturedCountry(country)}>{country}</button></li>)}</ul>}<div id="featured-showcase-panel" role="tabpanel" aria-labelledby={`featured-tab-${activeFeaturedLocation.toLowerCase()}`} tabIndex={0}><FeaturedPackageShowcase packages={featuredMatches.slice(0, 3)} onNavigate={onNavigate} onEnquire={onEnquire} /></div></div>
     </section>
 
     <section className="pravaah-journeys pravaah-section" aria-labelledby="journeys-title">

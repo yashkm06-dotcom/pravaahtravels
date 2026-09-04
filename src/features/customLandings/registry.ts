@@ -24,12 +24,18 @@ export interface CustomLandingRegistration {
 const RoopkundLandingPage = lazy(() => import('./roopkund/RoopkundLandingPage'));
 const BuranGhatiLandingPage = lazy(() => import('./buranGhati/BuranGhatiLandingPage'));
 const RoopkundMysteryLandingPage = lazy(() => import('./roopkundMystery/RoopkundMysteryLandingPage'));
+const LadakhLandingPage = lazy(() => import('./ladakh/LadakhLandingPage'));
+const HimachalLandingPage = lazy(() => import('./himachal/HimachalLandingPage'));
 
 export const CUSTOM_LANDING_REGISTRY = {
   '/roopkund-trek': {
     path: '/roopkund-trek',
     shell: 'immersive',
     seoImagePath: '/images/roopkund/hero-roopkund-mystery-lake.jpg',
+    seoTitle: 'Roopkund Trek | High-Altitude Glacial Lake Expedition',
+    seoDescription: 'Explore the legendary Roopkund Trek in Uttarakhand. Trek through Garhwal forests, Bedni Bugyal meadows, and high-altitude alpine terrain beneath Mount Trishul.',
+    seoKeywords: 'Roopkund trek, Roopkund itinerary, Uttarakhand high altitude trek, Bedni Bugyal, Trishul expedition',
+    allowWithoutPackage: true,
     component: RoopkundLandingPage,
   },
   '/buran-ghati-trek': {
@@ -41,6 +47,37 @@ export const CUSTOM_LANDING_REGISTRY = {
     seoKeywords: 'Buran Ghati trek, Himachal Pradesh trek, Janglik Dayara Litham Chandernahan Barua',
     allowWithoutPackage: true,
     component: BuranGhatiLandingPage,
+  },
+  '/ladakh': {
+    path: '/ladakh',
+    shell: 'immersive',
+    seoImagePath: '/images/ladakh/hero-ladakh-expedition.jpg',
+    seoTitle: 'Ladakh Trans-Himalayan Expedition | Beyond the Last Horizon',
+    seoDescription: 'An overland expedition across Ladakh. Traverse Khardung La at 17,582 ft, Nubra Valley sand dunes, Pangong Tso celestial waters, and ancient monasteries.',
+    seoKeywords: 'Ladakh expedition, Leh Ladakh itinerary, Khardung La pass, Nubra Valley, Pangong Tso lake, Hemis monastery',
+    allowWithoutPackage: true,
+    component: LadakhLandingPage,
+  },
+  '/himachal-trek': {
+    path: '/himachal-trek',
+    shell: 'immersive',
+    seoImagePath: '/images/himachal/hero-himachal-sanctuary.jpg',
+    seoTitle: 'Himachal Trek | Alpine Sanctuary Expedition | Pravaah Travels',
+    seoDescription: 'A slow mountain retreat and alpine trek in Tirthan Valley and Jibhi. Riverside cedar chalets, crystal trout streams, Jalori Pass at 10,800 ft, and Serolsar sacred lake.',
+    seoKeywords: 'Himachal trek, Tirthan Valley trek, Jibhi chalets, Jalori Pass trek, Serolsar lake, Himachal Pradesh alpine retreat',
+    allowWithoutPackage: true,
+    component: HimachalLandingPage,
+  },
+  '/himachal': {
+    path: '/himachal',
+    shell: 'immersive',
+    seoImagePath: '/images/himachal/hero-himachal-sanctuary.jpg',
+    seoTitle: 'Himachal Trek | Alpine Sanctuary Expedition | Pravaah Travels',
+    seoDescription: 'A slow mountain retreat and alpine trek in Tirthan Valley and Jibhi. Riverside cedar chalets, crystal trout streams, Jalori Pass, and Serolsar sacred lake.',
+    seoKeywords: 'Himachal trek, Tirthan Valley, Jibhi chalets, Jalori Pass, Serolsar lake, slow mountain life',
+    allowWithoutPackage: true,
+    packageMatchPaths: ['/himachal-trek'],
+    component: HimachalLandingPage,
   },
   '/roopkund-mystery': {
     path: '/roopkund-mystery',

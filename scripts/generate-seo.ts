@@ -62,10 +62,20 @@ const main = async () => {
     includeContent: environment === 'production',
   });
 
+  const sitemapXml = buildSitemapXml(entries);
+  const robotsTxt = buildRobotsTxt();
+
   fs.mkdirSync(outputDirectory, { recursive: true });
-  fs.writeFileSync(path.join(outputDirectory, 'sitemap.xml'), buildSitemapXml(entries));
+  fs.writeFileSync(path.join(outputDirectory, 'sitemap.xml'), sitemapXml);
   if (environment === 'production') {
-    fs.writeFileSync(path.join(outputDirectory, 'robots.txt'), buildRobotsTxt());
+    fs.writeFileSync(path.join(outputDirectory, 'robots.txt'), robotsTxt);
+
+    const publicDir = path.resolve('public');
+    if (outputDirectory !== publicDir) {
+      fs.mkdirSync(publicDir, { recursive: true });
+      fs.writeFileSync(path.join(publicDir, 'sitemap.xml'), sitemapXml);
+      fs.writeFileSync(path.join(publicDir, 'robots.txt'), robotsTxt);
+    }
   }
 
   console.log(`[SEO] Generated ${entries.length} sitemap URLs for ${environment} in ${outputDirectory}.`);

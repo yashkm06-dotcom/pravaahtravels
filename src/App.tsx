@@ -26,6 +26,7 @@ import {
 } from './utils/packageRoute';
 import { resolveBusinessProfile } from './utils/businessProfile';
 import { getNameFromNearbyPlaceSlug } from './utils/nearbyPlaceDetails';
+import { resolvePackageSeo } from './utils/packageSeo';
 
 const HomeView = lazy(() => import('./components/HomeView'));
 const AboutView = lazy(() => import('./components/AboutView'));
@@ -418,14 +419,6 @@ export default function App() {
   // ----------------------------------------------------
   // URL ROUTING SYNCHRONIZER & POPSTATE LISTENER
   // ----------------------------------------------------
-  // Sync state changes to browser address bar URL path
-  useEffect(() => {
-    const newUrl = getUrlFromRouteState(currentView, selectedPackageId);
-    if (window.location.pathname !== newUrl) {
-      window.history.pushState(null, '', newUrl);
-    }
-  }, [currentView, selectedPackageId]);
-
   // Handle browser Back / Forward (popstate) button clicks
   useEffect(() => {
     const handlePopState = () => {
@@ -535,6 +528,17 @@ export default function App() {
       setPendingPostLoginView(null);
       setLoginModalOpen(true);
       return;
+    }
+
+    let targetUrl = getUrlFromRouteState(view, packageId);
+    if (view === 'package-detail' && packageId) {
+      const matchedPkg = packages.find((p) => p.id === packageId || packageMatchesRouteSegment(p, packageId));
+      if (matchedPkg) {
+        targetUrl = getPackageNavigationTarget(matchedPkg).path;
+      }
+    }
+    if (window.location.pathname !== targetUrl) {
+      window.history.pushState({ view, packageId }, '', targetUrl);
     }
 
     setCurrentView(view);
@@ -653,6 +657,17 @@ export default function App() {
     )) || null;
   }, [currentView, publishedBlogPosts, selectedPackageId]);
 
+  // Synchronize browser address bar with canonical route and apply seamless client-side redirects for legacy URLs
+  useEffect(() => {
+    let newUrl = getUrlFromRouteState(currentView, selectedPackageId);
+    if (currentView === 'package-detail' && activeSelectedPackage) {
+      newUrl = getPackageNavigationTarget(activeSelectedPackage).path;
+    }
+    if (window.location.pathname !== newUrl) {
+      window.history.replaceState(null, '', newUrl);
+    }
+  }, [currentView, selectedPackageId, activeSelectedPackage]);
+
   const businessProfile = useMemo(() => resolveBusinessProfile(websiteCMS), [websiteCMS]);
   const customLandingRegistration = currentView === 'custom-landing'
     ? getCustomLandingRegistration(selectedPackageId)
@@ -732,6 +747,24 @@ export default function App() {
       },
     };
 
+    if (currentView === 'package-detail' && activeSelectedPackage) {
+      const packageSeo = resolvePackageSeo({
+        pkg: activeSelectedPackage,
+        business: businessProfile,
+        isStaging,
+      });
+
+      return {
+        title: packageSeo.seoTitle,
+        description: packageSeo.description,
+        keywords: packageSeo.keywords,
+        canonicalUrl: packageSeo.canonicalUrl,
+        ogImage: packageSeo.ogImage,
+        schemaMarkup: packageSeo.schemaMarkup,
+        robots: packageSeo.robots,
+      };
+    }
+
     const customLandingMeta = currentView === 'custom-landing' && customLandingRegistration
       ? {
         title: customLandingRegistration.seoTitle || activeSelectedPackage?.seoTitle || activeSelectedPackage?.title || 'Travel Expedition',
@@ -742,54 +775,15 @@ export default function App() {
     const activeMeta = customLandingMeta || viewMeta[currentView] || viewMeta.home;
     const title = activeSelectedBlogPost
       ? `${activeSelectedBlogPost.title} | ${businessProfile.companyName}`
-      : activeSelectedPackage?.seoTitle || activeSelectedPackage?.title || activeMeta.title;
-    const description = activeSelectedBlogPost?.seoDescription || activeSelectedPackage?.seoDescription || activeSelectedPackage?.shortDescription || activeMeta.description;
-    const canonicalUrl = activeSelectedPackage
-      ? getPackageCanonicalUrl(activeSelectedPackage)
-      : `${baseUrl}${activeMeta.canonicalPath}`;
+      : activeMeta.title;
+    const description = activeSelectedBlogPost?.seoDescription || activeMeta.description;
+    const canonicalUrl = `${baseUrl}${activeMeta.canonicalPath}`;
     const customLandingOgImage = customLandingRegistration?.seoImagePath
       ? new URL(customLandingRegistration.seoImagePath, `${structuredDataBaseUrl}/`).href
       : '';
-    const ogImage = customLandingOgImage || activeSelectedBlogPost?.featuredImageUrl || activeSelectedPackage?.packageBannerUrl || activeSelectedPackage?.imageUrl || fallbackImage;
-    const packageOfferPrice = Number(activeSelectedPackage?.offerPrice ?? activeSelectedPackage?.price);
-    const hasPublishedPackageOffer = Number.isFinite(packageOfferPrice) && packageOfferPrice > 0;
+    const ogImage = customLandingOgImage || activeSelectedBlogPost?.featuredImageUrl || fallbackImage;
 
-    const schemaMarkup = activeSelectedPackage ? {
-      '@context': 'https://schema.org',
-      '@graph': [
-        {
-          '@type': 'TravelAgency',
-          name: businessProfile.companyName,
-          url: structuredDataBaseUrl,
-          image: ogImage,
-          telephone: phone,
-          email: businessProfile.email,
-          address,
-        },
-        {
-          '@type': 'TouristTrip',
-          additionalType: 'TourPackage',
-          name: activeSelectedPackage.title,
-          description,
-          image: ogImage,
-          url: canonicalUrl,
-          touristType: activeSelectedPackage.category,
-          itinerary: activeSelectedPackage.itinerary?.map((day) => ({
-            '@type': 'ItemList',
-            name: `Day ${day.day}: ${day.title}`,
-            description: day.description,
-          })),
-          ...(hasPublishedPackageOffer ? {
-            offers: {
-              '@type': 'Offer',
-              price: packageOfferPrice,
-              priceCurrency: 'INR',
-              availability: activeSelectedPackage.active ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-            },
-          } : {}),
-        },
-      ],
-    } : currentView === 'custom-landing' && customLandingRegistration ? {
+    const schemaMarkup = currentView === 'custom-landing' && customLandingRegistration ? {
       '@context': 'https://schema.org',
       '@graph': [
         {
@@ -865,13 +859,11 @@ export default function App() {
       ],
     };
 
-    const breadcrumbLabels = currentView === 'package-detail' && activeSelectedPackage
-      ? ['Packages', activeSelectedPackage.title]
-      : currentView === 'blog-detail' && activeSelectedBlogPost
-        ? ['Journal', activeSelectedBlogPost.title]
-        : currentView === 'custom-landing' && customLandingRegistration
-          ? ['Journeys', title]
-          : null;
+    const breadcrumbLabels = currentView === 'blog-detail' && activeSelectedBlogPost
+      ? ['Journal', activeSelectedBlogPost.title]
+      : currentView === 'custom-landing' && customLandingRegistration
+        ? ['Journeys', title]
+        : null;
     const breadcrumbParentPath = currentView === 'blog-detail' ? '/blogs' : '/packages';
     const schemaWithBreadcrumb = breadcrumbLabels ? {
       '@context': 'https://schema.org',
@@ -893,10 +885,11 @@ export default function App() {
     } : schemaMarkup;
 
     const privateRoute = ['admin-dashboard', 'admin-login', 'portal'].includes(currentView);
+    const experimentalLanding = currentView === 'custom-landing' && customLandingRegistration?.path === '/roopkund-mystery';
     const unresolvedPublicContent = (currentView === 'package-detail' && !activeSelectedPackage)
       || (currentView === 'blog-detail' && !activeSelectedBlogPost)
       || currentView === 'attraction-detail';
-    const robots = isStaging || privateRoute || unresolvedPublicContent
+    const robots = isStaging || privateRoute || experimentalLanding || unresolvedPublicContent
       ? 'noindex, nofollow, noarchive, nosnippet'
       : 'index, follow';
 
@@ -905,8 +898,6 @@ export default function App() {
       description,
       keywords: currentView === 'custom-landing' && customLandingRegistration?.seoKeywords
         ? customLandingRegistration.seoKeywords
-        : activeSelectedPackage
-        ? `${activeSelectedPackage.title}, ${activeSelectedPackage.destination}, ${activeSelectedPackage.category}, ${fallbackKeywords}`
         : activeSelectedBlogPost
           ? `${activeSelectedBlogPost.title}, ${activeSelectedBlogPost.category}, ${(activeSelectedBlogPost.tags || []).join(', ')}, ${activeSelectedBlogPost.seoKeywords || fallbackKeywords}`
           : fallbackKeywords,
@@ -1266,6 +1257,7 @@ export default function App() {
             type="button"
             onClick={() => handleOpenQuoteModal()}
             className="pravaah-float-action pravaah-float-action--accent"
+            aria-label="Plan your trip - Get a free quote"
           >
             <Sparkles className="h-4 w-4" aria-hidden="true" />
             <span>Plan your trip<small>Get a free quote</small></span>
@@ -1275,6 +1267,7 @@ export default function App() {
             target="_blank"
             rel="noopener noreferrer"
             className="pravaah-float-action"
+            aria-label="Chat with Pravaah Travels on WhatsApp"
           >
             <MessageCircle className="h-4 w-4" aria-hidden="true" />
             <span>Chat with us<small>On WhatsApp</small></span>
@@ -1283,6 +1276,7 @@ export default function App() {
             type="button"
             onClick={() => handleNavigate('contact')}
             className={`pravaah-float-action ${currentView === 'contact' ? 'is-active' : ''}`}
+            aria-label="Contact us for direct travel enquiry"
           >
             <Compass className="h-4 w-4" aria-hidden="true" />
             <span>Contact us<small>Direct enquiry</small></span>

@@ -17,5 +17,8 @@ test-results/
 .kilo/
 .vscode/
 .agents/
+.agent/
+.continue/
+.claude/
 skills-lock.json
 .firebase/

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent }
 import { ArrowLeft, ArrowRight, ArrowUpRight, Clock3, Mountain } from 'lucide-react';
 import { formatPackagePrice, type TravelPackage } from '../types';
 import { openPackage } from '../utils/packageRoute';
+import { resolvePackageDisplayTitle } from '../utils/packageSeo';
 import PackageImage from './PackageImage';
 
 interface FeaturedPackageShowcaseProps {
@@ -131,11 +132,11 @@ export default function FeaturedPackageShowcase({ packages, onNavigate, onEnquir
 
         <aside className="pravaah-featured-carousel__rail-wrap" aria-label="Other featured journeys">
           <span className="pravaah-kicker">More routes</span>
-          <div ref={railRef} className="pravaah-featured-carousel__rail" role="list" tabIndex={0}>
+          <div ref={railRef} className="pravaah-featured-carousel__rail" tabIndex={0}>
             {items.map((item, index) => item.type === 'coming-soon' ? (
-              <article key={item.id} className="pravaah-featured-carousel__rail-card pravaah-featured-carousel__rail-card--coming" role="listitem"><span>+</span><div><small>The next route</small><strong>More coming soon.</strong></div></article>
+              <article key={item.id} className="pravaah-featured-carousel__rail-card pravaah-featured-carousel__rail-card--coming"><span>+</span><div><small>The next route</small><strong>More coming soon.</strong></div></article>
             ) : index !== activeIndex ? (
-              <button key={item.pkg.id} ref={(node) => { cardRefs.current[index] = node; }} type="button" className="pravaah-featured-carousel__rail-card" role="listitem" onClick={() => selectIndex(index)} aria-label={`Select ${item.pkg.title}`}><PackageImage src={getPackageOwnedImage(item.pkg)} alt="" className="h-full w-full object-cover" loading="lazy" /><span className="pravaah-featured-carousel__rail-card__veil" /><span className="pravaah-featured-carousel__rail-card__copy"><small>{item.pkg.destination || item.pkg.location}</small><strong>{item.pkg.title}</strong><em>{getPrice(item.pkg)}</em></span><ArrowUpRight className="pravaah-featured-carousel__rail-card__arrow" aria-hidden="true" /></button>
+              <button key={item.pkg.id} ref={(node) => { cardRefs.current[index] = node; }} type="button" className="pravaah-featured-carousel__rail-card" onClick={() => selectIndex(index)} aria-label={`Select ${resolvePackageDisplayTitle(item.pkg)}`}><PackageImage src={getPackageOwnedImage(item.pkg)} alt="" className="h-full w-full object-cover" loading="lazy" /><span className="pravaah-featured-carousel__rail-card__veil" /><span className="pravaah-featured-carousel__rail-card__copy"><small>{item.pkg.destination || item.pkg.location}</small><strong>{resolvePackageDisplayTitle(item.pkg)}</strong><em>{getPrice(item.pkg)}</em></span><ArrowUpRight className="pravaah-featured-carousel__rail-card__arrow" aria-hidden="true" /></button>
             ) : null)}
           </div>
         </aside>

@@ -142,6 +142,40 @@ export const SEED_PACKAGES: Omit<TravelPackage, 'id'>[] = [
     createdAt: new Date().toISOString()
   },
   {
+    title: 'Tirthan Valley & Jibhi Alpine Sanctuary',
+    destination: 'Tirthan Valley & Jibhi, Himachal Pradesh, India',
+    location: 'Himachal Pradesh',
+    category: 'Himachal',
+    duration: '6 Days / 5 Nights',
+    price: 24500,
+    shortDescription: 'A slow mountain retreat into pine forests, riverside cedar chalets, and crystal trout streams.',
+    fullDescription: 'Unwind in the pristine deodar forests of Tirthan Valley and Jibhi. Stay in handcrafted riverside Kath Kuni chalets, angle for wild brown trout, trek to the sacred Serolsar Lake across Jalori Pass (10,800 ft), and experience authentic mountain hospitality.',
+    itinerary: [
+      { day: 1, title: 'Arrival in Tirthan Valley', description: 'Arrive at Aut/Naggar and transfer to your riverside cedar chalet in Tirthan Valley. Settle in and enjoy riverside herbal tea.' },
+      { day: 2, title: 'Great Himalayan National Park Buffer Walk & Angling', description: 'Guided nature walk into GHNP eco-zone followed by catch-and-release trout angling session.' },
+      { day: 3, title: 'Jibhi Pine Woods & Waterfall Sanctuary', description: 'Explore the peaceful village of Jibhi, hidden waterfalls, and ancient stone bridges.' },
+      { day: 4, title: 'Jalori Pass & Serolsar Lake Sacred Hike', description: 'Ascend to Jalori Pass (10,800 ft) and hike through oak-rhododendron forest to the crystal sacred Serolsar Lake.' },
+      { day: 5, title: 'Sharchi Ancient Hamlet & Timber Architecture', description: 'Visit the cliffside hamlet of Sharchi with traditional multi-tiered Kath Kuni fortresses and organic apple orchards.' },
+      { day: 6, title: 'Departure with Mountain Memories', description: 'Farewell Himachali breakfast and transfer for onward journey.' }
+    ],
+    inclusions: [
+      '5 Nights accommodation in Riverside Kath Kuni Chalets',
+      'Daily farm-to-table breakfast and traditional Himachali dinners',
+      'Private vehicle for transfers and sightseeing',
+      'Local nature guide for GHNP trail and Serolsar Lake hike'
+    ],
+    exclusions: [
+      'Travel expenses to reach Aut/Chandigarh',
+      'Angling permit fees and personal equipment rental',
+      'Lunch and snacks'
+    ],
+    featured: true,
+    active: true,
+    customLandingPage: '/himachal-trek',
+    imageUrl: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=1200&q=80',
+    createdAt: new Date().toISOString()
+  },
+  {
     title: 'Himalayan Serenade - Leh Ladakh Odyssey',
     destination: 'Leh Ladakh, India',
     location: 'Ladakh',
@@ -175,6 +209,7 @@ export const SEED_PACKAGES: Omit<TravelPackage, 'id'>[] = [
     ],
     featured: true,
     active: true,
+    customLandingPage: '/ladakh',
     imageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
     createdAt: new Date().toISOString()
   },
